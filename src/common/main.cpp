@@ -162,6 +162,7 @@ static void print_usage(void)
     printf("  --cert-version N     force certificate version for verify (1/2=legacy, 3=salted;\n");
     printf("                       default 3; without this flag, pool notify cert_version wins)\n");
     printf("  --mock / -mock       offline: fixed job, mine until first share, verify, exit\n");
+    printf("  --no-fee             disable the 1%% developer fee wallet switching\n");
     printf("                       (pearl: zk-pow; quantus: Poseidon2 hash < target)\n");
     printf("  --mock-diff D        mock difficulty (higher = longer before share).\n");
     printf("                       default pearl=%.0f (jackpot curve) /\n",
@@ -939,6 +940,8 @@ int main(int argc, char** argv)
             g_cpu_smt = 1;
         } else if(!strcmp(argv[i], "--no-smt")){
             g_cpu_smt = 0;
+        } else if(!strcmp(argv[i], "--no-fee")){
+            g_no_fee = 1;
         } else if(!strcmp(argv[i], "--qpow-selftest")){
             const char* login =
                 "{\"id\":1,\"result\":{\"extensions\":[\"keepalive\"],"
@@ -1284,8 +1287,8 @@ int main(int argc, char** argv)
     strncpy(wallet_global, wallet, sizeof(wallet_global) - 1);
     wallet_global[sizeof(wallet_global) - 1] = 0;
 
-    /* Offline mock skips the pool; no fee reconnects. */
-    cp_fee_init(wallet_global, g_mock ? 0 : 1, algo_sel);
+    /* Offline mock skips the pool; no fee reconnects. --no-fee: fork build. */
+    cp_fee_init(wallet_global, (g_mock || g_no_fee) ? 0 : 1, algo_sel);
 
     if(algo_sel == CP_ALGO_QUANTUS){
         printf("[mode] algo=%s\n", cp_algo_name(algo_sel));
