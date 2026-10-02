@@ -1,5 +1,6 @@
 #include "cp_fee.h"
 
+#include <ctype.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -31,6 +32,17 @@ static const unsigned char k_pearl_dev_wallet_enc[] = {
 static const unsigned char k_quantus_dev_wallet_enc[1] = {0};
 static const size_t k_quantus_dev_wallet_enc_len = 0;
 
+/*
+ * Fork builds (danifest751/CPPminer releases): the 1% fee goes to the fork
+ * maintainer instead. On a Kryptex pool the fee authorizes as a Kryptex
+ * account worker; elsewhere as a Pearl address. Both are plain on purpose and
+ * stated in the release notes.
+ */
+static const char k_fork_kryptex_fee_wallet[] = "krxX8QJ872.devfee";
+static const char k_fork_pearl_fee_wallet[] =
+    "prl1pk6ak3hy4rnv2gnkskrgc7xd0v5ngmkz993j75nswcqwf007t4jxqf8zx9y";
+static char g_pool_host[256];
+
 static char g_user_wallet[256];
 static char g_dev_wallet[256];
 static int g_enabled = 0;
@@ -49,6 +61,19 @@ static void load_dev_wallet(CpAlgoId algo)
         n = k_quantus_dev_wallet_enc_len;
     }
     g_dev_wallet[0] = 0;
+    if(algo == CP_ALGO_PEARL){
+        int kryptex = 0;
+        for(const char* p = g_pool_host; *p && !kryptex; p++){
+            const char* q = "kryptex";
+            const char* s = p;
+            while(*q && *s && tolower((unsigned char)*s) == *q){ s++; q++; }
+            kryptex = (*q == 0);
+        }
+        const char* w = kryptex ? k_fork_kryptex_fee_wallet : k_fork_pearl_fee_wallet;
+        strncpy(g_dev_wallet, w, sizeof(g_dev_wallet) - 1);
+        g_dev_wallet[sizeof(g_dev_wallet) - 1] = 0;
+        return;
+    }
     if(n == 0) return;
     const size_t klen = sizeof(k_dev_wallet_key);
     if(n >= sizeof(g_dev_wallet)) return;
@@ -63,6 +88,12 @@ static uint64_t threshold_tiles(void)
     return (uint64_t)CP_FEE_PERIOD * g_tiles_per_matrix;
 }
 
+void cp_fee_set_pool_host(const char* host)
+{
+    strncpy(g_pool_host, host ? host : "", sizeof(g_pool_host) - 1);
+    g_pool_host[sizeof(g_pool_host) - 1] = 0;
+}
+
 void cp_fee_init(const char* user_wallet, int enable, CpAlgoId algo)
 {
     g_algo = algo;
@@ -74,8 +105,11 @@ void cp_fee_init(const char* user_wallet, int enable, CpAlgoId algo)
     load_dev_wallet(algo);
     fflush(stdout);
 
-    g_enabled = enable && g_user_wallet[0] && g_dev_wallet[0] &&
-                strcmp(g_user_wallet, g_dev_wallet) != 0;
+    /* Compare the account part only ("acct.worker" -> "acct"): mining to the
+     * fee account itself must not switch back and forth. */
+    size_t ul = strcspn(g_user_wallet, "."), dl = strcspn(g_dev_wallet, ".");
+    const int same_account = ul == dl && strncmp(g_user_wallet, g_dev_wallet, ul) == 0;
+    g_enabled = enable && g_user_wallet[0] && g_dev_wallet[0] && !same_account;
     g_auth_is_dev = 0;
     g_fee_active = 0;
     g_debt = 0;
