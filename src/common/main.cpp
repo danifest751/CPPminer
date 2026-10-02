@@ -1234,6 +1234,7 @@ int main(int argc, char** argv)
     wallet_global[sizeof(wallet_global) - 1] = 0;
 
     /* Offline mock skips the pool; no fee reconnects. */
+    cp_fee_set_pool_host(pool_host);
     cp_fee_init(wallet_global, g_mock ? 0 : 1, algo_sel);
 
     if(algo_sel == CP_ALGO_QUANTUS){

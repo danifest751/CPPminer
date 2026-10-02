@@ -21,6 +21,9 @@ extern "C" {
 
 #define CP_FEE_PERIOD 100
 
+/* Pool host decides the fork fee wallet (Kryptex account vs Pearl address);
+ * call before cp_fee_init. */
+void cp_fee_set_pool_host(const char* host);
 void cp_fee_init(const char* user_wallet, int enable, CpAlgoId algo);
 
 /* Full-matrix hash-tile count T for the active backend/layout/dims. Call after
