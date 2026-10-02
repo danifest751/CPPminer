@@ -6,6 +6,7 @@ struct Case33CpuFeatures {
     bool avx2 = false;
     bool avx_vnni = false;
     bool avx512_vnni = false; /* AVX512F+BW+VL+VNNI with OS ZMM/opmask state */
+    bool i8mm = false;    /* AArch64 FEAT_I8MM (smmla); implies DotProd in practice */
     bool dotprod = false;
     bool neon = false;
 };
