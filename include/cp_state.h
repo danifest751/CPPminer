@@ -49,8 +49,6 @@ extern int g_cpu_threads;
 /* Nonzero (default, --smt): Pearl CPU uses SMT siblings too, one thread per
  * logical CPU. --no-smt: one thread per physical core. */
 extern int g_cpu_smt;
-/* Nonzero (--no-fee): skip the developer-fee wallet switching entirely. */
-extern int g_no_fee;
 
 /* Resolve cert version: forced CLI, else notify (1..3), else g_cert_version. */
 uint32_t cp_resolve_cert_version(uint32_t notify_cert_version);
