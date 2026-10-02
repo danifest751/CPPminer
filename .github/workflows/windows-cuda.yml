@@ -24,6 +24,7 @@ jobs:
           $cuda = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6"
           if (-not (Test-Path "$cuda\bin\nvcc.exe")) { throw "nvcc not found under $cuda" }
           "CUDA_PATH=$cuda" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "CUDA_PATH_V12_6=$cuda" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "$cuda\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
           & "$cuda\bin\nvcc.exe" --version
 
