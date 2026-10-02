@@ -100,6 +100,7 @@ typedef enum {
     CP_SIMD_AVXVNNI = 6, /* force AVX-VNNI vpdpbusd path */
     CP_SIMD_HYBRID  = 7, /* quantus: scalar + AVX2 split across SMT siblings; pearl: auto */
     CP_SIMD_AVX512VNNI = 8, /* force AVX512-VNNI (EVEX vpdpbusd) path */
+    CP_SIMD_I8MM    = 9, /* force AArch64 I8MM (smmla) path */
 } CpSimdIsa;
 
 /* Returns 0, or -1 when an explicit ISA is unavailable. */
