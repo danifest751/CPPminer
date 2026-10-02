@@ -3,7 +3,7 @@ name: windows-cuda
 on:
   workflow_dispatch:
   push:
-    branches: [ci/windows-cuda]
+    branches: [ci/windows-cuda, release/fork]
 
 jobs:
   build:
