@@ -1,0 +1,57 @@
+name: windows-cuda
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ci/windows-cuda]
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CUDA Toolkit 12.6
+        uses: Jimver/cuda-toolkit@v0.2.19
+        with:
+          cuda: '12.6.3'
+          method: network
+
+      - name: Rust (MSVC)
+        shell: pwsh
+        run: |
+          rustup default stable-x86_64-pc-windows-msvc
+          cargo --version
+
+      - name: Build (CPU + CUDA + OpenCL, sm_75/86/89)
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File build.ps1 -Backend Cpu,Cuda,OpenCl -CudaArch "75;86;89" -CudaRoot "$env:CUDA_PATH"
+
+      - name: Smoke test (CPU mock, no GPU on the runner)
+        shell: pwsh
+        run: |
+          .\cppminer.exe --help | Select-Object -First 3
+          .\cppminer.exe --backend cpu --mock --m 4 --n 4 --max-nonce 1
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $out = "cppminer-win64-cuda"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          Copy-Item cppminer.exe $out
+          if (Test-Path kernels) { Copy-Item kernels $out -Recurse }
+          Copy-Item "$env:CUDA_PATH\bin\cudart64_*.dll" $out
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $redist = Get-ChildItem "$vs\VC\Redist\MSVC" -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          Copy-Item "$($redist.FullName)\x64\Microsoft.VC143.CRT\*.dll" $out
+          Copy-Item "$($redist.FullName)\x64\Microsoft.VC143.OpenMP\vcomp140.dll" $out
+          $dumpbin = Get-ChildItem "$vs\VC\Tools\MSVC" -Recurse -Filter dumpbin.exe | Where-Object FullName -like "*Hostx64\x64*" | Select-Object -First 1
+          & $dumpbin.FullName /dependents "$out\cppminer.exe" | Select-String "\.dll"
+          Get-ChildItem $out | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cppminer-win64-cuda
+          path: cppminer-win64-cuda
