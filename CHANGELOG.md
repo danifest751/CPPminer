@@ -10,6 +10,7 @@
 - Pearl wgpu backend
 - Reduce host memory usage (CPU, CUDA, OpenCL, OneDNN, Wgpu)
 - MinGW and MSYS2 support (thanks to @danifest751)
+- AVX512-VNNI CPU kernel (`--simd avx512vnni`, auto-selected on Zen4-class CPUs): ~2x the AVX2 kernel per core
 - Configurable matrix size: `--m` / `--n` in units of 1024 (default 128x128)
 - Pearl CPU: scan macro blocks scheduled one at a time (a chunk of 4096 left an 8k×8k scan on a single thread: 118 -> ~660 GMAC/s on a Zen4 8-core); `--threads N` now also sets the Pearl CPU pool; threads are pinned, one per logical CPU by default (`--no-smt` for one per physical core); `OMP_PLACES` / `OMP_PROC_BIND` disable the built-in pinning
 
