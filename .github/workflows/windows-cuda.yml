@@ -12,11 +12,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install CUDA Toolkit 12.6
-        uses: Jimver/cuda-toolkit@v0.2.19
-        with:
-          cuda: '12.6.3'
-          method: network
+      - name: Install CUDA Toolkit 12.6 (NVIDIA network installer, subset)
+        shell: pwsh
+        run: |
+          $url = "https://developer.download.nvidia.com/compute/cuda/12.6.3/network_installers/cuda_12.6.3_windows_network.exe"
+          Invoke-WebRequest -Uri $url -OutFile cuda_net.exe -UseBasicParsing
+          $pkgs = @("nvcc_12.6", "cudart_12.6", "thrust_12.6", "cuda_profiler_api_12.6",
+                    "nvrtc_12.6", "nvrtc_dev_12.6", "visual_studio_integration_12.6")
+          $p = Start-Process -FilePath .\cuda_net.exe -ArgumentList (@("-s") + $pkgs) -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "CUDA installer exit code $($p.ExitCode)" }
+          $cuda = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6"
+          if (-not (Test-Path "$cuda\bin\nvcc.exe")) { throw "nvcc not found under $cuda" }
+          "CUDA_PATH=$cuda" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "$cuda\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          & "$cuda\bin\nvcc.exe" --version
 
       - name: Rust (MSVC)
         shell: pwsh
