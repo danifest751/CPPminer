@@ -1,0 +1,9 @@
+C:/Projects/ArmCompute/pearl/CPPminer/.claude/worktrees/agent-a076f1566206e1fb8/rust/cp-proof-ffi/target\release\deps\pearl_blake3-b409a64ba6d1f16d.d: C:\Projects\ArmCompute\pearl\CPPminer\.claude\worktrees\agent-a076f1566206e1fb8\third_party\pearl-blake3\src\lib.rs C:\Projects\ArmCompute\pearl\CPPminer\.claude\worktrees\agent-a076f1566206e1fb8\third_party\pearl-blake3\src\hasher.rs C:\Projects\ArmCompute\pearl\CPPminer\.claude\worktrees\agent-a076f1566206e1fb8\third_party\pearl-blake3\src\merkle.rs
+
+C:/Projects/ArmCompute/pearl/CPPminer/.claude/worktrees/agent-a076f1566206e1fb8/rust/cp-proof-ffi/target\release\deps\libpearl_blake3-b409a64ba6d1f16d.rlib: C:\Projects\ArmCompute\pearl\CPPminer\.claude\worktrees\agent-a076f1566206e1fb8\third_party\pearl-blake3\src\lib.rs C:\Projects\ArmCompute\pearl\CPPminer\.claude\worktrees\agent-a076f1566206e1fb8\third_party\pearl-blake3\src\hasher.rs C:\Projects\ArmCompute\pearl\CPPminer\.claude\worktrees\agent-a076f1566206e1fb8\third_party\pearl-blake3\src\merkle.rs
+
+C:/Projects/ArmCompute/pearl/CPPminer/.claude/worktrees/agent-a076f1566206e1fb8/rust/cp-proof-ffi/target\release\deps\libpearl_blake3-b409a64ba6d1f16d.rmeta: C:\Projects\ArmCompute\pearl\CPPminer\.claude\worktrees\agent-a076f1566206e1fb8\third_party\pearl-blake3\src\lib.rs C:\Projects\ArmCompute\pearl\CPPminer\.claude\worktrees\agent-a076f1566206e1fb8\third_party\pearl-blake3\src\hasher.rs C:\Projects\ArmCompute\pearl\CPPminer\.claude\worktrees\agent-a076f1566206e1fb8\third_party\pearl-blake3\src\merkle.rs
+
+C:\Projects\ArmCompute\pearl\CPPminer\.claude\worktrees\agent-a076f1566206e1fb8\third_party\pearl-blake3\src\lib.rs:
+C:\Projects\ArmCompute\pearl\CPPminer\.claude\worktrees\agent-a076f1566206e1fb8\third_party\pearl-blake3\src\hasher.rs:
+C:\Projects\ArmCompute\pearl\CPPminer\.claude\worktrees\agent-a076f1566206e1fb8\third_party\pearl-blake3\src\merkle.rs:

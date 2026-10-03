@@ -1,0 +1,155 @@
+#ifndef CP_WORKER_H
+#define CP_WORKER_H
+
+#include <stdint.h>
+
+#include "cp_share_witness.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef enum {
+    CP_BACKEND_NONE   = 0,
+    CP_BACKEND_CPU    = 1,
+    CP_BACKEND_CUDA   = 2,
+    CP_BACKEND_OPENCL = 3,
+    CP_BACKEND_ONEDNN = 4,
+    CP_BACKEND_WGPU   = 5
+} CpBackendId;
+
+/* Compile-time availability (1 if linked). */
+int cp_worker_has_cpu(void);
+int cp_worker_has_cuda(void);
+int cp_worker_has_opencl(void);
+int cp_worker_has_onednn(void);
+int cp_worker_has_wgpu(void);
+
+const char* cp_worker_backend_name(void);
+CpBackendId cp_worker_backend_id(void);
+
+/* Select backend before init when several are compiled. Returns 0 on ok. */
+int cp_worker_select(CpBackendId id);
+
+/* Algo for backends shared by pearl/quantus (wgpu). Call before init/list. */
+void cp_worker_set_algo(int algo_id); /* CpAlgoId without including cp_algo.h */
+int cp_worker_algo(void);
+
+void cp_worker_init(int* devices, int ndev);
+int cp_worker_is_ready(void);
+void cp_worker_shutdown(void);
+
+/* Print devices for the selected backend (OpenCL/CUDA). Returns count, or 0. */
+int cp_worker_list_devices(void);
+/* OpenCL-only: restrict device enumeration to platform index (-1 = all). */
+void cp_worker_set_ocl_platform(int platform_index);
+/* OneDNN-only: same as --ocl-platform (shared OpenCL enumeration). */
+void cp_worker_set_onednn_platform(int platform_index);
+/* OpenCL-only: register tile MR x NR (4x4, 4x8, 8x8, or 8x16). mr<=0 restores auto (4x8; 8x16 on AMD). */
+void cp_worker_set_ocl_tile(int mr, int nr);
+/* OpenCL-only: macro block 64x64 or 128x128. <=0 restores default 128x128. */
+void cp_worker_set_ocl_macro(int macro_m, int macro_n);
+/* OpenCL-only: GEMM issue. 0 = auto (DPI then cpm), 1 = broadcast/cpm, 2 = packed. */
+void cp_worker_set_ocl_issue_mode(int mode);
+/* Legacy: on → broadcast, off → auto. */
+void cp_worker_set_ocl_issue_broadcast(int on);
+/* OpenCL-only: dot backend. 0=auto, 1=force-khr, 2=off, 3=sudot, 4=sdot4, 5=asm, 6=khr. */
+void cp_worker_set_ocl_dot_policy(int policy);
+/* OpenCL-only: broadcast cpm type. 0 = float (default), 1 = int32. */
+void cp_worker_set_ocl_cpm_int(int on);
+/* OpenCL-only: stage A/B panels in local memory (0 = off default, 1 = on). */
+void cp_worker_set_ocl_lds(int on);
+/* wgpu-only (pearl): stage A/B panels in workgroup memory (-1 = auto default, 0 = off, 1 = on). */
+void cp_worker_set_wgpu_lds(int mode);
+/* wgpu-only (pearl): register tile 4x4/4x8/8x8/8x16 (default 8x8), macro 64x64/128x128. */
+void cp_worker_set_wgpu_tile(int mr, int nr);
+void cp_worker_set_wgpu_macro(int macro_m, int macro_n);
+/* OpenCL-only: resolve tile size for device before init or align tests. */
+void cp_worker_configure_ocl_tile(int device_index);
+
+void cp_worker_apply_backend_defaults(void);
+int cp_worker_uses_contiguous_tiles(void);
+void cp_worker_set_period_gemm(int on);
+void cp_worker_set_period_batch(int batch); /* also --batch-size for Quantus nonces/launch */
+void cp_worker_set_row_period_batch(int batch);
+void cp_worker_set_col_period_batch(int batch); /* alias of set_period_batch on OpenCL/Pearl */
+void cp_worker_set_step_major_ap(int on);
+void cp_worker_set_cutlass_fused(int on);
+void cp_worker_set_onednn_fused_jackpot(int on);
+
+typedef enum {
+    CP_PREPACK_SEPARATE = 0, /* row-major noisy + persistent a_pre_/b_pre_ */
+    CP_PREPACK_REUSE    = 1, /* row-major noisy + prepack swap into scan buf */
+    CP_PREPACK_FUSED    = 2, /* noise injection directly into scan/prepack layout */
+} CpPrepackMode;
+
+void cp_worker_set_prepack_mode(CpPrepackMode mode);
+/* Legacy alias for CP_PREPACK_REUSE. */
+void cp_worker_set_inplace_prepack(int on);
+
+/* CPU SIMD ISA preference (ignored on CUDA/OpenCL). */
+typedef enum {
+    CP_SIMD_AUTO    = 0, /* architecture-specific best ISA → scalar */
+    CP_SIMD_AVX2    = 1,
+    CP_SIMD_SSE     = 2, /* force SSSE3 path */
+    CP_SIMD_SCALAR  = 3,
+    CP_SIMD_NEON    = 4,
+    CP_SIMD_DOTPROD = 5,
+    CP_SIMD_AVXVNNI = 6, /* force AVX-VNNI vpdpbusd path */
+    CP_SIMD_HYBRID  = 7, /* quantus: scalar + AVX2 split across SMT siblings; pearl: auto */
+} CpSimdIsa;
+
+/* Returns 0, or -1 when an explicit ISA is unavailable. */
+int cp_worker_set_simd_isa(CpSimdIsa isa);
+
+/* Prefer host matrix path when non-zero (CPU backend always uses host matrices). */
+int cp_worker_prefers_host_matrices(void);
+
+/* Non-zero when the worker writes signal A into h_Ap_global every attempt (CPU, oneDNN host
+ * fallback), so the host slot must be reclaimed before each attempt rather than on a share. */
+int cp_worker_writes_host_signal_a(void);
+
+/* Worker generates noisy matrices internally (CPU zero-B). */
+int cp_worker_worker_handles_matrix_prep(void);
+void cp_worker_begin_job(const uint8_t job_key[32], int m, int n, uint32_t cert_version);
+
+/* Default tile layout for proof build (matches CP_TILE_LAYOUT_* in cp_proof.h). */
+int cp_worker_default_tile_layout(void);
+/* Layout proofs are built with: default, or CUTLASS when --cutlass-fused. */
+int cp_worker_proof_tile_layout(void);
+
+/*
+ * One matrix attempt: prepare noisy A/B (host or device), scan for jackpot.
+ * Returns 1 on share, 0 on miss, -1 on cancel/error.
+ * On share with device-generated matrices, signal download may be deferred via
+ * cp_worker_fetch_share_signals when h_A_sig was NULL (buffer loaned to proof).
+ */
+int cp_worker_mine_attempt(
+    const uint8_t* ab_seed, int ab_seed_len,
+    const uint8_t job_key[32],
+    const uint32_t pool_tgt[8],
+    int m, int n,
+    int cpu_matrices,
+    const int8_t* h_A_noisy, const int8_t* h_B_noisy,
+    const uint8_t* a_key,
+    int8_t* h_A_sig, int8_t* h_Bt_sig,
+    int* out_t_rows, int* out_t_cols,
+    uint64_t* out_tiles_scanned);
+
+/* Device → host signal matrices after a share (no-op for CPU / already-host paths). */
+int cp_worker_fetch_share_signals(int8_t* h_A_sig, int8_t* h_Bt_sig);
+
+/* Non-zero when shares are proven from device Merkle sub-roots (cp_worker_fetch_share_witness)
+ * instead of host signal matrices; the miner then allocates no host A/B buffers. */
+int cp_worker_supports_share_witness(void);
+/* Non-zero when the miner must keep a host signal B^T (h_BpT_global). Zero when B^T is always
+ * all-zero and proofs pass bt=NULL to cp_proof_build, or when shares use device witnesses. */
+int cp_worker_needs_host_bt(void);
+/* After a hit, before the next attempt. Allocates *out (cp_share_witness_free). */
+int cp_worker_fetch_share_witness(int t_rows, int t_cols, int tile_layout, CpShareWitness** out);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* CP_WORKER_H */

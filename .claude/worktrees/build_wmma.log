@@ -1,0 +1,212 @@
+=== Backends: CPU=1 CUDA=0 OpenCL=1 OneDNN=0 WGPU=0 CUBLAS=0 ===
+=== BLAKE3 already present at /c/Projects/ArmCompute/pearl/CPPminer/.claude/worktrees/agent-ab9d6ecd3dcab43a0/third_party/blake3 ===
+=== OpenCL-Headers already present at /c/Projects/ArmCompute/pearl/CPPminer/.claude/worktrees/agent-ab9d6ecd3dcab43a0/third_party/opencl-headers ===
+=== cmake: /c/Program Files/CMake/bin/cmake ===
+=== MSYS2/MinGW detected: generator Ninja, gcc/g++ ===
+=== CMake configure ===
+-- The CXX compiler identification is GNU 16.2.0
+-- The C compiler identification is GNU 16.2.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: C:/msys64/ucrt64/bin/g++.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: C:/msys64/ucrt64/bin/gcc.exe - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Using vendored OpenCL: C:/Projects/ArmCompute/pearl/CPPminer/.claude/worktrees/agent-ab9d6ecd3dcab43a0/third_party/opencl/lib/x64/OpenCL.lib
+-- cp_proof_ffi: cargo will build C:/Projects/ArmCompute/pearl/CPPminer/.claude/worktrees/agent-ab9d6ecd3dcab43a0/rust/cp-proof-ffi/target/release/libcp_proof_ffi.a
+-- Found OpenMP_C: -fopenmp (found version "5.2")
+-- Found OpenMP_CXX: -fopenmp (found version "5.2")
+-- Found OpenMP: TRUE (found version "5.2")
+-- CPPminer backends: CPU=1 CUDA=0 OpenCL=1 OneDNN=0 WGPU=0 CUBLAS=0
+-- Configuring done (1.8s)
+-- Generating done (0.0s)
+-- Build files have been written to: C:/Projects/ArmCompute/pearl/CPPminer/.claude/worktrees/agent-ab9d6ecd3dcab43a0/build/cmake
+=== CMake build ===
+[0/2] Re-checking globbed directories...
+[0/49] Building cp-proof-ffi (cargo release)
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.45
+   Compiling cfg-if v1.0.4
+   Compiling zerocopy v0.8.54
+   Compiling version_check v0.9.5
+   Compiling serde_core v1.0.228
+   Compiling crossbeam-utils v0.8.21
+   Compiling autocfg v1.5.1
+   Compiling serde v1.0.228
+   Compiling rayon-core v1.13.0
+   Compiling syn v1.0.109
+   Compiling crunchy v0.2.4
+   Compiling static_assertions v1.1.0
+   Compiling either v1.16.0
+   Compiling getrandom v0.2.17
+   Compiling winapi-x86_64-pc-windows-gnu v0.4.0
+   Compiling tiny-keccak v2.0.2
+   Compiling rand_core v0.6.4
+   Compiling find-msvc-tools v0.1.9
+   Compiling windows-link v0.2.1
+   Compiling winapi v0.3.9
+   Compiling byteorder v1.5.0
+   Compiling shlex v2.0.1
+   Compiling memchr v2.8.1
+   Compiling proc-macro-error-attr v1.0.4
+   Compiling windows-sys v0.61.2
+   Compiling hex v0.4.3
+   Compiling num-traits v0.2.19
+   Compiling once_cell v1.21.4
+   Compiling anyhow v1.0.102
+   Compiling ident_case v1.0.1
+   Compiling strsim v0.11.1
+   Compiling ahash v0.8.12
+   Compiling proc-macro-error v1.0.4
+   Compiling const-random-macro v0.1.16
+   Compiling uint v0.9.5
+   Compiling regex-syntax v0.8.11
+   Compiling cc v1.2.63
+   Compiling getrandom v0.3.4
+   Compiling crossbeam-epoch v0.9.18
+   Compiling aho-corasick v1.1.4
+   Compiling const-random v0.1.18
+   Compiling fixed-hash v0.7.0
+   Compiling arrayref v0.3.9
+   Compiling crossbeam-deque v0.8.6
+   Compiling constant_time_eq v0.4.2
+   Compiling unicode-segmentation v1.13.3
+   Compiling syn v2.0.117
+   Compiling cpufeatures v0.3.0
+   Compiling unicode-width v0.1.14
+   Compiling log v0.4.32
+   Compiling num-integer v0.1.46
+   Compiling winapi-util v0.1.11
+   Compiling arrayvec v0.7.6
+   Compiling textwrap v0.11.0
+   Compiling heck v0.3.3
+   Compiling termcolor v1.4.1
+   Compiling num-iter v0.1.46
+   Compiling rayon v1.12.0
+   Compiling primitive-types v0.10.1
+   Compiling atty v0.2.14
+   Compiling blake3 v1.8.5
+   Compiling regex-automata v0.4.15
+   Compiling itertools v0.11.0
+   Compiling zmij v1.0.21
+   Compiling strsim v0.8.0
+   Compiling humantime v2.4.0
+   Compiling vec_map v0.8.2
+   Compiling bitflags v1.3.2
+   Compiling plonky2_util v1.0.0 (C:\Projects\ArmCompute\pearl\CPPminer\.claude\worktrees\agent-ab9d6ecd3dcab43a0\third_party\plonky2\util)
+   Compiling clap v2.34.0
+   Compiling keccak-hash v0.8.0
+   Compiling rand_core v0.9.5
+   Compiling rustc-hex v2.1.0
+   Compiling lazy_static v1.5.0
+   Compiling web-time v1.1.0
+   Compiling thiserror v1.0.69
+   Compiling serde_json v1.0.150
+   Compiling is-terminal v0.4.17
+   Compiling sorted-vec v0.8.10
+   Compiling itoa v1.0.18
+   Compiling itertools v0.14.0
+   Compiling base64 v0.21.7
+   Compiling darling_core v0.23.0
+   Compiling plonky2_maybe_rayon v1.0.0 (C:\Projects\ArmCompute\pearl\CPPminer\.claude\worktrees\agent-ab9d6ecd3dcab43a0\third_party\plonky2\maybe_rayon)
+   Compiling ppv-lite86 v0.2.21
+   Compiling unroll v0.1.5
+   Compiling structopt-derive v0.4.18
+   Compiling rand_chacha v0.3.1
+   Compiling regex v1.13.0
+   Compiling rand_chacha v0.9.0
+   Compiling rand v0.8.7
+   Compiling serde_derive v1.0.228
+   Compiling thiserror-impl v1.0.69
+   Compiling env_logger v0.9.3
+   Compiling layout-macro v0.1.0 (C:\Projects\ArmCompute\pearl\CPPminer\.claude\worktrees\agent-ab9d6ecd3dcab43a0\third_party\zk-pow\src\circuit\layout_macro)
+   Compiling env_logger v0.10.2
+   Compiling rand v0.9.5
+   Compiling structopt v0.3.26
+   Compiling num-bigint v0.4.8
+   Compiling num-complex v0.4.6
+   Compiling fixed-hash v0.8.0
+   Compiling darling_macro v0.23.0
+   Compiling darling v0.23.0
+   Compiling serde_with_macros v3.21.0
+   Compiling num-rational v0.4.2
+   Compiling serde_with v3.21.0
+   Compiling num v0.4.3
+   Compiling plonky2_field v1.0.0 (C:\Projects\ArmCompute\pearl\CPPminer\.claude\worktrees\agent-ab9d6ecd3dcab43a0\third_party\plonky2\field)
+   Compiling hashbrown v0.14.5
+   Compiling impl-serde v0.4.0
+   Compiling bincode v1.3.3
+   Compiling primitive-types v0.12.2
+   Compiling plonky2 v1.1.0 (C:\Projects\ArmCompute\pearl\CPPminer\.claude\worktrees\agent-ab9d6ecd3dcab43a0\third_party\plonky2\plonky2)
+   Compiling pearl-blake3 v0.1.0 (C:\Projects\ArmCompute\pearl\CPPminer\.claude\worktrees\agent-ab9d6ecd3dcab43a0\third_party\pearl-blake3)
+   Compiling starky v1.1.0 (C:\Projects\ArmCompute\pearl\CPPminer\.claude\worktrees\agent-ab9d6ecd3dcab43a0\third_party\plonky2\starky)
+   Compiling zk-pow v0.1.0 (C:\Projects\ArmCompute\pearl\CPPminer\.claude\worktrees\agent-ab9d6ecd3dcab43a0\third_party\zk-pow)
+   Compiling cp-proof-ffi v0.1.0 (C:\Projects\ArmCompute\pearl\CPPminer\.claude\worktrees\agent-ab9d6ecd3dcab43a0\rust\cp-proof-ffi)
+    Finished `release` profile [optimized] target(s) in 43.62s
+[6/49] Building CXX object CMakeFiles/cp_qpow_avx2.dir/src/qpow/cpu/simd_avx2.cpp.obj
+[8/49] Building CXX object CMakeFiles/cppminer.dir/src/common/cp_json_frame.cpp.obj
+[9/49] Building CXX object CMakeFiles/cppminer.dir/src/common/cp_fee.cpp.obj
+[10/49] Building CXX object CMakeFiles/cppminer.dir/src/common/cp_algo.cpp.obj
+[11/49] Building CXX object CMakeFiles/cppminer.dir/src/common/cp_job_ctrl.cpp.obj
+[12/49] Building C object CMakeFiles/cppminer.dir/third_party/blake3/blake3_portable.c.obj
+[13/49] Building C object CMakeFiles/cppminer.dir/third_party/blake3/blake3.c.obj
+[14/49] Building C object CMakeFiles/cppminer.dir/third_party/blake3/blake3_dispatch.c.obj
+[15/49] Building C object CMakeFiles/cppminer.dir/src/common/cp_noise.c.obj
+[16/49] Building CXX object CMakeFiles/cppminer.dir/src/common/cp_qpow_pool.cpp.obj
+[17/49] Building CXX object CMakeFiles/cppminer.dir/src/cpu/gemm/case33_cpu_features.cpp.obj
+[18/49] Building C object CMakeFiles/cppminer.dir/third_party/blake3/blake3_sse2.c.obj
+[19/49] Building CXX object CMakeFiles/cppminer.dir/src/common/cp_state.cpp.obj
+[20/49] Building CXX object CMakeFiles/cppminer.dir/src/cpu/gemm/case33_gemm_xor_neon.cpp.obj
+[21/49] Building C object CMakeFiles/cppminer.dir/third_party/blake3/blake3_avx2.c.obj
+[22/49] Building CXX object CMakeFiles/cppminer.dir/src/cpu/gemm/case33_gemm_xor_dotprod.cpp.obj
+[23/49] Building CXX object CMakeFiles/cppminer.dir/src/common/cp_worker.cpp.obj
+[24/49] Building CXX object CMakeFiles/cppminer.dir/src/cpu/cp_cpu_worker.cpp.obj
+[25/49] Building CXX object CMakeFiles/cppminer.dir/src/common/cp_mine.cpp.obj
+[26/49] Building C object CMakeFiles/cppminer.dir/third_party/blake3/blake3_sse41.c.obj
+[27/49] Building CXX object CMakeFiles/cppminer.dir/src/qpow/cpu/miner.cpp.obj
+[28/49] Building CXX object CMakeFiles/cppminer.dir/src/common/cp_util.cpp.obj
+[29/49] Building CXX object CMakeFiles/cppminer.dir/src/opencl/case32_layout.cpp.obj
+[30/49] Building CXX object CMakeFiles/cppminer.dir/src/cpu/gemm/case33_gemm_xor_ssse3.cpp.obj
+[31/49] Building C object CMakeFiles/cppminer.dir/third_party/blake3/blake3_avx512.c.obj
+[32/49] Building CXX object CMakeFiles/cppminer.dir/src/common/cp_share_queue.cpp.obj
+[33/49] Building CXX object CMakeFiles/cppminer.dir/src/common/cp_qpow_mine.cpp.obj
+[34/49] Building CXX object CMakeFiles/cppminer.dir/src/common/cp_pool.cpp.obj
+[35/49] Building CXX object CMakeFiles/cppminer.dir/src/cpu/gemm/case33_gemm_xor_avxvnni.cpp.obj
+[36/49] Building CXX object CMakeFiles/cppminer.dir/src/cpu/cp_cpu_affinity.cpp.obj
+[37/49] Building CXX object CMakeFiles/cppminer.dir/src/cpu/gemm/case33_gemm_xor_avx2.cpp.obj
+[38/49] Building CXX object CMakeFiles/cppminer.dir/src/common/main.cpp.obj
+[39/49] Building CXX object CMakeFiles/cppminer.dir/src/opencl/case32_prepack.cpp.obj
+[40/49] Building CXX object CMakeFiles/cppminer.dir/src/opencl/cp_ocl_prep_profile.cpp.obj
+[41/49] Building CXX object CMakeFiles/cppminer.dir/src/opencl/cp_ocl_align_test.cpp.obj
+[42/49] Building CXX object CMakeFiles/cppminer.dir/src/cpu/gemm/case33_gemm_xor.cpp.obj
+[43/49] Building CXX object CMakeFiles/cppminer.dir/src/opencl/cp_opencl_worker.cpp.obj
+[44/49] Building CXX object CMakeFiles/cppminer.dir/src/opencl/case33_ocl_prep.cpp.obj
+[45/49] Building CXX object CMakeFiles/cppminer.dir/src/qpow/opencl/cp_qpow_opencl_worker.cpp.obj
+[46/49] Building CXX object CMakeFiles/cppminer.dir/src/opencl/case33_gemm_ocl.cpp.obj
+[47/49] Building CXX object CMakeFiles/cppminer.dir/src/opencl/opencl_context.cpp.obj
+[48/49] Linking CXX executable cppminer.exe; Copy OpenCL kernels next to cppminer
+=== Done: /c/Projects/ArmCompute/pearl/CPPminer/.claude/worktrees/agent-ab9d6ecd3dcab43a0/cppminer.exe ===
+=== Dependencies installed: ===
+===   BLAKE3:      /c/Projects/ArmCompute/pearl/CPPminer/.claude/worktrees/agent-ab9d6ecd3dcab43a0/build/b3 ===
+===   OpenCL-Headers: /c/Projects/ArmCompute/pearl/CPPminer/.claude/worktrees/agent-ab9d6ecd3dcab43a0/third_party/opencl-headers ===
+===   cp-proof-ffi: built by CMake (cargo) when available ===
+CPminer 鈥?multi-algo LuckyPool miner (pearl / quantus)
+  --algo NAME        pearl (default) or quantus
+                     pearl backends: cpu|opencl
+                     quantus backends: cpu|opencl
+  --pool URI         stratum+tcp://host:port (required for quantus unless --mock)
+  --wallet ADDR      wallet address
+  --worker NAME      worker name (default: rig01)
+  --agent NAME       agent string (default: cpminer/1.0)
+  --backend NAME     cpu|opencl (built: cpu,opencl)
+  --devices N[,M]    device index(es): CUDA ids, OpenCL flat index,
+                     or wgpu mining-adapter indices (--list-devices)
+                     (default: 0; OpenCL prefers discrete GPU first)
+  --list-devices     list devices for the selected backend and exit
+  --ocl-platform P   OpenCL: only enumerate platform index P
+  --ocl-tile MxN[/MmMm]  OpenCL register tile: 4x4, 4x8 (default), 8x8, 8x16 (auto on AMD);

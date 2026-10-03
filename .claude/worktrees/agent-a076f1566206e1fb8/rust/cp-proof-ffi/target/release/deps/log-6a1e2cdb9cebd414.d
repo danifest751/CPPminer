@@ -1,0 +1,10 @@
+C:/Projects/ArmCompute/pearl/CPPminer/.claude/worktrees/agent-a076f1566206e1fb8/rust/cp-proof-ffi/target\release\deps\log-6a1e2cdb9cebd414.d: C:\Users\femida4me\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\log-0.4.32\src\lib.rs C:\Users\femida4me\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\log-0.4.32\src\macros.rs C:\Users\femida4me\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\log-0.4.32\src\serde.rs C:\Users\femida4me\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\log-0.4.32\src\__private_api.rs
+
+C:/Projects/ArmCompute/pearl/CPPminer/.claude/worktrees/agent-a076f1566206e1fb8/rust/cp-proof-ffi/target\release\deps\liblog-6a1e2cdb9cebd414.rlib: C:\Users\femida4me\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\log-0.4.32\src\lib.rs C:\Users\femida4me\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\log-0.4.32\src\macros.rs C:\Users\femida4me\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\log-0.4.32\src\serde.rs C:\Users\femida4me\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\log-0.4.32\src\__private_api.rs
+
+C:/Projects/ArmCompute/pearl/CPPminer/.claude/worktrees/agent-a076f1566206e1fb8/rust/cp-proof-ffi/target\release\deps\liblog-6a1e2cdb9cebd414.rmeta: C:\Users\femida4me\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\log-0.4.32\src\lib.rs C:\Users\femida4me\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\log-0.4.32\src\macros.rs C:\Users\femida4me\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\log-0.4.32\src\serde.rs C:\Users\femida4me\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\log-0.4.32\src\__private_api.rs
+
+C:\Users\femida4me\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\log-0.4.32\src\lib.rs:
+C:\Users\femida4me\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\log-0.4.32\src\macros.rs:
+C:\Users\femida4me\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\log-0.4.32\src\serde.rs:
+C:\Users\femida4me\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\log-0.4.32\src\__private_api.rs:

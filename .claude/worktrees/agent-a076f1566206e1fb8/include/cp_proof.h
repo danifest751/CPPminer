@@ -1,0 +1,105 @@
+#ifndef CP_PROOF_H
+#define CP_PROOF_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* tile_layout for cp_proof_build:
+ *   0 = BzMiner scattered (8 A rows + 16 B^T rows)
+ *   1 = contiguous debug (8 + 16)
+ *   2 = CUTLASS Case 10 MMA lane 8x8 interleaved (128x128 CTA, 64 cells/thread)
+ *   3 = contiguous 8x8 (8 A rows + 8 B^T rows)
+ *   4 = contiguous 4x8 (4 A rows + 8 B^T rows)
+ *   5 = contiguous 16x16 (16 A rows + 16 B^T rows)
+ */
+#define CP_TILE_LAYOUT_SCATTERED  0
+#define CP_TILE_LAYOUT_CONTIGUOUS 1
+#define CP_TILE_LAYOUT_CUTLASS    2
+#define CP_TILE_LAYOUT_CONTIGUOUS_8x8 3
+#define CP_TILE_LAYOUT_CONTIGUOUS_4x8 4
+#define CP_TILE_LAYOUT_CONTIGUOUS_16x16 5
+
+/* Build plain_proof base64 in-process (Rust/pearl-blake3). Returns 0 on ok, -1 on error.
+ * mining_config is retained for ABI compatibility but job_key is derived from tile_layout.
+ * bt may be NULL for an all-zero B^T (zero-B); its Merkle sub-roots are cached per job. */
+int cp_proof_build(
+    const uint8_t* header,
+    size_t header_len,
+    const uint8_t* mining_config,
+    size_t config_len,
+    const int8_t* a,
+    const int8_t* bt,
+    int m,
+    int n,
+    int k,
+    int rank,
+    int t_rows,
+    int t_cols,
+    int tile_layout,
+    char* out_b64,
+    size_t out_cap,
+    char* err,
+    size_t err_cap);
+
+/* Proof inputs from device Merkle hashing instead of a host copy of the whole matrix.
+ * The device keyed-hash folds every CP_WITNESS_BLOCK_CHUNKS chunks into one 32-byte sub-root. */
+#define CP_WITNESS_BLOCK_CHUNKS 256
+#define CP_WITNESS_BLOCK_BYTES  (CP_WITNESS_BLOCK_CHUNKS * 1024)
+#define CP_WITNESS_MAX_BLOCKS   8
+
+typedef struct CpMatrixWitness {
+    const uint8_t* subroots;   /* num_subroots * 32 bytes (unused if the matrix is one block) */
+    size_t num_subroots;
+    const uint8_t* blocks;     /* num_blocks * CP_WITNESS_BLOCK_BYTES, zero-padded; NULL = all-zero matrix */
+    const uint32_t* block_idx; /* block index of each entry in blocks */
+    size_t num_blocks;
+    const uint8_t* root;       /* optional: 32-byte root the device committed to (checked) */
+} CpMatrixWitness;
+
+/* Blocks a proof reads: is_bt=0 → A rows from t_rows (rows=m); is_bt=1 → B^T rows from t_cols
+ * (rows=n). Writes sorted indices to out_idx; returns count, or -1 on error. */
+int cp_proof_witness_blocks(int tile_layout, int is_bt, int anchor, int rows, int k,
+                            uint32_t* out_idx, size_t cap);
+
+/* Same output as cp_proof_build, built from witnesses. A B^T witness with blocks = NULL and
+ * num_subroots = 0 is proven as an all-zero matrix from host-cached zero sub-roots. */
+int cp_proof_build_witness(
+    const uint8_t* header,
+    size_t header_len,
+    const uint8_t* mining_config,
+    size_t config_len,
+    const CpMatrixWitness* a,
+    const CpMatrixWitness* bt,
+    int m,
+    int n,
+    int k,
+    int rank,
+    int t_rows,
+    int t_cols,
+    int tile_layout,
+    char* out_b64,
+    size_t out_cap,
+    char* err,
+    size_t err_cap);
+
+/* Verify plain_proof base64 against pool share target (32-byte BE U256, unscaled).
+ * cert_version: 1/2 = legacy noise seeds, 3 = salted (V3). Returns 0 on ok. */
+int cp_proof_verify(
+    const uint8_t* header,
+    size_t header_len,
+    const uint8_t* proof_b64,
+    size_t proof_b64_len,
+    const uint8_t* pool_target_be,
+    uint32_t cert_version,
+    char* err,
+    size_t err_cap);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* CP_PROOF_H */

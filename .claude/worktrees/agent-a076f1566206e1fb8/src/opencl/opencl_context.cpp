@@ -1,0 +1,667 @@
+#include "opencl_context.hpp"
+
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <fstream>
+#include <sstream>
+
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
+#include <limits.h>
+#include <signal.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
+
+namespace {
+
+void log_cl_error(const char *what, cl_int err) {
+    std::fprintf(stderr, "OpenCL %s failed (%d): %s\n", what, err,
+                 OpenClContext::error_string(err).c_str());
+}
+
+#ifndef CL_DEVICE_INTEGER_DOT_PRODUCT_CAPABILITIES_KHR
+#define CL_DEVICE_INTEGER_DOT_PRODUCT_CAPABILITIES_KHR 0x1073
+#endif
+#ifndef CL_DEVICE_INTEGER_DOT_PRODUCT_INPUT_4x8BIT_KHR
+#define CL_DEVICE_INTEGER_DOT_PRODUCT_INPUT_4x8BIT_KHR (1 << 1)
+#endif
+#ifndef CL_DEVICE_INTEGER_DOT_PRODUCT_INPUT_4x8BIT_PACKED_KHR
+#define CL_DEVICE_INTEGER_DOT_PRODUCT_INPUT_4x8BIT_PACKED_KHR (1 << 0)
+#endif
+#ifndef CL_DEVICE_INTEGER_DOT_PRODUCT_ACCELERATION_PROPERTIES_4x8BIT_PACKED_KHR
+#define CL_DEVICE_INTEGER_DOT_PRODUCT_ACCELERATION_PROPERTIES_4x8BIT_PACKED_KHR 0x1075
+#endif
+/* cl_intel_required_subgroup_size / cl_intel_device_attribute_query */
+#ifndef CL_DEVICE_SUB_GROUP_SIZES_INTEL
+#define CL_DEVICE_SUB_GROUP_SIZES_INTEL 0x4108
+#endif
+#ifndef CL_DEVICE_IP_VERSION_INTEL
+#define CL_DEVICE_IP_VERSION_INTEL 0x4250
+#endif
+#ifndef CL_DEVICE_FEATURE_CAPABILITIES_INTEL
+#define CL_DEVICE_FEATURE_CAPABILITIES_INTEL 0x4256
+#endif
+#ifndef CL_DEVICE_FEATURE_FLAG_DPAS_INTEL
+#define CL_DEVICE_FEATURE_FLAG_DPAS_INTEL (1 << 1)
+#endif
+
+typedef struct _cl_device_integer_dot_product_acceleration_properties_khr {
+    cl_bool signed_accelerated;
+    cl_bool unsigned_accelerated;
+    cl_bool mixed_signedness_accelerated;
+    cl_bool accumulating_saturating_signed_accelerated;
+    cl_bool accumulating_saturating_unsigned_accelerated;
+    cl_bool accumulating_saturating_mixed_signedness_accelerated;
+} cl_device_integer_dot_product_acceleration_properties_khr;
+
+bool extension_enabled(cl_device_id device, const char *ext_name) {
+    size_t nbytes = 0;
+    if (clGetDeviceInfo(device, CL_DEVICE_EXTENSIONS, 0, nullptr, &nbytes) != CL_SUCCESS ||
+        nbytes == 0) {
+        return false;
+    }
+    std::vector<char> buf(nbytes);
+    if (clGetDeviceInfo(device, CL_DEVICE_EXTENSIONS, nbytes, buf.data(), nullptr) !=
+        CL_SUCCESS) {
+        return false;
+    }
+    return std::strstr(buf.data(), ext_name) != nullptr;
+}
+
+bool device_supports_integer_dot_product(cl_device_id device, bool *hw_accel_out) {
+    if (hw_accel_out) {
+        *hw_accel_out = false;
+    }
+    if (!extension_enabled(device, "cl_khr_integer_dot_product")) {
+        return false;
+    }
+    cl_bitfield caps = 0;
+    const cl_int err = clGetDeviceInfo(device, CL_DEVICE_INTEGER_DOT_PRODUCT_CAPABILITIES_KHR,
+                                       sizeof(caps), &caps, nullptr);
+    const bool has_caps =
+            err == CL_SUCCESS &&
+            ((caps & CL_DEVICE_INTEGER_DOT_PRODUCT_INPUT_4x8BIT_KHR) != 0 ||
+             (caps & CL_DEVICE_INTEGER_DOT_PRODUCT_INPUT_4x8BIT_PACKED_KHR) != 0);
+    if (!has_caps) {
+        if (err != CL_SUCCESS) {
+            char ver[256] = {};
+            if (clGetDeviceInfo(device, CL_DEVICE_VERSION, sizeof(ver), ver, nullptr) !=
+                CL_SUCCESS) {
+                return false;
+            }
+            int major = 0;
+            int minor = 0;
+            if (std::sscanf(ver, "OpenCL %d.%d", &major, &minor) != 2) {
+                return false;
+            }
+            if (major < 3) {
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
+    cl_device_integer_dot_product_acceleration_properties_khr accel = {};
+    if (clGetDeviceInfo(device,
+                        CL_DEVICE_INTEGER_DOT_PRODUCT_ACCELERATION_PROPERTIES_4x8BIT_PACKED_KHR,
+                        sizeof(accel), &accel, nullptr) == CL_SUCCESS &&
+        hw_accel_out) {
+        *hw_accel_out = accel.accumulating_saturating_signed_accelerated == CL_TRUE;
+    }
+    return true;
+}
+
+bool device_is_discrete_gpu(cl_device_id device, cl_device_type type) {
+    if (type != CL_DEVICE_TYPE_GPU) {
+        return false;
+    }
+    cl_bool unified = CL_TRUE;
+    if (clGetDeviceInfo(device, CL_DEVICE_HOST_UNIFIED_MEMORY, sizeof(unified), &unified,
+                        nullptr) != CL_SUCCESS) {
+        return false;
+    }
+    return unified == CL_FALSE;
+}
+
+void append_devices_of_type(cl_platform_id plat, int platform_index, const char *pname,
+                            cl_device_type type, std::vector<OclDeviceInfo> *out) {
+    cl_uint n_devices = 0;
+    if (clGetDeviceIDs(plat, type, 0, nullptr, &n_devices) != CL_SUCCESS || n_devices == 0) {
+        return;
+    }
+    std::vector<cl_device_id> devices(n_devices);
+    if (clGetDeviceIDs(plat, type, n_devices, devices.data(), nullptr) != CL_SUCCESS) {
+        return;
+    }
+    for (cl_uint di = 0; di < n_devices; ++di) {
+        cl_device_id dev = devices[di];
+        char dname[256] = {};
+        char vname[256] = {};
+        clGetDeviceInfo(dev, CL_DEVICE_NAME, sizeof(dname), dname, nullptr);
+        clGetDeviceInfo(dev, CL_DEVICE_VENDOR, sizeof(vname), vname, nullptr);
+        OclDeviceInfo info;
+        info.platform_index = platform_index;
+        info.device_index = static_cast<int>(di);
+        info.platform = plat;
+        info.device = dev;
+        info.type = type;
+        info.platform_name = pname;
+        info.device_name = dname;
+        info.vendor_name = vname;
+        info.discrete = device_is_discrete_gpu(dev, type);
+        info.integer_dot_product = device_supports_integer_dot_product(dev, &info.integer_dot_product_hw);
+        out->push_back(info);
+    }
+}
+
+int candidate_rank(const OclDeviceInfo &d) {
+    if (d.type == CL_DEVICE_TYPE_GPU && d.discrete) {
+        return 0;
+    }
+    if (d.type == CL_DEVICE_TYPE_GPU) {
+        return 1;
+    }
+    return 2; /* CPU / other */
+}
+
+} // namespace
+
+IntelDpasInfo query_intel_dpas(cl_device_id device) {
+    IntelDpasInfo info;
+    info.extension = extension_enabled(device, "cl_intel_subgroup_matrix_multiply_accumulate");
+    size_t nbytes = 0;
+    if (extension_enabled(device, "cl_intel_required_subgroup_size") &&
+        clGetDeviceInfo(device, CL_DEVICE_SUB_GROUP_SIZES_INTEL, 0, nullptr, &nbytes) ==
+                CL_SUCCESS &&
+        nbytes >= sizeof(size_t)) {
+        info.sub_group_sizes.resize(nbytes / sizeof(size_t));
+        if (clGetDeviceInfo(device, CL_DEVICE_SUB_GROUP_SIZES_INTEL, nbytes,
+                            info.sub_group_sizes.data(), nullptr) != CL_SUCCESS) {
+            info.sub_group_sizes.clear();
+        }
+    }
+    if (extension_enabled(device, "cl_intel_device_attribute_query")) {
+        cl_uint ip = 0;
+        if (clGetDeviceInfo(device, CL_DEVICE_IP_VERSION_INTEL, sizeof(ip), &ip, nullptr) ==
+            CL_SUCCESS) {
+            info.ip_version = ip;
+        }
+        cl_bitfield caps = 0;
+        if (clGetDeviceInfo(device, CL_DEVICE_FEATURE_CAPABILITIES_INTEL, sizeof(caps), &caps,
+                            nullptr) == CL_SUCCESS) {
+            info.hw_dpas = (caps & CL_DEVICE_FEATURE_FLAG_DPAS_INTEL) != 0 ? 1 : 0;
+        }
+    }
+    if (!info.extension) {
+        return info;
+    }
+    /* Spec: the builtins need the device's MINIMUM sub-group size (8 on Xe-HPG, 16 on
+       Xe2 / Xe-HPC). Without the size query fall back to the IP version (Xe2 = 20.x,
+       Xe-HPC = 12.60). */
+    size_t min_sg = 0;
+    for (size_t s : info.sub_group_sizes) {
+        if (s > 0 && (min_sg == 0 || s < min_sg)) {
+            min_sg = s;
+        }
+    }
+    if (min_sg == 8 || min_sg == 16) {
+        info.sub_group = static_cast<int>(min_sg);
+    } else if (min_sg == 0 && info.ip_version != 0) {
+        const unsigned major = info.ip_version >> 22;
+        const unsigned minor = (info.ip_version >> 12) & 0x3ffu;
+        info.sub_group = (major >= 20 || (major == 12 && minor == 60)) ? 16 : 8;
+    }
+    return info;
+}
+
+std::string intel_ip_version_string(unsigned ip_version) {
+    if (ip_version == 0) {
+        return "unknown";
+    }
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%u.%u.%u", ip_version >> 22, (ip_version >> 12) & 0x3ffu,
+                  ip_version & 0xfffu);
+    return buf;
+}
+
+OpenClContext::~OpenClContext() {
+    if (program) {
+        clReleaseProgram(program);
+        program = nullptr;
+    }
+    if (queue) {
+        clReleaseCommandQueue(queue);
+        queue = nullptr;
+    }
+    if (context) {
+        clReleaseContext(context);
+        context = nullptr;
+    }
+    device = nullptr;
+    platform = nullptr;
+}
+
+std::string OpenClContext::error_string(cl_int err) {
+    switch (err) {
+    case CL_SUCCESS:
+        return "CL_SUCCESS";
+    case CL_DEVICE_NOT_FOUND:
+        return "CL_DEVICE_NOT_FOUND";
+    case CL_INVALID_VALUE:
+        return "CL_INVALID_VALUE";
+    case CL_INVALID_CONTEXT:
+        return "CL_INVALID_CONTEXT";
+    case CL_INVALID_COMMAND_QUEUE:
+        return "CL_INVALID_COMMAND_QUEUE";
+    case CL_INVALID_MEM_OBJECT:
+        return "CL_INVALID_MEM_OBJECT";
+    case CL_INVALID_PROGRAM:
+        return "CL_INVALID_PROGRAM";
+    case CL_INVALID_KERNEL:
+        return "CL_INVALID_KERNEL";
+    case CL_INVALID_WORK_GROUP_SIZE:
+        return "CL_INVALID_WORK_GROUP_SIZE";
+    case CL_INVALID_WORK_DIMENSION:
+        return "CL_INVALID_WORK_DIMENSION";
+    case CL_BUILD_PROGRAM_FAILURE:
+        return "CL_BUILD_PROGRAM_FAILURE";
+    default:
+        return "cl_error_" + std::to_string(err);
+    }
+}
+
+std::vector<OclDeviceInfo> OpenClContext::enumerate_devices(int platform_filter) {
+    std::vector<OclDeviceInfo> out;
+
+    cl_uint n_platforms = 0;
+    if (clGetPlatformIDs(0, nullptr, &n_platforms) != CL_SUCCESS || n_platforms == 0) {
+        return out;
+    }
+    std::vector<cl_platform_id> platforms(n_platforms);
+    if (clGetPlatformIDs(n_platforms, platforms.data(), nullptr) != CL_SUCCESS) {
+        return out;
+    }
+
+    std::vector<OclDeviceInfo> gpus;
+    std::vector<OclDeviceInfo> cpus;
+    for (cl_uint pi = 0; pi < n_platforms; ++pi) {
+        if (platform_filter >= 0 && static_cast<int>(pi) != platform_filter) {
+            continue;
+        }
+        char pname[256] = {};
+        clGetPlatformInfo(platforms[pi], CL_PLATFORM_NAME, sizeof(pname), pname, nullptr);
+        append_devices_of_type(platforms[pi], static_cast<int>(pi), pname, CL_DEVICE_TYPE_GPU,
+                               &gpus);
+        append_devices_of_type(platforms[pi], static_cast<int>(pi), pname, CL_DEVICE_TYPE_CPU,
+                               &cpus);
+    }
+
+    /* Prefer discrete GPUs, then iGPUs; CPU only if no GPUs exist. */
+    std::stable_sort(gpus.begin(), gpus.end(),
+                     [](const OclDeviceInfo &a, const OclDeviceInfo &b) {
+                         return candidate_rank(a) < candidate_rank(b);
+                     });
+
+    if (!gpus.empty()) {
+        out = std::move(gpus);
+    } else {
+        out = std::move(cpus);
+    }
+
+    for (size_t i = 0; i < out.size(); ++i) {
+        out[i].flat_index = static_cast<int>(i);
+    }
+    return out;
+}
+
+int OpenClContext::list_devices(int platform_filter) {
+    const std::vector<OclDeviceInfo> devices = enumerate_devices(platform_filter);
+    if (devices.empty()) {
+        std::printf("[ocl] no OpenCL devices found\n");
+#if defined(__ANDROID__)
+        std::printf("[ocl] Termux/Android hint: use the same LD_LIBRARY_PATH that makes clinfo work\n");
+        std::printf("[ocl] (system + system_ext + vendor + SoC EGL/VNDK dirs; see docs/termux_note.md)\n");
+        std::printf("[ocl] Requires a CP_STATIC_LIBCXX build so system libc++ does not break the binary\n");
+#endif
+        return 0;
+    }
+
+    std::printf("[ocl] OpenCL devices (use --devices N; default prefers discrete GPU):\n");
+    for (const OclDeviceInfo &d : devices) {
+        const char *kind = (d.type == CL_DEVICE_TYPE_CPU) ? "CPU"
+                           : d.discrete                   ? "discrete GPU"
+                                                          : "integrated GPU";
+        std::printf("  [%d] %s\n", d.flat_index, d.device_name.c_str());
+        std::printf("      platform[%d]=%s  %s%s\n", d.platform_index,
+                    d.platform_name.c_str(), kind,
+                    d.integer_dot_product
+                            ? (d.integer_dot_product_hw ? "  int-dot" : "  int-dot (sw)")
+                            : "");
+        const IntelDpasInfo dp = query_intel_dpas(d.device);
+        if (dp.extension) {
+            std::string sizes;
+            for (size_t s : dp.sub_group_sizes) {
+                sizes += (sizes.empty() ? "" : ",") + std::to_string(s);
+            }
+            std::printf("      DPAS: cl_intel_subgroup_matrix_multiply_accumulate, sub-group %d "
+                        "(sizes %s), IP %s, XMX %s  -> --ocl-dot dpas\n",
+                        dp.sub_group, sizes.empty() ? "?" : sizes.c_str(),
+                        intel_ip_version_string(dp.ip_version).c_str(),
+                        dp.hw_dpas < 0 ? "unknown" : (dp.hw_dpas ? "yes" : "NO"));
+        }
+    }
+    return static_cast<int>(devices.size());
+}
+
+bool OpenClContext::init(const OclDeviceInfo &pick) {
+    platform = pick.platform;
+    device = pick.device;
+    platform_name = pick.platform_name;
+    device_name = pick.device_name;
+    vendor_name = pick.vendor_name;
+    device_flat_index = pick.flat_index;
+    discrete_gpu = pick.discrete;
+    has_integer_dot_product = pick.integer_dot_product;
+    has_integer_dot_product_hw = pick.integer_dot_product_hw;
+
+    size_t max_wg = 0;
+    if (clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(max_wg), &max_wg,
+                        nullptr) == CL_SUCCESS &&
+        max_wg > 0) {
+        max_work_group_size = max_wg;
+    }
+
+    cl_int err = CL_SUCCESS;
+    context = clCreateContext(nullptr, 1, &device, nullptr, nullptr, &err);
+    if (!context || err != CL_SUCCESS) {
+        log_cl_error("clCreateContext", err);
+        return false;
+    }
+
+    /* Nothing reads CL_PROFILING_COMMAND_* events, so keep the queue plain: with
+       profiling enabled the runtime timestamps every command. CP_OCL_QUEUE_PROFILING=1
+       turns it back on for ad-hoc event timing. */
+    const char *prof_env = std::getenv("CP_OCL_QUEUE_PROFILING");
+    const bool profiling = prof_env && prof_env[0] && prof_env[0] != '0';
+    const cl_command_queue_properties qprops = profiling ? CL_QUEUE_PROFILING_ENABLE : 0;
+#ifdef CL_VERSION_2_0
+    cl_queue_properties props[] = {CL_QUEUE_PROPERTIES, qprops, 0};
+    queue = clCreateCommandQueueWithProperties(context, device, props, &err);
+#else
+    queue = clCreateCommandQueue(context, device, qprops, &err);
+#endif
+    if (!queue || err != CL_SUCCESS) {
+        log_cl_error("clCreateCommandQueue", err);
+        return false;
+    }
+
+    return true;
+}
+
+bool OpenClContext::init(int device_index, int platform_filter) {
+    const std::vector<OclDeviceInfo> candidates = enumerate_devices(platform_filter);
+    if (candidates.empty()) {
+        std::fprintf(stderr, "No OpenCL GPU or CPU devices found\n");
+        return false;
+    }
+
+    if (device_index < 0 || device_index >= static_cast<int>(candidates.size())) {
+        std::fprintf(stderr,
+                     "[ocl] invalid --devices %d (valid: 0..%d). Available:\n",
+                     device_index, static_cast<int>(candidates.size()) - 1);
+        list_devices(platform_filter);
+        return false;
+    }
+
+    return init(candidates[static_cast<size_t>(device_index)]);
+}
+
+bool OpenClContext::build_program_from_source(const char *source, const char *build_options,
+                                              bool quiet) {
+    if (!context || !device || source == nullptr) {
+        return false;
+    }
+    if (program) {
+        clReleaseProgram(program);
+        program = nullptr;
+    }
+
+    cl_int err = CL_SUCCESS;
+    const char *srcs[] = {source};
+    const size_t lens[] = {std::strlen(source)};
+    program = clCreateProgramWithSource(context, 1, srcs, lens, &err);
+    if (!program || err != CL_SUCCESS) {
+        log_cl_error("clCreateProgramWithSource", err);
+        return false;
+    }
+
+    err = clBuildProgram(program, 1, &device, build_options, nullptr, nullptr);
+    if (err != CL_SUCCESS) {
+        if (!quiet) {
+            size_t log_size = 0;
+            clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 0, nullptr, &log_size);
+            std::vector<char> log(std::max(log_size, size_t{1}));
+            clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, log.size(), log.data(),
+                                  nullptr);
+            std::fprintf(stderr, "OpenCL build log:\n%s\n", log.data());
+            log_cl_error("clBuildProgram", err);
+        }
+        clReleaseProgram(program);
+        program = nullptr;
+        return false;
+    }
+    dump_program_binary_(program);
+    return true;
+}
+
+/* CP_OCL_DUMP_BIN=<path>: write CL_PROGRAM_BINARIES of every successfully built
+   program (first to <path>, later ones to <path>.1, <path>.2, ...). On AMD the
+   blob is an ELF code object: inspect with
+   llvm-objdump -d --mcpu=gfx1103 <path>. Debug aid only. */
+void OpenClContext::dump_program_binary_(cl_program prog) {
+    const char *dump_path = std::getenv("CP_OCL_DUMP_BIN");
+    if (!dump_path || !dump_path[0] || !prog) {
+        return;
+    }
+    static int dump_index = 0;
+    size_t bin_size = 0;
+    if (clGetProgramInfo(prog, CL_PROGRAM_BINARY_SIZES, sizeof(bin_size), &bin_size, nullptr) !=
+                CL_SUCCESS ||
+        bin_size == 0) {
+        return;
+    }
+    std::vector<unsigned char> bin(bin_size);
+    unsigned char *bins[] = {bin.data()};
+    if (clGetProgramInfo(prog, CL_PROGRAM_BINARIES, sizeof(bins), bins, nullptr) != CL_SUCCESS) {
+        return;
+    }
+    std::string path = dump_path;
+    if (dump_index > 0) {
+        path += "." + std::to_string(dump_index);
+    }
+    ++dump_index;
+    std::ofstream out(path, std::ios::binary);
+    out.write(reinterpret_cast<const char *>(bin.data()),
+              static_cast<std::streamsize>(bin.size()));
+    std::fprintf(stderr, "[ocl] dumped program binary (%zu B) to %s\n", bin.size(),
+                 path.c_str());
+}
+
+bool OpenClContext::build_program_from_file(const char *cl_path, const char *build_options,
+                                            bool quiet) {
+    const std::string source = read_text_file(cl_path);
+    if (source.empty()) {
+        if (!quiet) {
+            std::fprintf(stderr, "Failed to read OpenCL source: %s\n", cl_path);
+        }
+        return false;
+    }
+    return build_program_from_source(source.c_str(), build_options, quiet);
+}
+
+#if !defined(_WIN32) && !defined(__APPLE__)
+bool OpenClContext::probe_build(const char *source, const char *build_options) {
+    if (!context || !device || source == nullptr) {
+        return false;
+    }
+
+    cl_int probe_err = CL_SUCCESS;
+    const char *srcs[] = {source};
+    const size_t lens[] = {std::strlen(source)};
+    cl_program probe_prog =
+            clCreateProgramWithSource(context, 1, srcs, lens, &probe_err);
+    if (!probe_prog || probe_err != CL_SUCCESS) {
+        log_cl_error("clCreateProgramWithSource (probe)", probe_err);
+        return false;
+    }
+
+    const pid_t pid = fork();
+    if (pid < 0) {
+        clReleaseProgram(probe_prog);
+        std::fprintf(stderr, "OpenCL build probe: fork failed\n");
+        return false;
+    }
+    if (pid == 0) {
+        /* Let abort()/assert kill only this child with a normal signal exit. */
+        struct sigaction sa = {};
+        sa.sa_handler = SIG_DFL;
+        sigaction(SIGABRT, &sa, nullptr);
+        sigaction(SIGTRAP, &sa, nullptr);
+        const cl_int err =
+                clBuildProgram(probe_prog, 1, &device, build_options, nullptr, nullptr);
+        _exit(err == CL_SUCCESS ? 0 : 1);
+    }
+
+    int status = 0;
+    waitpid(pid, &status, 0);
+    clReleaseProgram(probe_prog);
+
+    if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+        return true;
+    }
+    if (WIFSIGNALED(status)) {
+        std::fprintf(stderr,
+                     "OpenCL build probe crashed (signal %d); skipping this build\n",
+                     WTERMSIG(status));
+    } else {
+        std::fprintf(stderr,
+                     "OpenCL build probe failed (exit %d); skipping this build\n",
+                     WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+    }
+    return false;
+}
+#else
+bool OpenClContext::probe_build(const char * /*source*/, const char * /*build_options*/) {
+    /* Windows: no fork. Apple: OpenCL is not fork-safe after context init.
+       Rely on normal clBuildProgram error returns in both cases. */
+    return true;
+}
+#endif
+
+bool OpenClContext::safe_build_program_from_source(const char *source,
+                                                   const char *build_options) {
+    if (!probe_build(source, build_options)) {
+        return false;
+    }
+    return build_program_from_source(source, build_options);
+}
+
+bool OpenClContext::safe_build_program_from_file(const char *cl_path,
+                                                 const char *build_options) {
+    const std::string source = read_text_file(cl_path);
+    if (source.empty()) {
+        std::fprintf(stderr, "Failed to read OpenCL source: %s\n", cl_path);
+        return false;
+    }
+    return safe_build_program_from_source(source.c_str(), build_options);
+}
+
+cl_kernel OpenClContext::create_kernel(const char *name) const {
+    cl_int err = CL_SUCCESS;
+    cl_kernel kernel = clCreateKernel(program, name, &err);
+    if (!kernel || err != CL_SUCCESS) {
+        log_cl_error("clCreateKernel", err);
+        return nullptr;
+    }
+    return kernel;
+}
+
+bool OpenClContext::write_buffer(cl_mem buf, const void *host, size_t bytes, size_t offset) const {
+    const cl_int err =
+            clEnqueueWriteBuffer(queue, buf, CL_TRUE, offset, bytes, host, 0, nullptr, nullptr);
+    if (err != CL_SUCCESS) {
+        log_cl_error("clEnqueueWriteBuffer", err);
+        return false;
+    }
+    return true;
+}
+
+bool OpenClContext::read_buffer(cl_mem buf, void *host, size_t bytes, size_t offset) const {
+    const cl_int err =
+            clEnqueueReadBuffer(queue, buf, CL_TRUE, offset, bytes, host, 0, nullptr, nullptr);
+    if (err != CL_SUCCESS) {
+        log_cl_error("clEnqueueReadBuffer", err);
+        return false;
+    }
+    return true;
+}
+
+cl_mem OpenClContext::alloc_buffer(size_t bytes, cl_mem_flags flags) const {
+    cl_int err = CL_SUCCESS;
+    cl_mem buf = clCreateBuffer(context, flags, bytes, nullptr, &err);
+    if (!buf || err != CL_SUCCESS) {
+        std::fprintf(stderr, "OpenCL clCreateBuffer(%zu bytes) failed (%d): %s\n", bytes, err,
+                     error_string(err).c_str());
+        return nullptr;
+    }
+    return buf;
+}
+
+std::string read_text_file(const char *path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        return {};
+    }
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    return ss.str();
+}
+
+std::string exe_directory(const char *argv0) {
+    if (argv0 == nullptr || argv0[0] == '\0') {
+        return ".";
+    }
+#ifdef _WIN32
+    char path[MAX_PATH];
+    DWORD n = GetModuleFileNameA(nullptr, path, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) {
+        return ".";
+    }
+    std::string s(path, path + n);
+    const size_t slash = s.find_last_of("\\/");
+    if (slash == std::string::npos) {
+        return ".";
+    }
+    return s.substr(0, slash);
+#else
+    char path[PATH_MAX];
+    const ssize_t n = readlink("/proc/self/exe", path, sizeof(path) - 1);
+    if (n <= 0) {
+        return ".";
+    }
+    path[n] = '\0';
+    std::string s(path);
+    const size_t slash = s.find_last_of('/');
+    if (slash == std::string::npos) {
+        return ".";
+    }
+    return s.substr(0, slash);
+#endif
+}

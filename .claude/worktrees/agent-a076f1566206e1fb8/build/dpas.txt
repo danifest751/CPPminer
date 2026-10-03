@@ -1,0 +1,25 @@
+[ocl] OpenCL register tile: 8x16, hash tile: 8x16, macro 128x128, column-major WI (--ocl-dot dpas auto 8x16, 128 WI/macro)
+[plain] host bridge not found: C:/Projects/ArmCompute/pearl/CPPminer/.claude/worktrees/agent-a076f1566206e1fb8/build/cmake/plain_proof_host.py
+[plain] workdir=C:\Projects\ArmCompute\pearl\CPPminer\.claude\worktrees\agent-a076f1566206e1fb8\build\cmake
+[plain] python=C:/Users/femida4me/AppData/Local/Programs/Python/Python312/python.exe
+[plain] bridge=C:/Projects/ArmCompute/pearl/CPPminer/.claude/worktrees/agent-a076f1566206e1fb8/build/cmake/plain_proof_host.py
+[mode] backend=opencl
+[mode] plain_proof m=8192 n=8192 k=4096 r=128 (--m 8 --n 8)
+[mode] tile layout: contiguous 8x16 blocks
+[mode] scan: OpenCL fused GEMM + XOR + device jackpot
+[mode] macro batch: 1024 (131072 hash tiles/launch, --batch-size)
+[mode] noisy B cached on GPU per job
+[mode] hash_tiles=1024x512 (524288 total)
+[mode] host signal: none (device witness proofs)
+[mode] matrix gen: zero-B (B once/job, A per nonce)
+[mode] verify=1 dry_run=1 max_nonce=1 mock=1 cert_version=3
+[ocl] OpenCL register tile: 8x16, hash tile: 8x16, macro 128x128, column-major WI (--ocl-dot dpas auto 8x16, 128 WI/macro)
+[ocl] DPAS intel_sub_group_i8_i8_matrix_mad_k32: refused on 'gfx1103' (needs an Intel GPU exposing cl_intel_subgroup_matrix_multiply_accumulate: Arc A/B, Arrow Lake-H, Lunar Lake)
+[ocl] OpenCL init failed (kernel=C:\Projects\ArmCompute\pearl\CPPminer\.claude\worktrees\agent-a076f1566206e1fb8\build\cmake\kernels\case33_gemm_xor.cl)
+[mock] job_id=00000000-0000-4000-8000-000000000001 (offline, no pool)
+[mock] difficulty=58.0 target=0000000000100000... cert_version=3
+[mock] mining until first share + zk-pow verify...
+[gen] nonce=0: zero-B random A + A-noise (opencl)...
+[ocl] OpenCL not initialized
+[plain] opencl mine_attempt failed (rc=-1)
+[mock] FAIL: no share produced

@@ -1,0 +1,43 @@
+#ifndef CP_PEARL_WGPU_WORKER_H
+#define CP_PEARL_WGPU_WORKER_H
+
+#include <stdint.h>
+
+#include "cp_share_witness.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+void cp_pearl_wgpu_worker_init(int *devices, int ndev);
+void cp_pearl_wgpu_worker_shutdown(void);
+int cp_pearl_wgpu_worker_is_ready(void);
+int cp_pearl_wgpu_worker_list_devices(void);
+int cp_pearl_wgpu_worker_handles_matrix_prep(void);
+void cp_pearl_wgpu_worker_set_macro_batch(int batch);
+void cp_pearl_wgpu_worker_set_use_lds(int mode); /* -1 auto, 0 off, 1 on */
+void cp_pearl_wgpu_worker_set_tile(int mr, int nr);
+void cp_pearl_wgpu_worker_set_macro(int macro_m, int macro_n);
+/* Jackpot hash tile of the configured register tile (4x4 hashes as 4x8). */
+int cp_pearl_wgpu_worker_hash_tile_mr(void);
+int cp_pearl_wgpu_worker_hash_tile_w(void);
+void cp_pearl_wgpu_worker_begin_job(const uint8_t job_key[32], int m, int n,
+                                    uint32_t cert_version);
+
+int cp_pearl_wgpu_worker_mine_attempt(
+        const uint8_t *ab_seed, int ab_seed_len, const uint8_t job_key[32],
+        const uint32_t pool_tgt[8], int m, int n, int cpu_matrices,
+        const int8_t *h_A_noisy, const int8_t *h_B_noisy, const uint8_t *a_key,
+        int8_t *h_A_sig, int8_t *h_Bt_sig, int *out_t_rows, int *out_t_cols,
+        uint64_t *out_tiles_scanned);
+
+int cp_pearl_wgpu_worker_fetch_share_signals(int8_t *h_A_sig, int8_t *h_Bt_sig);
+/* Share witness (A sub-roots + covering blocks; B^T all-zero). Allocates *out. */
+int cp_pearl_wgpu_worker_fetch_share_witness(int t_rows, int t_cols, int tile_layout,
+                                            CpShareWitness **out);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* CP_PEARL_WGPU_WORKER_H */

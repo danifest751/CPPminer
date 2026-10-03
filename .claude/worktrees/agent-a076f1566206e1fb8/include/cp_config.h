@@ -1,0 +1,68 @@
+#ifndef CP_CONFIG_H
+#define CP_CONFIG_H
+
+#define M_DIM  131072
+#define N_DIM  131072
+#define K_DIM  4096
+#define R_RANK 128
+/* Pearl rank-penalty floor / normalization (zk-pow PENALTY_BASE_RANK). */
+#define PENALTY_BASE_RANK 128
+#if R_RANK < PENALTY_BASE_RANK
+#error "R_RANK must be >= PENALTY_BASE_RANK"
+#endif
+#if (K_DIM % R_RANK) != 0
+#error "K_DIM must be a multiple of R_RANK"
+#endif
+
+#define PP_HASH_H 8
+#define PP_HASH_W 16
+
+#define PP_ROW_PERIOD 128
+#define PP_COL_PERIOD 256
+
+/* CUTLASS Case 10 CTA / hash tile (MMA lane 8x8 within 128x128). */
+#define CP_CUTLASS_CTA_M 128
+#define CP_CUTLASS_CTA_N 128
+#define CP_CUTLASS_HASH_H 8
+#define CP_CUTLASS_HASH_W 8
+
+#define INCOMPLETE_HEADER_BYTES 76
+#define HEADER_HEX_LEN (INCOMPLETE_HEADER_BYTES * 2)
+#define TARGET_HEX_LEN 64
+
+#define PLAIN_PROOF_B64_MAX (512 * 1024)
+
+#define CP_PREPACK_TEST_DIM 8192 /* m = n for --prepack-test */
+
+/* --m / --n are in units of CP_MATRIX_UNIT rows (a multiple of every backend tile/macro size).
+ * Caps keep m*K and the hash-tile count (rows/tile * cols/tile) within int range. */
+#define CP_MATRIX_UNIT        1024
+#define CP_MATRIX_UNITS_MAX   256
+#define CP_MATRIX_AREA_MAX    (128 * 128) /* max m_units * n_units */
+
+#define MAX_GPUS 16
+
+/* Job return codes (mine loop). */
+#define CP_PERIOD_BATCH_DEFAULT 1024
+#define CP_PERIOD_BATCH_MAX     1024 /* launch window; scan clips to n/PP_COL_PERIOD */
+#define CP_ROW_PERIOD_BATCH_DEFAULT 32
+#define CP_ROW_PERIOD_BATCH_MAX   1024 /* 131072 rows / 128 rows per period */
+
+/* oneDNN: hash-tile row/col batch per panel (see Case33GemmOnednn scan). */
+#define CP_ONEDNN_PERIOD_BATCH_DEFAULT 256
+
+/* OpenCL: macro blocks (128x128) per kernel launch (CUDA contiguous uses 64). */
+#define CP_MACRO_BATCH_DEFAULT 1024 // one full row of 131072 cols
+#define CP_MACRO_BATCH_MAX     1048576
+
+#define CP_JOB_NONE        0
+#define CP_JOB_FEE_SWITCH  1 /* reconnect + re-authorize for developer fee wallet */
+#define CP_JOB_CANCELLED (-1)
+
+/* Offline --mock defaults (different difficulty definitions per algo).
+ * Pearl: cp_target_from_difficulty jackpot curve (~few–tens of seconds at --m 8 --n 8).
+ * Quantus: Bitcoin-style U512::MAX / D (~1e6 hashes expected). */
+#define CP_MOCK_DIFF_PEARL_DEFAULT    58.0
+#define CP_MOCK_DIFF_QUANTUS_DEFAULT  1000000.0
+
+#endif /* CP_CONFIG_H */
