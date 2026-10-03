@@ -115,6 +115,30 @@ def spaced_difficulty(binary):
     return "spaced difficulty arrays update the target used by subsequent jobs"
 
 
+def invalid_pearl_jobs(binary):
+    with PoolProbe(binary) as pool:
+        pool.send({"id": pool.auth_id, "result": True})
+        job = {"job_id": "valid-after-invalid", "header": "00" * 76,
+               "target": "00" * 32, "cert_version": 3}
+        for changes in ({"target": "zz"}, {"target": ""}, {"target": None},
+                        {"job_id": ""}, {"job_id": "j" * 128}, {"header": "g0" * 76}):
+            pool.send({"method": "mining.notify", "params": dict(job, **changes)})
+        # Reader logging acts as a barrier: all preceding invalid messages were processed.
+        pool.send({"method": "mining.set_difficulty", "params": [123]})
+        until = time.monotonic() + 5
+        while "[pool] mining.set_difficulty 123" not in pool.output() and time.monotonic() < until:
+            time.sleep(0.01)
+        output = pool.output()
+        assert "[pool] mining.set_difficulty 123" in output, output
+        assert "[plain] mining job=" not in output, output
+        pool.send({"method": "mining.notify", "params": job})
+        until = time.monotonic() + 5
+        while "[plain] mining job=valid-after-invalid" not in pool.output() and time.monotonic() < until:
+            time.sleep(0.01)
+        assert "[plain] mining job=valid-after-invalid" in pool.output(), pool.output()
+    return "invalid Pearl target, ID or header never starts work; subsequent valid job does"
+
+
 def quantus_job_buffer(binary):
     # Exercise both writes into main's current-job buffer, including queued jobs.
     with PoolProbe(binary, ("--algo", "quantus")) as pool:
@@ -230,7 +254,7 @@ def missing_first_job(binary):
     with PoolProbe(binary) as pool:
         pool.send({"id": pool.auth_id, "result": True, "type": "v2"})
         pool.wait_reconnect(35, {"method": "mining.notify",
-                                "params": {"job_id": "bad", "header": "zz"}})
+                                "params": {"job_id": "bad", "header": "00" * 76, "target": "zz"}})
         assert "no valid first job for 30 s" in pool.output()
     return "invalid notifications cannot extend first-job deadline"
 
@@ -354,6 +378,7 @@ if __name__ == "__main__":
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
         futures = [executor.submit(case, binary) for case in (
             spaced_difficulty,
+            invalid_pearl_jobs,
             quantus_early_job, quantus_rejected_login, quantus_missing_login,
             quantus_job_changes, active_job_change, changed_job_identity, quantus_job_buffer,
             rejected_authorize, missing_authorize, missing_first_job, job_before_authorize,
