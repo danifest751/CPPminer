@@ -9,6 +9,7 @@
 - In-memory proof verification, including targetless jobs; checked dry-run diagnostics scoped to process and job.
 - Explicit backend/resource failure exits, bounded multi-address TCP connection attempts and monotonic deadlines/rates.
 - Strict command-line validation, local regression coverage and pool agent `cppminer/0.5-fork.4`.
+- Fix TCP connection-budget compilation with MSVC and the Windows SDK `min` macro.
 - Detailed release notes: [v0.5-fork.4](docs/releases/v0.5-fork.4.md).
 
 ## v0.5 (tentative)

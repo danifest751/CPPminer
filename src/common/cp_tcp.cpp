@@ -65,7 +65,7 @@ cp_sock_t cp_tcp_connect_addresses(const addrinfo* addresses, int timeout_ms)
                              deadline - Clock::now()).count();
         if(left <= 0) break;
         // Reserve part of the budget for later addresses even if the first one is silent.
-        const auto attempt_deadline = std::min(deadline, Clock::now() +
+        const auto attempt_deadline = (std::min)(deadline, Clock::now() +
             std::chrono::milliseconds(std::max<int64_t>(1, left / remaining)));
         cp_sock_t sock = socket(address->ai_family, address->ai_socktype, address->ai_protocol);
         if(sock == CP_INVALID_SOCK) continue;
