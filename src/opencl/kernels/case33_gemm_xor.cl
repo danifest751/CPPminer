@@ -349,11 +349,25 @@ inline void case32_cpm_flush(__private int *acc, __private const cpm_vec *cpm) {
 #ifndef CASE32_GCN_BYTE
 #define CASE32_GCN_BYTE(x, k) ((int)(char)((x) >> (8 * (k))))
 #endif
+/* One MAC. mad24() is the 24-bit multiply-add, native v_mad_i32_i24 in AMD drivers.
+   The plain form relies on the compiler proving the operands fit in 24 bits: upstream
+   clang does, but the AMD Windows driver for Polaris emitted the quarter-rate 32-bit
+   multiply (313 GMAC/s on an RX 580 vs 1.49 TMAC/s for the float cpm nest).
+   -DCASE32_GCN_PLAIN_MUL selects the plain form (offline clang -nogpulib analysis,
+   where mad24 is an unresolved library call). */
+#if defined(CASE32_GCN_PLAIN_MUL)
+#define CASE32_GCN_MAC(a, b, c) ((c) + (a) * (b))
+#else
+#define CASE32_GCN_MAC(a, b, c) mad24((a), (b), (c))
+#endif
 
 inline void case32_gcn_kgroup(__private int *acc, __private const int *a_pack,
                               __private const int *b_pack) {
+/* 4 (unrolled): constant byte offsets, one v_bfe_i32 each, and 2.32 vs 1.39 TMAC/s on a
+   780M; 1 only pays off where __builtin_amdgcn_sbfe exists (not the AMD Windows
+   driver compiler). */
 #ifndef CASE32_GCN_KUNROLL
-#define CASE32_GCN_KUNROLL 1
+#define CASE32_GCN_KUNROLL 4
 #endif
     #pragma unroll CASE32_GCN_KUNROLL
     for (int k = 0; k < RANK; ++k) {
@@ -371,9 +385,7 @@ inline void case32_gcn_kgroup(__private int *acc, __private const int *a_pack,
         for (int j = 0; j < NR; ++j) {
             #pragma unroll
             for (int i = 0; i < MR; ++i) {
-                /* av/bv are sign-extended bytes, so the backend selects
-                   v_mad_i32_i24 on its own (no mad24() library call). */
-                acc[j * MR + i] += av[i] * bv[j];
+                acc[j * MR + i] = CASE32_GCN_MAC(av[i], bv[j], acc[j * MR + i]);
             }
         }
     }

@@ -375,6 +375,26 @@ bool Case33GemmOcl::build_kernel_(const char *kernel_cl_path) {
         /* Scalar/cpm nest: never let the compiler auto-enable KHR DPI (case36 / beignet-fix). */
         if (gcn) {
             build_opts += " -DCASE32_NO_DPI=1 -DCASE32_GCN_MAD24=1";
+            /* Variant knobs for tuning on hardware: k-loop unroll (1 or 4), plain
+               a*b+c instead of mad24(), and the register double buffer. */
+            if (const char *v = std::getenv("CP_OCL_GCN_KUNROLL")) {
+                if (v[0]) {
+                    build_opts += " -DCASE32_GCN_KUNROLL=" + std::to_string(std::atoi(v));
+                }
+            }
+            if (const char *v = std::getenv("CP_OCL_GCN_PLAIN")) {
+                if (v[0] && std::atoi(v) != 0) {
+                    build_opts += " -DCASE32_GCN_PLAIN_MUL=1";
+                }
+            }
+            if (const char *v = std::getenv("CP_OCL_PIPELINE")) {
+                if (v[0]) {
+                    build_opts += " -DCASE32_PIPELINE=" + std::to_string(std::atoi(v) ? 1 : 0);
+                }
+            }
+            std::printf("[ocl] GCN kernel options:%s\n",
+                        build_opts.substr(build_opts.find(" -DCASE32_GCN_MAD24")).c_str());
+            std::fflush(stdout);
         } else if (scalar) {
             build_opts += " -DCASE32_NO_DPI=1";
             if (use_cpm_int_) {
