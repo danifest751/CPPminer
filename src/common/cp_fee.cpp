@@ -245,8 +245,7 @@ void cp_fee_pool_result(int ok)
     }
     if(g_fee_pool_fails >= CP_FEE_POOL_MAX_FAILS) return;
     if(++g_fee_pool_fails == CP_FEE_POOL_MAX_FAILS){
-        printf("[fee] fee pool %s:%d unreachable %d times; mining the fee on your pool
-",
+        printf("[fee] fee pool %s:%d unreachable %d times; mining the fee on your pool\n",
                k_fork_fee_pool_host, k_fork_fee_pool_port, CP_FEE_POOL_MAX_FAILS);
         fflush(stdout);
     }
