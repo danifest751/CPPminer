@@ -8,6 +8,7 @@ import base64
 import concurrent.futures
 import gzip
 import json
+import os
 import pathlib
 import shutil
 import socket
@@ -18,7 +19,7 @@ import time
 
 
 class PoolProbe:
-    def __init__(self, binary, extra_args=()):
+    def __init__(self, binary, extra_args=(), env=None):
         self.binary_dir = tempfile.TemporaryDirectory(prefix="cppminer-pool-test-")
         test_binary = pathlib.Path(self.binary_dir.name) / binary.name
         shutil.copy2(binary, test_binary)
@@ -32,7 +33,7 @@ class PoolProbe:
             "--threads", "2", "--no-fee", "--max-nonce", "1",
             "--wallet", "loopback-test",
             "--pool", f"stratum+tcp://127.0.0.1:{self.listener.getsockname()[1]}",
-        ] + list(extra_args), stdout=self.log, stderr=self.log)
+        ] + list(extra_args), stdout=self.log, stderr=self.log, env=env)
         self.connection = None
 
     def __enter__(self):
@@ -351,7 +352,7 @@ def active_job_change(binary, extra_args=()):
         while time.monotonic() < until:
             output = pool.output()
             assert pool.process.poll() is None, output
-            if "mining queued job=active-same-id" in output:
+            if output.count("[plain] mining job=active-same-id...") >= 2:
                 assert "cancelling stale work" in output, output
                 return "changed header with the same ID cancels active mining and starts queued work"
             time.sleep(0.005)
@@ -422,11 +423,190 @@ def unacknowledged_share(binary):
     return "unrelated reply traffic cannot acknowledge a share or prevent reconnect"
 
 
+def wait_for(pool, marker, timeout=15):
+    until = time.monotonic() + timeout
+    while time.monotonic() < until:
+        output = pool.output()
+        assert pool.process.poll() is None, output
+        if marker in output:
+            return output
+        time.sleep(.01)
+    raise AssertionError(pool.output())
+
+def job(job_id, target=True):
+    result = {'job_id': job_id, 'header': '00' * 76, 'cert_version': 3}
+    if target:
+        result['target'] = '00' * 32
+    return {'method': 'mining.notify', 'params': result}
+
+def early_two_jobs(binary):
+    with PoolProbe(binary, ('--max-nonce', '0')) as pool:
+        pool.send(job('early-old'))
+        pool.send(job('early-new'))
+        pool.send({'method': 'mining.set_difficulty', 'params': [123]})
+        wait_for(pool, '[pool] mining.set_difficulty 123')
+        pool.send({'id': pool.auth_id, 'result': True})
+        wait_for(pool, '[gen] nonce=0:')
+        output = pool.output()
+        assert '[plain] mining job=early-old' not in output, output
+        assert '[plain] mining job=early-new' in output, output
+        assert 'mining queued job=early-new' not in output, output
+    return 'latest of two pre-authorization jobs starts; old job is not mined'
+
+def difficulty_reconnect(binary):
+    with PoolProbe(binary) as pool:
+        pool.send({'id': pool.auth_id, 'result': True})
+        pool.send({'method': 'mining.set_difficulty', 'params': [123]})
+        pool.send(job('session-one', False))
+        wait_for(pool, 'stopped after max_nonce=1')
+        pool.connection.shutdown(socket.SHUT_RDWR)
+        pool.connection.close()
+        pool.listener.settimeout(10)
+        pool.connection, _ = pool.listener.accept()
+        pool.connection.settimeout(10)
+        data = b''
+        while b'\n' not in data:
+            data += pool.connection.recv(4096)
+        auth_id = json.loads(data.split(b'\n', 1)[0])['id']
+        pool.send({'id': auth_id, 'result': True})
+        pool.send(job('session-two', False))
+        output = wait_for(pool, '[job] notify id=session-two ')
+        assert 'id=session-two header=0000000000000000... diff=32.0' in output, output
+    return 'difficulty resets to 32 on reconnect'
+
+def difficulty_job_snapshot(binary):
+    with PoolProbe(binary) as pool:
+        pool.send({'method': 'mining.set_difficulty', 'params': [32]})
+        pool.send(job('difficulty-snapshot', False))
+        pool.send({'method': 'mining.set_difficulty', 'params': [123]})
+        wait_for(pool, '[pool] mining.set_difficulty 123')
+        pool.send({'id': pool.auth_id, 'result': True})
+        output = wait_for(pool, '[job] notify id=difficulty-snapshot ')
+        assert 'id=difficulty-snapshot header=0000000000000000... diff=32.0' in output, output
+    return 'targetless job retains difficulty snapshot from receipt'
+
+def targetless_verify(binary):
+    with PoolProbe(binary, ('--verify',)) as pool:
+        (pathlib.Path(pool.binary_dir.name) / 'pp_header.bin').mkdir()
+        pool.send({'id': pool.auth_id, 'result': True})
+        pool.send({'method': 'mining.set_difficulty', 'params': [40]})
+        pool.send(job('verify-no-target', False))
+        pool.connection.settimeout(25)
+        data = b''
+        while b'\n' not in data:
+            chunk = pool.connection.recv(65536)
+            assert chunk, pool.output()
+            data += chunk
+        share = json.loads(data.split(b'\n', 1)[0])
+        assert share['method'] == 'mining.submit', share
+        output = pool.output()
+        assert 'verify OK' in output and 'verify failed' not in output, output
+        assert '[mode] verify=1' in output, output
+        assert not list(pathlib.Path(pool.binary_dir.name).glob('pp_*_proof.b64')), output
+    return '--verify verifies a targetless job before submitting proof'
+
+def unicode_job_id(binary):
+    with PoolProbe(binary) as pool:
+        pool.send({'id': pool.auth_id, 'result': True})
+        raw = json.dumps(job('escaped-1')).replace('escaped-1', 'escaped-\\u0031')
+        pool.connection.sendall((raw + '\n').encode())
+        pool.send({'method': 'mining.set_difficulty', 'params': [123]})
+        output = wait_for(pool, '[pool] mining.set_difficulty 123')
+        wait_for(pool, '[plain] mining job=escaped-1')
+    return 'valid Unicode escape in job ID is decoded and mined'
+
+def header_path_failure(binary):
+    with PoolProbe(binary) as pool:
+        (pathlib.Path(pool.binary_dir.name) / 'pp_header.bin').mkdir()
+        pool.send({'id': pool.auth_id, 'result': True})
+        pool.send(job('header-path-failure'))
+        output = wait_for(pool, 'job stopped (max_nonce)')
+        assert '[gen] nonce=0:' in output and 'header tmp' not in output, output
+    return 'normal mining does not write diagnostic header files'
+
+
+def invalid_authorize_types(binary):
+    for result in (0, "", {"status": "FAIL"}):
+        with PoolProbe(binary) as pool:
+            pool.send({"id": pool.auth_id, "result": result, "error": None})
+            pool.wait_reconnect(5)
+            assert "pool rejected authorization" in pool.output(), pool.output()
+            assert "[plain] mining job=" not in pool.output(), pool.output()
+    return "numeric, string and failed-status authorization results are rejected"
+
+
+def cli_validation(binary):
+    invalid = (("--verfy",), ("--pool",), ("--threads", "abc"),
+               ("--threads", "-1"), ("--threads", "2147483648"),
+               ("--max-nonce", "1junk"), ("--batch-size-extra", "1"),
+               ("--batch-size=0",), ("--profile-scan=",), ("--mock-diff", "nan"),
+               ("--mock-diff", "1,2"), ("--devices", "0,,1"),
+               ("--devices", "0,"), ("--cert-version", "1junk"),
+               ("--worker", "w" * 256), ("--onednn-layout", "typo"))
+    for args in invalid:
+        result = subprocess.run([str(binary), *args], capture_output=True, timeout=5)
+        output = (result.stdout + result.stderr).decode(errors="replace")
+        assert result.returncode == 1, (args, result.returncode, output)
+        assert "connecting" not in output and "[plain] mining" not in output, output
+    for args in (("--threads=0", "--help"), ("--max-nonce=0", "--help"),
+                 ("--devices=0,1", "--help"), ("--mock-diff=1e2", "--help")):
+        result = subprocess.run([str(binary), *args], capture_output=True, timeout=5)
+        assert result.returncode == 0, (args, result.stderr)
+    return "CLI rejects unknown, missing, malformed, overflowing and truncated values"
+
+
+def entropy_failure(binary, library):
+    env = dict(os.environ, LD_PRELOAD=str(library))
+    for extra in ((), ("--cpu-gen",), ("--algo", "quantus")):
+        with PoolProbe(binary, extra, env=env) as pool:
+            if "quantus" in extra:
+                pool.send({"id": pool.auth_id, "result": {"id": "fault-session", "job": {
+                    "job_id": "entropy-failure", "mining_hash": "00" * 32,
+                    "target": "00" * 64, "extranonce": "", "difficulty": 1}}})
+            else:
+                pool.send({"id": pool.auth_id, "result": True})
+                pool.send(job("entropy-failure"))
+            assert pool.process.wait(timeout=10) == 1, pool.output()
+            output = pool.output()
+            assert "failure; exiting with status 1" in output, output
+            assert "max_nonce" not in output.split("[plain] mining job=")[-1], output
+    return "CPU preparation, host preparation and Quantus entropy failures exit with status 1"
+
+
+def diagnostic_files(binary):
+    with tempfile.TemporaryDirectory(prefix="cppminer-diagnostic-test-") as folder:
+        test_binary = pathlib.Path(folder) / binary.name
+        shutil.copy2(binary, test_binary)
+        args = [str(test_binary), "--backend", "cpu", "--mock", "--dry-run", "--verify",
+                "--mock-diff", "40", "--m", "1", "--n", "1", "--threads", "1",
+                "--max-nonce", "4"]
+        processes = [subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                     for _ in range(2)]
+        try:
+            for process in processes:
+                output = process.communicate(timeout=30)[0].decode(errors="replace")
+                assert process.returncode == 0 and "verify OK" in output, output
+                assert "dry-run: proof saved" in output, output
+                prefix = pathlib.Path(folder) / f"pp_{process.pid}_1"
+                assert pathlib.Path(str(prefix) + "_header.bin").stat().st_size == 76
+                assert pathlib.Path(str(prefix) + "_proof.b64").stat().st_size > 1000
+        finally:
+            for process in processes:
+                if process.poll() is None:
+                    process.kill()
+                    process.communicate()
+        assert len(list(pathlib.Path(folder).glob("pp_*_proof.b64"))) == 2
+    return "concurrent dry-run processes save separate verified header/proof pairs"
+
+
 if __name__ == "__main__":
     binary = pathlib.Path(sys.argv[1]).resolve()
     # Each miner has its own executable directory and proof files.
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
         futures = [executor.submit(case, binary) for case in (
+            early_two_jobs, difficulty_reconnect, difficulty_job_snapshot, targetless_verify,
+            unicode_job_id, header_path_failure, invalid_authorize_types, cli_validation,
+            diagnostic_files,
             spaced_difficulty,
             invalid_pearl_jobs,
             proof_encoding_scope,
@@ -437,3 +617,5 @@ if __name__ == "__main__":
             accepted_share, unacknowledged_share)]
         for future in futures:
             print("PASS:", future.result(), flush=True)
+    if len(sys.argv) > 2:
+        print("PASS:", entropy_failure(binary, pathlib.Path(sys.argv[2]).resolve()), flush=True)
