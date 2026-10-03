@@ -1,6 +1,7 @@
 # Changelog
 
 ## v0.5 (tentative)
+- Pool recovery: track each share ACK by JSON-RPC id before sending, enforce the oldest unacknowledged share's 60-second deadline, and reconnect on rejected authorization or missing authorization/first job (30 seconds each). Fee-pool handshake failures trigger the existing fallback. Add deterministic session tests and loopback integration tests.
 - Experimental OneDNN backend for intel GPU
 - Fix OpenCL dot product extension on intel GPU
 - Shrink opencl macro size to 64x64 in 4x8 tile mode, prevent to many work item per work group 

@@ -26,6 +26,9 @@ int cp_hex_to_bytes(const char* hex, uint8_t* out, int out_cap);
 
 int cp_json_str(const char* json, const char* key, char* out, int outlen);
 double cp_json_num(const char* json, const char* key);
+/* Response with a top-level integer id and no method. Nested ids do not
+ * match outstanding requests. accepted is false on result:false or error. */
+int cp_json_rpc_response(const char* json, int* id, int* accepted);
 
 void cp_target_from_difficulty(double difficulty, uint32_t tgt[8]);
 int cp_be_target_hex_to_le_words(const char* hex, uint32_t tgt[8]);

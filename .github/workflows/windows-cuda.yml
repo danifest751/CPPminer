@@ -43,8 +43,13 @@ jobs:
         shell: pwsh
         run: |
           .\cppminer.exe --help | Select-Object -First 3
+          if ($LASTEXITCODE -ne 0) { throw "--help failed ($LASTEXITCODE)" }
           .\cppminer.exe --mock --simd-test
+          if ($LASTEXITCODE -ne 0) { throw "--simd-test failed ($LASTEXITCODE)" }
           .\cppminer.exe --mock --prepack-test
+          if ($LASTEXITCODE -ne 0) { throw "--prepack-test failed ($LASTEXITCODE)" }
+          ctest --test-dir build/cmake -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw "protocol tests failed ($LASTEXITCODE)" }
 
       - name: Package
         shell: pwsh

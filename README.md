@@ -160,6 +160,8 @@ cppminer --backend cuda --mock              # mines offline until the first shar
 
 **Proof compression.** Kryptex and HeroMiners speak the gzip stratum v2 ([spec](https://gist.github.com/maxmalysh/eaaf4332dbc5ca99d0a78f24a733fffe)), and the miner enables it automatically when the pool answers `"type":"v2"`. A GPU share then takes ~40 KB instead of ~130 KB.
 
+**Connection recovery.** The miner waits up to 30 seconds for an accepted authorization and another 30 seconds for a valid first job. Rejected authorization or a missing response/job causes a reconnect; failures on the fee pool count toward its three-attempt fallback. Each submitted share is tracked by its JSON-RPC id and must receive a reply within 60 seconds. New shares and unrelated replies do not extend that deadline.
+
 **Russia.** Some Russian ISPs let a connection to foreign hosting pass its first ~15 KB and then drop every packet. Login and jobs work, but shares never arrive, and the pool shows no hashrate. Use `prl-ru.kryptex.network` or `ru.pearl.herominers.com`.
 
 **How many shares to expect.** At the default difficulty 2097152 (Kryptex, HeroMiners) one share is expected every `2^53 / hashrate` seconds:
