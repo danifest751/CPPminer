@@ -39,6 +39,9 @@ if(BUILD_TESTING)
         tests/cp_pool_protocol_test.cpp
         src/common/cp_json_frame.cpp
         src/common/cp_util.cpp
+        src/common/cp_pool.cpp
+        src/common/cp_job_ctrl.cpp
+        src/common/cp_qpow_pool.cpp
         src/common/cp_fee.cpp
         src/common/cp_state.cpp)
     target_include_directories(cp_pool_protocol_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
@@ -47,6 +50,19 @@ if(BUILD_TESTING)
         target_link_libraries(cp_pool_protocol_test PRIVATE bcrypt ws2_32)
     endif()
     add_test(NAME cp_pool_protocol COMMAND cp_pool_protocol_test)
+    add_executable(cp_share_cancel_test
+        tests/cp_share_cancel_test.cpp
+        src/common/cp_share_queue.cpp
+        src/common/cp_job_ctrl.cpp
+        src/common/cp_util.cpp
+        src/common/cp_state.cpp)
+    target_include_directories(cp_share_cancel_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    target_link_libraries(cp_share_cancel_test PRIVATE Threads::Threads)
+    if(WIN32)
+        target_link_libraries(cp_share_cancel_test PRIVATE bcrypt ws2_32)
+    endif()
+    add_test(NAME cp_share_cancel COMMAND cp_share_cancel_test)
+    set_tests_properties(cp_share_cancel PROPERTIES TIMEOUT 15)
 endif()
 if(CP_ENABLE_CUDA)
     set(CMAKE_CUDA_STANDARD 17)
