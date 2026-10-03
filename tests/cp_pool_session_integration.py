@@ -100,6 +100,21 @@ def rejected_authorize(binary):
     return "rejected authorize reconnects"
 
 
+def spaced_difficulty(binary):
+    with PoolProbe(binary) as pool:
+        pool.send({"id": pool.auth_id, "result": True})
+        pool.send({"method": "mining.set_difficulty", "params": [123]})
+        pool.send({"method": "mining.notify", "params": {
+            "job_id": "spaced-difficulty", "header": "00" * 76, "cert_version": 3}})
+        until = time.monotonic() + 5
+        while "[job] notify id=spaced-difficulty " not in pool.output() and time.monotonic() < until:
+            time.sleep(0.01)
+        output = pool.output()
+        assert "[pool] mining.set_difficulty 123" in output, output
+        assert "diff=123.0 (no target in notify)" in output, output
+    return "spaced difficulty arrays update the target used by subsequent jobs"
+
+
 def quantus_job_buffer(binary):
     # Exercise both writes into main's current-job buffer, including queued jobs.
     with PoolProbe(binary, ("--algo", "quantus")) as pool:
@@ -338,6 +353,7 @@ if __name__ == "__main__":
     # Each miner has its own executable directory and proof files.
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
         futures = [executor.submit(case, binary) for case in (
+            spaced_difficulty,
             quantus_early_job, quantus_rejected_login, quantus_missing_login,
             quantus_job_changes, active_job_change, changed_job_identity, quantus_job_buffer,
             rejected_authorize, missing_authorize, missing_first_job, job_before_authorize,
