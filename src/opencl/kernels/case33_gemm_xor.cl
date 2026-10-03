@@ -361,6 +361,14 @@ inline void case32_cpm_flush(__private int *acc, __private const cpm_vec *cpm) {
 #define CASE32_GCN_MAC(a, b, c) mad24((a), (b), (c))
 #endif
 
+/* The GCN nest updates acc[] on every MAC, so acc[] must live in registers. The AMD
+   Windows driver for Polaris leaves the 128-iteration zero/XOR loops over acc[] rolled;
+   their dynamic index sends the whole array to scratch (CL_KERNEL_PRIVATE_MEM_SIZE
+   576 B = acc 512 + msg 64) and every MAC becomes a scratch read-modify-write: 313
+   GMAC/s on an RX 580 vs 1.49 TMAC/s for the float cpm nest, which only flushes into
+   acc[] once per KR. Unroll those loops on this path. */
+#define CASE32_ACC_UNROLL _Pragma("unroll")
+
 inline void case32_gcn_kgroup(__private int *acc, __private const int *a_pack,
                               __private const int *b_pack) {
 /* 4 (unrolled): constant byte offsets, one v_bfe_i32 each, and 2.32 vs 1.39 TMAC/s on a
@@ -390,6 +398,9 @@ inline void case32_gcn_kgroup(__private int *acc, __private const int *a_pack,
         }
     }
 }
+#endif
+#ifndef CASE32_ACC_UNROLL
+#define CASE32_ACC_UNROLL
 #endif
 
 inline void case32_accum_kgroup(__private int *acc, __private cpm_vec *cpm,
@@ -564,6 +575,7 @@ __kernel void case33_macro_gemm_xor(__global const char *a_pre, __global const c
         const int tc = hash_tc * HASH_REG_TILES_N + reg_half;
         const int tc_global = tc0 + tc;
         int acc[NR * MR];
+        CASE32_ACC_UNROLL
         for (int i = 0; i < NR * MR; ++i) {
             acc[i] = 0;
         }
@@ -719,6 +731,7 @@ __kernel void case33_macro_gemm_xor(__global const char *a_pre, __global const c
         /* One milestone per KR panel (KR == R_RANK). Cumulative acc across kb. */
         uint x = 0u;
         if (tr_in_slice < micro_m_count) {
+            CASE32_ACC_UNROLL
             for (int i = 0; i < NR * MR; ++i) {
                 x ^= as_uint(acc[i]);
             }
