@@ -43,7 +43,8 @@ jobs:
         shell: pwsh
         run: |
           .\cppminer.exe --help | Select-Object -First 3
-          .\cppminer.exe --backend cpu --mock --m 4 --n 4 --max-nonce 1
+          .\cppminer.exe --mock --simd-test
+          .\cppminer.exe --mock --prepack-test
 
       - name: Package
         shell: pwsh
