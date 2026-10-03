@@ -159,6 +159,58 @@ def quantus_job_changes(binary):
     return "Quantus full hash, target and extranonce changes restart work; hex case does not"
 
 
+def quantus_early_job(binary):
+    with PoolProbe(binary, ("--algo", "quantus")) as pool:
+        job = {"job_id": "quantus-early", "mining_hash": "00" * 32,
+               "target": "00" * 64, "extranonce": ""}
+        pool.send({"id": pool.auth_id + 999, "result": {
+            "id": "wrong-session", "status": "OK", "job": dict(job, job_id="wrong-id-job")}})
+        for job_id in ("older-early-job", job["job_id"]):
+            # Whitespace and nested params.job are valid protocol forms.
+            pool.send({"method": "job", "params": {"job": dict(job, job_id=job_id)}})
+        time.sleep(0.3)
+        assert "[qpow] mine job=" not in pool.output(), pool.output()
+        pool.send({"id": pool.auth_id, "result": {
+            "job": dict(job, job_id="older-login-job"), "id": "right-session", "status": "OK"}})
+        until = time.monotonic() + 5
+        while "[qpow] mine job=quantus-early " not in pool.output() and time.monotonic() < until:
+            assert pool.process.poll() is None, pool.output()
+            time.sleep(0.01)
+        output = pool.output()
+        assert "session=right-session first_job=quantus-early" in output, output
+        assert "[qpow] mine job=quantus-early " in output, output
+        assert "[qpow] mine job=older-login-job " not in output, output
+    # Login can acknowledge a session before the first job notification.
+    with PoolProbe(binary, ("--algo", "quantus")) as pool:
+        pool.send({"id": pool.auth_id, "result": {"id": "right-session"}})
+        pool.send({"method": "job", "params": job})
+        until = time.monotonic() + 5
+        while "[qpow] mine job=quantus-early " not in pool.output() and time.monotonic() < until:
+            time.sleep(0.01)
+        assert "[qpow] mine job=quantus-early " in pool.output(), pool.output()
+    return "Quantus matches login ID and mines the latest early or post-login job after ACK"
+
+
+def quantus_rejected_login(binary):
+    job = {"job_id": "must-not-mine", "mining_hash": "00" * 32, "target": "00" * 64}
+    for status, error in (("FAIL", None), ("OK", {"code": -1, "message": "rejected"})):
+        with PoolProbe(binary, ("--algo", "quantus")) as pool:
+            pool.send({"id": pool.auth_id, "result": {"id": "s", "status": status, "job": job},
+                       "error": error})
+            pool.wait_reconnect(5)
+            assert "Quantus login rejected or malformed" in pool.output(), pool.output()
+            assert "[qpow] mine job=" not in pool.output(), pool.output()
+    return "Quantus rejects failed status and explicit error even with a session and job"
+
+
+def quantus_missing_login(binary):
+    with PoolProbe(binary, ("--algo", "quantus")) as pool:
+        pool.wait_reconnect(35, {"id": pool.auth_id + 999, "result": {"id": "wrong-session"}})
+        assert "30 s budget" in pool.output(), pool.output()
+        assert "[qpow] mine job=" not in pool.output(), pool.output()
+    return "Quantus wrong-id traffic cannot extend the 30-second login deadline"
+
+
 def missing_first_job(binary):
     with PoolProbe(binary) as pool:
         pool.send({"id": pool.auth_id, "result": True, "type": "v2"})
@@ -286,6 +338,7 @@ if __name__ == "__main__":
     # Each miner has its own executable directory and proof files.
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
         futures = [executor.submit(case, binary) for case in (
+            quantus_early_job, quantus_rejected_login, quantus_missing_login,
             quantus_job_changes, active_job_change, changed_job_identity, quantus_job_buffer, rejected_authorize, missing_authorize, missing_first_job, job_before_authorize,
             accepted_share, unacknowledged_share)]
         for future in futures:
