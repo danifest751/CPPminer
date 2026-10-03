@@ -56,13 +56,14 @@ jobs:
           Copy-Item "$env:CUDA_PATH\bin\cudart64_*.dll" $out
           $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
           $crt = Get-ChildItem "$vs\VC\Redist\MSVC" -Recurse -Directory -Filter Microsoft.VC143.CRT |
-                 Where-Object { $_.FullName -match '\x64\' -and $_.FullName -notmatch 'onecore|debug' } | Select-Object -First 1
+                 Where-Object { $_.FullName -like '*\x64\*' -and $_.FullName -notmatch 'onecore|debug' } | Select-Object -First 1
           $omp = Get-ChildItem "$vs\VC\Redist\MSVC" -Recurse -Directory -Filter Microsoft.VC143.OpenMP |
-                 Where-Object { $_.FullName -match '\x64\' -and $_.FullName -notmatch 'onecore|debug' } | Select-Object -First 1
+                 Where-Object { $_.FullName -like '*\x64\*' -and $_.FullName -notmatch 'onecore|debug' } | Select-Object -First 1
+          if (-not $crt -or -not $omp) { throw "MSVC redist dirs not found under $vs\VC\Redist\MSVC" }
           Write-Host "CRT: $($crt.FullName)"; Write-Host "OpenMP: $($omp.FullName)"
           Copy-Item "$($crt.FullName)\*.dll" $out
           Copy-Item "$($omp.FullName)\*.dll" $out
-          $dumpbin = Get-ChildItem "$vs\VC\Tools\MSVC" -Recurse -Filter dumpbin.exe | Where-Object FullName -like "*Hostx64d*" | Select-Object -First 1
+          $dumpbin = Get-ChildItem "$vs\VC\Tools\MSVC" -Recurse -Filter dumpbin.exe | Where-Object FullName -like "*Hostx64\x64*" | Select-Object -First 1
           if ($dumpbin) { & $dumpbin.FullName /dependents "$out\cppminer.exe" | Select-String "\.dll" }
           Get-ChildItem $out | Format-Table Name, Length
 
