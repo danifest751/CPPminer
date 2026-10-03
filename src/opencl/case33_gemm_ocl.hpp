@@ -163,6 +163,7 @@ private:
     int wmma_arch_ = 0;       /* Wmma backend: 11 (gfx11) or 12 (gfx12) */
     int wmma_g12_ksplit_ = 0; /* gfx12 A/B k mapping (CP_OCL_WMMA_G12_KSPLIT) */
     int wmma_pipeline_ = 0;   /* register double buffer (CP_OCL_WMMA_PIPELINE) */
+    bool gcn_mad24_ = false;  /* scalar backend uses the GCN mad24 nest (CP_OCL_GCN) */
 
     Case32OclDotBackend adopted_backend_ = Case32OclDotBackend::Scalar;
 
@@ -173,6 +174,7 @@ private:
     bool using_builtin_dot_ = false;
 
     bool using_cpm_ = false;
+    bool using_gcn_ = false;
 
 
 

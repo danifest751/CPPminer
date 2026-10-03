@@ -5,6 +5,7 @@
 #include "cp_config.h"
 
 #include <cstdio>
+#include <cctype>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -143,6 +144,34 @@ int amd_wmma_arch(const std::string &device_name) {
         return 12;
     }
     return 0;
+}
+
+/* AMD GCN up to gfx8 (no int8 dot instructions at all): ROCm/PAL report "gfx803",
+   the Windows driver and Mesa report the chip name ("Ellesmere", "polaris10", ...). */
+bool amd_gcn_pre_gfx9(const std::string &device_name) {
+    std::string n = device_name;
+    for (char &c : n) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    const size_t pos = n.find("gfx");
+    if (pos != std::string::npos && pos + 3 < n.size()) {
+        /* Three digits after "gfx" starting with 6..8: gfx6xx-gfx8xx. */
+        const size_t end = n.find_first_not_of("0123456789abcdef", pos + 3);
+        const size_t ndig = (end == std::string::npos ? n.size() : end) - (pos + 3);
+        const char d = n[pos + 3];
+        return ndig == 3 && d >= '6' && d <= '8';
+    }
+    static const char *const kChips[] = {
+            "polaris", "ellesmere", "baffin", "lexa", "fiji", "tonga", "iceland",
+            "topaz", "carrizo", "stoney", "hawaii", "bonaire", "tahiti", "pitcairn",
+            "capeverde", "cape verde", "oland", "hainan", "kalindi", "mullins", "spectre",
+            "spooky", "kaveri", "kabini", "vegam"};
+    for (const char *chip : kChips) {
+        if (n.find(chip) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
 }
 
 /* Build ordered candidate list. issue_mode==1 (broadcast) is handled by caller. */
@@ -300,7 +329,9 @@ bool Case33GemmOcl::build_kernel_(const char *kernel_cl_path) {
         const bool force_ext = backend == Case32OclDotBackend::KhrDpiForce;
         const bool scalar = backend == Case32OclDotBackend::Scalar;
         const bool use_wmma = backend == Case32OclDotBackend::Wmma;
-        const char *label = dot_backend_label(backend, issue_mode_, use_cpm_int_);
+        const bool gcn = scalar && gcn_mad24_ && issue_mode_ == 0;
+        const char *label = gcn ? "GCN scalar mad24 (no int8 dot)"
+                                : dot_backend_label(backend, issue_mode_, use_cpm_int_);
 
         if (use_wmma) {
             wmma_arch_ = amd_wmma_arch(ocl_.device_name);
@@ -342,7 +373,29 @@ bool Case33GemmOcl::build_kernel_(const char *kernel_cl_path) {
             build_opts += " -DCASE32_REQD_WG=" + std::to_string(reqd_wg_size_);
         }
         /* Scalar/cpm nest: never let the compiler auto-enable KHR DPI (case36 / beignet-fix). */
-        if (scalar) {
+        if (gcn) {
+            build_opts += " -DCASE32_NO_DPI=1 -DCASE32_GCN_MAD24=1";
+            /* Variant knobs for tuning on hardware: k-loop unroll (1 or 4), plain
+               a*b+c instead of mad24(), and the register double buffer. */
+            if (const char *v = std::getenv("CP_OCL_GCN_KUNROLL")) {
+                if (v[0]) {
+                    build_opts += " -DCASE32_GCN_KUNROLL=" + std::to_string(std::atoi(v));
+                }
+            }
+            if (const char *v = std::getenv("CP_OCL_GCN_PLAIN")) {
+                if (v[0] && std::atoi(v) != 0) {
+                    build_opts += " -DCASE32_GCN_PLAIN_MUL=1";
+                }
+            }
+            if (const char *v = std::getenv("CP_OCL_PIPELINE")) {
+                if (v[0]) {
+                    build_opts += " -DCASE32_PIPELINE=" + std::to_string(std::atoi(v) ? 1 : 0);
+                }
+            }
+            std::printf("[ocl] GCN kernel options:%s\n",
+                        build_opts.substr(build_opts.find(" -DCASE32_GCN_MAD24")).c_str());
+            std::fflush(stdout);
+        } else if (scalar) {
             build_opts += " -DCASE32_NO_DPI=1";
             if (use_cpm_int_) {
                 build_opts += " -DCASE32_CPM_INT=1";
@@ -389,7 +442,8 @@ bool Case33GemmOcl::build_kernel_(const char *kernel_cl_path) {
             using_integer_dot_ = use_dot;
             using_asm_dot_ = use_asm;
             using_builtin_dot_ = use_builtin || use_sudot;
-            using_cpm_ = scalar && issue_mode_ != 2;
+            using_cpm_ = scalar && !gcn && issue_mode_ != 2;
+            using_gcn_ = gcn;
             std::snprintf(dpi_status_, sizeof(dpi_status_), "%s: OK", status_label);
             return true;
         };
@@ -466,6 +520,16 @@ bool Case33GemmOcl::build_kernel_(const char *kernel_cl_path) {
     reqd_wg_size_ = 0;
     if (static_cast<size_t>(case32::kMacroWorkItems) <= ocl_.max_work_group_size) {
         reqd_wg_size_ = case32::kMacroWorkItems;
+    }
+
+    /* GCN gfx6-8 have no int8 dot instructions, so the build falls through to the scalar
+       backend; there use the direct mad24 nest (the float cpm panel spills on gfx803).
+       CP_OCL_GCN=1/0 forces it on/off for the scalar backend on any device. */
+    gcn_mad24_ = vendor_is_amd && amd_gcn_pre_gfx9(ocl_.device_name);
+    if (const char *g = std::getenv("CP_OCL_GCN")) {
+        if (g[0]) {
+            gcn_mad24_ = std::atoi(g) != 0;
+        }
     }
 
     std::vector<Case32OclDotBackend> candidates;
@@ -718,7 +782,8 @@ bool Case33GemmOcl::prepare_job(int M, int N, int K, const int8_t *b_colmajor) {
         return false;
     }
 
-    const char *dot_kind = dot_kind_short(adopted_backend_, issue_mode_, use_cpm_int_);
+    const char *dot_kind = using_gcn_ ? "gcn mad24"
+                                      : dot_kind_short(adopted_backend_, issue_mode_, use_cpm_int_);
     std::snprintf(backend_, sizeof(backend_),
                   "OpenCL %dx%d macro batch=%d fused GEMM+XOR+jackpot, hash tile %dx%d KR=%d %s s8s8",
                   case32::kMacroM, case32::kMacroN, macro_batch_, case32::kMR, case32::kNR,
@@ -766,7 +831,8 @@ bool Case33GemmOcl::prepare_job_gpu(int M, int N, int K, const uint8_t b_noise_s
         return false;
     }
 
-    const char *dot_kind = dot_kind_short(adopted_backend_, issue_mode_, use_cpm_int_);
+    const char *dot_kind = using_gcn_ ? "gcn mad24"
+                                      : dot_kind_short(adopted_backend_, issue_mode_, use_cpm_int_);
     std::snprintf(backend_, sizeof(backend_),
                   "OpenCL %dx%d macro batch=%d fused GEMM+XOR+jackpot, register tile %dx%d, hash tile %dx%d KR=%d %s s8s8 GPU-prep",
                   case32::kMacroM, case32::kMacroN, macro_batch_, case32::kMR, case32::kNR,
