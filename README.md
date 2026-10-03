@@ -182,7 +182,7 @@ This scipt pulls third-party dependencies and execute cmake.
 | `--ocl-tile MxN[/MmMm]` | Register tile: `4x8` (default), `4x4`, `8x8`, or `8x16` (auto on AMD discrete GPUs). Optional `/64x64` or `/128x128` sets the macro (same as `--ocl-macro`) |
 | `--ocl-macro MxN` | Macro block: `64x64` or `128x128` (default `128x128`, independent of tile) |
 | `--ocl-issue MODE` | GEMM issue: `auto` (default), `broadcast` (B-scalar `mad`), or `packed` (per-C `dot4`) |
-| `--ocl-dot MODE` | Dot backend: `auto` (default; AMD sudot→sdot4→KHR→scalar), `sudot`, `sdot4`, `khr`, `force-khr`, `asm`, or `off` |
+| `--ocl-dot MODE` | Dot backend: `auto` (default; AMD sudot→sdot4→KHR→scalar), `sudot`, `sdot4`, `khr`, `force-khr`, `asm`, `wmma` (AMD gfx11/gfx12 matrix cores), `dpas` (Intel XMX, opt-in, implies `--ocl-tile 8x16`; see [`docs/opencl_issue_shape.md`](docs/opencl_issue_shape.md#intel-xmx-dpas---ocl-dot-dpas)), or `off` |
 | `--ocl-cpm-type T` | Broadcast accumulate type: `float` (default) or `int` |
 | `--ocl-lds on/off` | Stage A/B panels in `__local` (default `off`) |
 

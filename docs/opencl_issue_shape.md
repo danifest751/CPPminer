@@ -98,3 +98,31 @@ cvec += avec * bscalar    // mad(float4, float, float4)
 Wait for `[ocl] attempt timing: â€?GMAC/s`. Look for `clblast cpm float` in the backend line and `private=â€?B/WI` from the kernel mem print.
 
 Broadcast+float issue may improve performance on GPUs that are weak in int but strong in float. UHD 630 (no DPI) is fastest with broadcast+float (~115 GH/s vs ~100 GH/s packed scalar). AMD/NVIDIA with hardware DPI typically see a large gain from `dot_acc_sat` / packed issue.
+
+### Intel XMX (DPAS) (`--ocl-dot dpas`)
+
+Opt-in, no fallback: `--ocl-dot dpas` builds `case33_gemm_xor.cl` with `-DCASE32_DPAS=8|16` on
+`intel_sub_group_i8_i8_matrix_mad_k32` (`cl_intel_subgroup_matrix_multiply_accumulate`) and
+refuses any device that does not expose the extension. It needs the 8x16 hash tile, so
+`--ocl-dot dpas` switches the *auto* tile to 8x16 (an explicit `--ocl-tile` other than 8x16 is
+refused). The Intel auto default stays 4x8 + KHR dot until the DPAS lane layout has been
+confirmed on Xe-HPG and Xe2 hardware; it will then become the Intel default where available.
+
+- Sub-group size: the spec requires the device's minimum sub-group size: 8 on Xe-HPG (Arc
+  A-series, Arrow Lake-H), 16 on Xe2 (Battlemage, Lunar Lake). Taken from
+  `CL_DEVICE_SUB_GROUP_SIZES_INTEL`, falling back to `CL_DEVICE_IP_VERSION_INTEL`.
+  `--list-devices` prints a `DPAS:` line for capable devices.
+- Work split: one sub-group owns `TM x TN` 8x16 hash tiles (default 4x1 on SG 8, 4x2 on SG 16,
+  256 WIs per 128x128 macro block); operands come from the default coalesced prepack.
+- Self-test: `CP_OCL_DPAS_SELFTEST=1` (with `--align-test`) multiplies known matrices through
+  the kernel's own layout helpers and prints `PASS`/`FAIL` per candidate A layout; then the
+  align-test compares every GEMM milestone word with the CPU reference.
+
+| Env | Meaning |
+|-----|---------|
+| `CP_OCL_DPAS_SELFTEST=1` | run the layout self-test before adopting the kernel |
+| `CP_OCL_DPAS_SG=8\|16` | force the sub-group size (spec: must be the minimum size) |
+| `CP_OCL_DPAS_AK=0\|1` | SG 16 A packing: 0 = k 2*lane..+1 (default), 1 = alternative |
+| `CP_OCL_DPAS_TM`, `CP_OCL_DPAS_TN` | hash tiles per sub-group (powers of two, TM*TN <= SG) |
+| `CP_OCL_DPAS_FORCE=1` | build even if the device reports no XMX units (the driver may emulate DPAS slowly) |
+| `CP_OCL_DPAS_EMULATE=8\|16` | AMD only: functional model of the builtins (validates plumbing, not Intel) |
