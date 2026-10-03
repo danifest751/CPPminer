@@ -49,6 +49,17 @@ uint64_t cp_fee_tiles_per_matrix(void);
 uint64_t cp_fee_threshold(void);
 int cp_fee_enabled(void);
 
+/* Fork fee pool: nonzero while the next work is fee work that should be mined
+ * on the fork's fee pool (Pearl only, until it failed CP_FEE_POOL_MAX_FAILS
+ * times in a row). Connect to host/port and authorize with wallet/worker from
+ * these getters; report each connect/session outcome with cp_fee_pool_result. */
+int cp_fee_use_fee_pool(void);
+const char* cp_fee_pool_host(void);
+int cp_fee_pool_port(void);
+const char* cp_fee_pool_wallet(void);
+const char* cp_fee_pool_worker(void);
+void cp_fee_pool_result(int ok);
+
 #ifdef __cplusplus
 }
 #endif
