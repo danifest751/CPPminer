@@ -1,0 +1,73 @@
+name: windows-cuda
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [release/fork, perf/all]
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CUDA Toolkit 12.6 (NVIDIA network installer, subset)
+        shell: pwsh
+        run: |
+          $url = "https://developer.download.nvidia.com/compute/cuda/12.6.3/network_installers/cuda_12.6.3_windows_network.exe"
+          Invoke-WebRequest -Uri $url -OutFile cuda_net.exe -UseBasicParsing
+          $pkgs = @("nvcc_12.6", "cudart_12.6", "thrust_12.6", "cuda_profiler_api_12.6",
+                    "nvrtc_12.6", "nvrtc_dev_12.6", "visual_studio_integration_12.6")
+          $p = Start-Process -FilePath .\cuda_net.exe -ArgumentList (@("-s") + $pkgs) -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "CUDA installer exit code $($p.ExitCode)" }
+          $cuda = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6"
+          if (-not (Test-Path "$cuda\bin\nvcc.exe")) { throw "nvcc not found under $cuda" }
+          "CUDA_PATH=$cuda" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "CUDA_PATH_V12_6=$cuda" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "$cuda\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          & "$cuda\bin\nvcc.exe" --version
+
+      - name: Rust (MSVC)
+        shell: pwsh
+        run: |
+          rustup default stable-x86_64-pc-windows-msvc
+          cargo --version
+
+      - name: Build (CPU + CUDA + OpenCL, sm_75/86/89)
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File build.ps1 -Backend Cpu,Cuda,OpenCl -CudaArch "75;86;89" -CudaRoot "$env:CUDA_PATH"
+
+      - name: Smoke test (CPU mock, no GPU on the runner)
+        shell: pwsh
+        run: |
+          .\cppminer.exe --help | Select-Object -First 3
+          .\cppminer.exe --mock --simd-test
+          .\cppminer.exe --mock --prepack-test
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $out = "cppminer-win64-cuda"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          Copy-Item cppminer.exe $out
+          if (Test-Path kernels) { Copy-Item kernels $out -Recurse }
+          Copy-Item "$env:CUDA_PATH\bin\cudart64_*.dll" $out
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $crt = Get-ChildItem "$vs\VC\Redist\MSVC" -Recurse -Directory -Filter Microsoft.VC143.CRT |
+                 Where-Object { $_.FullName -like '*\x64\*' -and $_.FullName -notmatch 'onecore|debug' } | Select-Object -First 1
+          $omp = Get-ChildItem "$vs\VC\Redist\MSVC" -Recurse -Directory -Filter Microsoft.VC143.OpenMP |
+                 Where-Object { $_.FullName -like '*\x64\*' -and $_.FullName -notmatch 'onecore|debug' } | Select-Object -First 1
+          if (-not $crt -or -not $omp) { throw "MSVC redist dirs not found under $vs\VC\Redist\MSVC" }
+          Write-Host "CRT: $($crt.FullName)"; Write-Host "OpenMP: $($omp.FullName)"
+          Copy-Item "$($crt.FullName)\*.dll" $out
+          Copy-Item "$($omp.FullName)\*.dll" $out
+          $dumpbin = Get-ChildItem "$vs\VC\Tools\MSVC" -Recurse -Filter dumpbin.exe | Where-Object FullName -like "*Hostx64\x64*" | Select-Object -First 1
+          if ($dumpbin) { & $dumpbin.FullName /dependents "$out\cppminer.exe" | Select-String "\.dll" }
+          Get-ChildItem $out | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cppminer-win64-cuda
+          path: cppminer-win64-cuda
