@@ -162,6 +162,35 @@ def quantus_job_buffer(binary):
     return "Quantus long job id and queued job fit the current-job buffer"
 
 
+def quantus_submit_then_change(binary):
+    with PoolProbe(binary, ("--algo", "quantus")) as pool:
+        job = {"job_id": "quantus-submit", "mining_hash": "00" * 32,
+               "target": "ff" * 64, "extranonce": "12" * 32, "difficulty": 1}
+        pool.send({"id": pool.auth_id, "result": {"id": "qpow-session", "job": job}})
+        data = b""
+        while b"\n" not in data:
+            chunk = pool.connection.recv(4096)
+            assert chunk, pool.output()
+            data += chunk
+        share = json.loads(data.split(b"\n", 1)[0])
+        assert share["method"] == "submit", share
+        assert share["id"] > pool.auth_id, share
+        assert share["params"]["id"] == "qpow-session", share
+        assert share["params"]["job_id"] == job["job_id"], share
+        assert len(share["params"]["nonce"]) == 128, share
+        assert share["params"]["nonce"].startswith(job["extranonce"]), share
+        pool.send({"id": share["id"], "result": {"status": "OK"}, "error": None})
+        pool.send({"method": "job", "params": dict(job, job_id="quantus-after-share", target="00" * 64)})
+        until = time.monotonic() + 5
+        while "[qpow] mine job=quantus-after-share " not in pool.output() and time.monotonic() < until:
+            assert pool.process.poll() is None, pool.output()
+            time.sleep(0.01)
+        output = pool.output()
+        assert "[pool] submit response:" in output, output
+        assert "[qpow] mine job=quantus-after-share " in output, output
+    return "real Quantus CPU submits with the correct session/nonce and changes work after its ACK"
+
+
 def missing_authorize(binary):
     with PoolProbe(binary) as pool:
         pool.wait_reconnect(35, {"id": pool.auth_id + 999, "result": True})
@@ -401,6 +430,7 @@ if __name__ == "__main__":
             spaced_difficulty,
             invalid_pearl_jobs,
             proof_encoding_scope,
+            quantus_submit_then_change,
             quantus_early_job, quantus_rejected_login, quantus_missing_login,
             quantus_job_changes, active_job_change, changed_job_identity, quantus_job_buffer,
             rejected_authorize, missing_authorize, missing_first_job, job_before_authorize,
