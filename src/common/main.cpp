@@ -1328,7 +1328,7 @@ int main(int argc, char** argv)
 
     /* Offline mock skips the pool; no fee reconnects. */
     cp_fee_set_pool_host(pool_host);
-    cp_fee_init(wallet_global, g_mock ? 0 : 1, algo_sel);
+    cp_fee_init(wallet_global, (g_mock || g_no_fee) ? 0 : 1, algo_sel);
 
     if(algo_sel == CP_ALGO_QUANTUS){
         printf("[mode] algo=%s\n", cp_algo_name(algo_sel));
