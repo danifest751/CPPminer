@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 #include <thread>
 
@@ -116,6 +117,31 @@ static int gpu_a_mode(void)
         if(mode) printf("[gpu] EXPERIMENTAL signal A mode: %s\n", value);
     }
     return mode;
+}
+
+static int gpu_a_updates(size_t matrix_bytes)
+{
+    static int updates = 0;
+    if(!updates){
+        updates = K_DIM;
+        const char* value = getenv("CP_CUDA_A_UPDATES");
+        if(value && *value){
+            char* end = nullptr;
+            errno = 0;
+            const long parsed = strtol(value, &end, 10);
+            if(errno || *end || parsed < 1 || parsed > 1048576){
+                fprintf(stderr, "[gpu] CP_CUDA_A_UPDATES must be an integer in [1,1048576]\n");
+                exit(1);
+            }
+            updates = (int)parsed;
+        }
+        printf("[gpu] experimental A updates per attempt: %d\n", updates);
+    }
+    if((size_t)updates > matrix_bytes){
+        fprintf(stderr, "[gpu] CP_CUDA_A_UPDATES exceeds the number of signal bytes\n");
+        exit(1);
+    }
+    return updates;
 }
 
 static void gpu_a_cache_shutdown(void)
@@ -1262,8 +1288,9 @@ static int gpu_prepare_cached_attempt_a(GpuCtx* g, cudaStream_t st, uint8_t* h_p
         memcpy(h_pin, job_key, 32);
         CU_CHECK(cudaMemcpyAsync(g->d_job_key, h_pin, 32, cudaMemcpyHostToDevice, st));
     }else CU_CHECK(cudaMemcpyAsync(g->d_job_key, job_key, 32, cudaMemcpyHostToDevice, st));
-    cp_sparse_a_update_kernel<<<(K_DIM + 255) / 256, 256, 0, st>>>(
-        signal, m, K_DIM, rng_seed, mode == 2 ? cache->dirty : nullptr, leaves);
+    const int updates = gpu_a_updates(bytes);
+    cp_sparse_a_update_kernel<<<(updates + 255) / 256, 256, 0, st>>>(
+        signal, m, K_DIM, rng_seed, mode == 2 ? cache->dirty : nullptr, leaves, updates);
     CU_CHECK(cudaGetLastError());
     const int count = (leaves + CP_MT_THREADS - 1) / CP_MT_THREADS;
     if(mode == 2){

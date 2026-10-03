@@ -23,6 +23,7 @@ results cannot be reused across these attempts.
 | `CP_CUDA_A_MODE=sparse` | Persistent signal A, one random row/value write per column, full hashing. |
 | `CP_CUDA_A_MODE=incremental` | Same mutation strategy, persistent CV tree, dirty-path hashing. |
 | `CP_CUDA_A_CHECK=1` | Compare each experimental root and every witness subroot with full GPU hashing. Exclude this mode from performance measurements. |
+| `CP_CUDA_A_UPDATES=4096` | Experimental sparse/incremental write count; 1–1048576, capped by matrix size. Default remains 4096. |
 | `CP_CUDA_OVERLAP=0` | Serial preparation and scanning, exposing preparation costs. |
 | `CP_CUDA_OVERLAP=1` | Production default: next-A preparation overlaps current scanning. |
 
@@ -109,3 +110,9 @@ The original v0.5-fork.4 executable, wallet, pool, worker, environment and argum
 Recommendation: retain the prototype for a longer pool comparison and GPU memory instrumentation on hardware that supports Compute Sanitizer before considering a default change. The measured improvement is modest because production already overlaps preparation with scanning.
 
 Raw measurements: [CMP50 experiment results](benchmarks/cmp50-incremental-a-2026-10-04.json).
+
+The [extended optimization suite](pearl_optimization_suite.md) records the
+40-minute ABBA comparison, mutation-count sweep, stage ablations, exact
+factorization checks and separate warm-pool protocol model. It confirms a
+1.43% sustained fixed-work cache gain on this CMP50; changing mutation count
+does not provide a clear additional overlap-throughput gain.

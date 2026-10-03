@@ -5,16 +5,26 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <set>
 #include <vector>
 
 #define CHECK(call) do { cudaError_t e = (call); if(e != cudaSuccess){ \
     std::fprintf(stderr, "%s: %s\n", #call, cudaGetErrorString(e)); std::exit(1); } } while(0)
 
-static void run_case(int leaves, bool quick)
+static uint64_t host_splitmix64(uint64_t x)
+{
+    x += 0x9E3779B97F4A7C15ULL;
+    x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    x = (x ^ (x >> 27)) * 0x94D049BB133111EBULL;
+    return x ^ (x >> 31);
+}
+
+static void run_case(int leaves, bool quick, int requested_updates)
 {
     const size_t bytes = (size_t)leaves * D_B3_CHUNK;
     // Small cases exercise repeated updates to the same leaf/parent.
-    const int cols = 1024, rows = (int)(bytes / cols);
+    const int cols = bytes >= 4096 ? 4096 : 1024, rows = (int)(bytes / cols);
+    const int updates = (int)(bytes < (size_t)requested_updates ? bytes : requested_updates);
     const int count = (leaves + CP_MT_THREADS - 1) / CP_MT_THREADS;
     int8_t* signal;
     uint8_t *tree, *key_gpu, *subroots, *root, *reference_subroots;
@@ -32,6 +42,8 @@ static void run_case(int leaves, bool quick)
     CHECK(cudaMemset(dirty, 1, (size_t)2 * leaves * sizeof(unsigned)));
     CHECK(cudaMemcpy(key_gpu, key, 32, cudaMemcpyHostToDevice));
     std::vector<uint8_t> host(bytes), actual_subroots((size_t)count * 32), expected_subroots((size_t)count * 32);
+    std::vector<uint8_t> expected_signal(bytes, 0);
+    std::set<std::vector<uint8_t>> commitments;
     const int rounds = quick ? 8 : (leaves == 524288 ? 4 : 24);
     for(int round = 0; round < rounds; ++round){
         // Re-key the persistent signal halfway through without losing its bytes.
@@ -41,9 +53,21 @@ static void run_case(int leaves, bool quick)
             CHECK(cudaMemset(dirty, 1, (size_t)2 * leaves * sizeof(unsigned)));
         }
         // Round zero builds the all-zero tree; later rounds mutate/mark paths.
-        if(round)
-            cp_sparse_a_update_kernel<<<(cols + 255) / 256, 256>>>(
-                signal, rows, cols, (uint64_t)round * 0x9e3779b97f4a7c15ULL, dirty, leaves);
+        if(round){
+            const uint64_t seed = (uint64_t)round * 0x9e3779b97f4a7c15ULL;
+            std::set<size_t> writers;
+            for(int index = 0; index < updates; ++index){
+                const int col = index % cols;
+                const uint64_t position = host_splitmix64(seed ^ (uint64_t)col * 0x9E3779B97F4A7C15ULL);
+                const uint64_t random = host_splitmix64(seed ^ (uint64_t)index * 0x9E3779B97F4A7C15ULL);
+                const int row = ((uint32_t)position % rows + index / cols) % rows;
+                const size_t pos = (size_t)row * cols + col;
+                if(!writers.insert(pos).second){ std::fprintf(stderr, "Duplicate mutation writer\n"); std::exit(1); }
+                expected_signal[pos] = (uint8_t)(int8_t)((int)((random >> 32) & 127) - 64);
+            }
+            cp_sparse_a_update_kernel<<<(updates + 255) / 256, 256>>>(
+                signal, rows, cols, (uint64_t)round * 0x9e3779b97f4a7c15ULL, dirty, leaves, updates);
+        }
         cp_incremental_leaves_kernel<<<(leaves + 255) / 256, 256>>>(
             (const uint8_t*)signal, bytes, key_gpu, tree, dirty, leaves);
         for(int level = leaves / 2; level; level /= 2)
@@ -54,6 +78,7 @@ static void run_case(int leaves, bool quick)
         CHECK(cudaGetLastError());
         CHECK(cudaDeviceSynchronize());
         CHECK(cudaMemcpy(host.data(), signal, bytes, cudaMemcpyDeviceToHost));
+        if(host != expected_signal){ std::fprintf(stderr, "CPU mutation oracle mismatch\n"); std::exit(1); }
         uint8_t expected[32], actual[32];
         blake3_hasher hasher;
         blake3_hasher_init_keyed(&hasher, key);
@@ -63,6 +88,9 @@ static void run_case(int leaves, bool quick)
         if(std::memcmp(actual, expected, 32)){
             std::fprintf(stderr, "CPU root mismatch: leaves=%d round=%d\n", leaves, round);
             std::exit(1);
+        }
+        if(!commitments.insert(std::vector<uint8_t>(actual, actual + 32)).second && leaves >= 4096 && updates >= 256){
+            std::fprintf(stderr, "Repeated commitment in the multi-update case\n"); std::exit(1);
         }
         cp_keyed_chunk_roots_kernel<<<count, CP_MT_THREADS, CP_MT_SMEM_BYTES>>>(
             (const uint8_t*)signal, bytes, bytes, key_gpu, reference_subroots, leaves);
@@ -84,7 +112,7 @@ static void run_case(int leaves, bool quick)
     CHECK(cudaFree(signal)); CHECK(cudaFree(tree)); CHECK(cudaFree(dirty));
     CHECK(cudaFree(key_gpu)); CHECK(cudaFree(subroots)); CHECK(cudaFree(root));
     CHECK(cudaFree(reference_subroots));
-    std::printf("PASS leaves=%d rounds=%d: CPU roots, full GPU subroots, re-key, range, dirty flags\n", leaves, rounds);
+    std::printf("PASS leaves=%d updates=%d rounds=%d: CPU mutation oracle, distinct writers, CPU roots, full GPU subroots, re-key, range, dirty flags\n", leaves, updates, rounds);
     std::fflush(stdout);
 }
 
@@ -92,7 +120,8 @@ int main(int argc, char** argv)
 {
     const bool quick = argc == 2 && !std::strcmp(argv[1], "--quick");
     if(argc > 1 && !quick) return 1;
-    for(int leaves : {2, 4, 128, 256, 512, 4096, 32768, 524288})
-        if(!quick || leaves <= 4096) run_case(leaves, quick);
+    for(int updates : {1, 256, 1024, 4096, 16384})
+        for(int leaves : {2, 4, 128, 256, 512, 4096, 32768, 524288})
+            if(!quick || leaves <= 4096) run_case(leaves, quick, updates);
     return 0;
 }

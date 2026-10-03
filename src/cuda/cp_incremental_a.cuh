@@ -15,15 +15,21 @@ struct CpIncrementalA {
     bool ready = false;
 };
 
-/* Different columns always address different bytes, even if rows coincide.
+/* Updates visit columns first, then consecutive rows from each column's
+ * seeded row. With updates <= rows*cols, every writer has a distinct byte.
  * Dirty paths are marked before any hashing starts on the same stream. */
 __global__ void cp_sparse_a_update_kernel(int8_t* signal, int rows, int cols,
-                                         uint64_t seed, unsigned* dirty, int leaves)
+                                         uint64_t seed, unsigned* dirty, int leaves,
+                                         int updates)
 {
-    const int col = blockIdx.x * blockDim.x + threadIdx.x;
-    if(col >= cols) return;
-    const uint64_t random = cp_splitmix64(seed ^ (uint64_t)col * 0x9E3779B97F4A7C15ULL);
-    const int row = (int)((uint32_t)random % (unsigned)rows);
+    const int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if(index >= updates) return;
+    const int col = index % cols;
+    const uint64_t position_random = cp_splitmix64(seed ^ (uint64_t)col * 0x9E3779B97F4A7C15ULL);
+    const uint64_t random = index == col ? position_random :
+        cp_splitmix64(seed ^ (uint64_t)index * 0x9E3779B97F4A7C15ULL);
+    const int row = (int)(((uint32_t)position_random % (unsigned)rows +
+                          (unsigned)(index / cols)) % (unsigned)rows);
     const size_t pos = (size_t)row * cols + col;
     signal[pos] = (int8_t)((int)((random >> 32) & 127) - 64);
     if(dirty){
