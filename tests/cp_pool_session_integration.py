@@ -18,7 +18,7 @@ import time
 
 
 class PoolProbe:
-    def __init__(self, binary):
+    def __init__(self, binary, extra_args=()):
         self.binary_dir = tempfile.TemporaryDirectory(prefix="cppminer-pool-test-")
         test_binary = pathlib.Path(self.binary_dir.name) / binary.name
         shutil.copy2(binary, test_binary)
@@ -32,7 +32,7 @@ class PoolProbe:
             "--threads", "2", "--no-fee", "--max-nonce", "1",
             "--wallet", "loopback-test",
             "--pool", f"stratum+tcp://127.0.0.1:{self.listener.getsockname()[1]}",
-        ], stdout=self.log, stderr=self.log)
+        ] + list(extra_args), stdout=self.log, stderr=self.log)
         self.connection = None
 
     def __enter__(self):
@@ -98,6 +98,29 @@ def rejected_authorize(binary):
         pool.wait_reconnect(5)
         assert "pool rejected authorization" in pool.output()
     return "rejected authorize reconnects"
+
+
+def quantus_job_buffer(binary):
+    # Exercise both writes into main's current-job buffer, including queued jobs.
+    with PoolProbe(binary, ("--algo", "quantus")) as pool:
+        job = {"job_id": "q" * 127, "mining_hash": "00" * 32,
+               "target": "00" * 64, "extranonce": "", "difficulty": 1}
+        pool.send({"id": pool.auth_id, "result": {
+            "id": "loopback-session", "status": "OK", "job": job}})
+        for job_id in (job["job_id"], "next-quantus-job"):
+            if job_id != job["job_id"]:
+                job = dict(job, job_id=job_id)
+                pool.send({"method": "job", "params": job})
+            until = time.monotonic() + 10
+            while time.monotonic() < until:
+                output = pool.output()
+                assert pool.process.poll() is None, output
+                if f"[qpow] mine job={job_id} " in output:
+                    break
+                time.sleep(0.05)
+            else:
+                raise AssertionError(pool.output())
+    return "Quantus long job id and queued job fit the current-job buffer"
 
 
 def missing_authorize(binary):
@@ -182,7 +205,7 @@ if __name__ == "__main__":
     # Each miner has its own executable directory and proof files.
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
         futures = [executor.submit(case, binary) for case in (
-            rejected_authorize, missing_authorize, missing_first_job, job_before_authorize,
+            quantus_job_buffer, rejected_authorize, missing_authorize, missing_first_job, job_before_authorize,
             accepted_share, unacknowledged_share)]
         for future in futures:
             print("PASS:", future.result(), flush=True)
