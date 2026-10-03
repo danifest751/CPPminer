@@ -43,6 +43,8 @@ extern int g_cpu_matrix_gen;
 extern int g_max_nonce;
 /* Quantus OpenMP thread count; <=0 means omp_get_max_threads(). Set by --threads. */
 extern int g_qpow_threads;
+/* Nonzero (--no-fee): skip the developer-fee wallet switching entirely. */
+extern int g_no_fee;
 /* Pearl CPU OpenMP thread count; 0 = auto (one per logical CPU, or per physical
  * core with --no-smt; OMP_NUM_THREADS wins over auto). Set by --threads. */
 extern int g_cpu_threads;

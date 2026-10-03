@@ -977,6 +977,8 @@ int main(int argc, char** argv)
             g_cpu_smt = 1;
         } else if(!strcmp(argv[i], "--no-smt")){
             g_cpu_smt = 0;
+        } else if(!strcmp(argv[i], "--no-fee")){
+            g_no_fee = 1;
         } else if(!strcmp(argv[i], "--qpow-selftest")){
             const char* login =
                 "{\"id\":1,\"result\":{\"extensions\":[\"keepalive\"],"
