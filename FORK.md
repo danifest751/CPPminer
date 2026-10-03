@@ -6,13 +6,15 @@ This fork tracks [1640675651/CPPminer](https://github.com/1640675651/CPPminer) `
 
 | Kind | Naming | Based on | Goes upstream? |
 |---|---|---|---|
-| Upstream PRs | `fix/*`, `perf/*`, `feat/*`, `build/*` | upstream `dev` | Offered as a PR; the maintainer decides |
+| Changes | `fix/*`, `perf/*`, `feat/*`, `build/*` | upstream `dev` or `release/fork` | Only when the fork owner explicitly requests an upstream PR |
 | Fork-only | `fork/*` | upstream `dev` | No — kept here on purpose |
 | Release | `release/fork` | merge of the above | No — public builds are cut from it |
 | Personal | `perf/all` | merge of the above | No — the maintainer's own rigs |
 | Front page | `main` | fast-forwarded to `release/fork` at each release | No — it only shows the current release on the repository page |
 
-A release does not wait for upstream: every PR branch is in `release/fork` whether or not it has been merged upstream. When upstream merges or changes something, `dev` is merged into `release/fork` and `perf/all` (merge, never rebase — those branches are published).
+A release does not wait for upstream: selected, tested change branches are merged into `release/fork` independently of upstream acceptance. When upstream merges or changes something, `dev` is merged into `release/fork` and `perf/all` (merge, never rebase — those branches are published).
+
+All development and releases are maintained in this fork. A branch name does not authorize an upstream PR. For pushes that must not consume GitHub Actions minutes, include `[skip ci]` in the pushed tip commit (including a merge commit); release packages can be built locally.
 
 ## Fork-only branches
 
@@ -27,7 +29,7 @@ A release does not wait for upstream: every PR branch is in `release/fork` wheth
 git fetch origin                     # upstream
 git switch release/fork
 git merge origin/dev                 # upstream changes
-git merge <new PR branches> <fork/* branches>
+git merge <tested change branches> <fork/* branches>
 git push fork release/fork           # CI builds the Windows zip
 git tag v0.5-fork.N && git push fork v0.5-fork.N
 git push fork release/fork:main       # front page shows the release

@@ -1,6 +1,28 @@
 # Changelog
 
+## v0.5-fork.4
+- Pool session recovery: authorization/first-job deadlines, per-request submit ACK tracking and oldest-share timeout.
+- Bounded latest-job delivery for Pearl and Quantus, complete work identities, preserved early jobs and cancellation across the idle/active transition.
+- Connection-local Pearl difficulty and immutable job targets; strict JSON, Unicode, authorization and numeric-field validation.
+- Quantus login correlation, full-width sequence parsing and final cancellation/connection checks before nonce submission.
+- Correct gzip negotiation and recovery from failed compression without sending the wrong encoding.
+- In-memory proof verification, including targetless jobs; checked dry-run diagnostics scoped to process and job.
+- Explicit backend/resource failure exits, bounded multi-address TCP connection attempts and monotonic deadlines/rates.
+- Strict command-line validation, local regression coverage and pool agent `cppminer/0.5-fork.4`.
+- Detailed release notes: [v0.5-fork.4](docs/releases/v0.5-fork.4.md).
+
 ## v0.5 (tentative)
+- Pearl parses difficulty notifications with arbitrary JSON whitespace and dispatches exact method names. Reject invalid explicit targets, empty/oversized job IDs and invalid headers before starting work; retain object and legacy array notifications.
+- Quantus rechecks cancellation, full work identity and connection state immediately before submitting a found nonce; disconnected sessions do not start queued work.
+- Pearl negotiates gzip only from a direct authorize-response type or a direct result.type, ignoring unrelated nested metadata (outer type takes precedence).
+- Quantus work identity includes the full mining hash, target and extranonce; equivalent hex casing remains a duplicate.
+- Quantus login matches the request ID, rejects explicit errors/failed status and preserves the latest early job. Login and initial work share a fixed 30-second deadline.
+- When a pool requires gzip proofs, a compression/allocation failure drops that share instead of submitting the wrong encoding; the proof queue returns its buffers and processes subsequent shares.
+- Fix Quantus current-job buffer overflow and make job handlers retain array bounds.
+- Pearl work identity includes the complete header, effective target and certificate version; ignore true duplicates and drop cancelled proofs after building/encoding. Clear queued work on reconnect.
+- Pool TCP connections try all resolved IPv4/IPv6 addresses within a shared 10-second budget, reserving time for later addresses. Validate pool URI host/port lengths and accept bracketed IPv6. A broken connection returns a send error instead of terminating Linux mining with SIGPIPE.
+- Use monotonic clocks for mining rates and pool deadlines on every platform.
+- Pool recovery: track each share ACK by JSON-RPC id before sending, enforce the oldest unacknowledged share's 60-second deadline, and reconnect on rejected authorization or missing authorization/first job (30 seconds each). Fee-pool handshake failures trigger the existing fallback. Add deterministic session tests and loopback integration tests.
 - Experimental OneDNN backend for intel GPU
 - Fix OpenCL dot product extension on intel GPU
 - Shrink opencl macro size to 64x64 in 4x8 tile mode, prevent to many work item per work group 

@@ -28,7 +28,7 @@ struct ShareSnapshot {
     uint64_t tiles_since_prev = 0;
     double interval_sec = 0.0;
 
-    char job_key[320]{};
+    char job_key[CP_JOB_KEY_CAP]{};
     char job_id[128]{};
     char target_hex[80]{};
     uint8_t header[INCOMPLETE_HEADER_BYTES]{};
@@ -43,75 +43,29 @@ struct ShareSnapshot {
     CpShareWitness *witness = nullptr;
 };
 
-static int verify_proof_file(const char *hdr_path, const char *target_hex, const char *proof_path,
-                             uint32_t cert_version) {
-    uint8_t header[INCOMPLETE_HEADER_BYTES];
+static int verify_snapshot(const ShareSnapshot& snap, const char* b64, size_t size,
+                           uint32_t cert_version)
+{
     uint8_t target_be[32];
-    char errbuf[4096];
-    char *b64 = nullptr;
-    size_t cap = 0;
-    size_t n = 0;
-    FILE *pf = nullptr;
+    char errbuf[4096] = {};
+    if(cp_hex_to_bytes(snap.target_hex, target_be, sizeof(target_be)) != sizeof(target_be)){
+        fprintf(stderr, "verify: missing or invalid job target\n");
+        return -1;
+    }
+    const int rc = cp_proof_verify(snap.header, snap.header_len, (const uint8_t*)b64, size,
+                                    target_be, cert_version, errbuf, sizeof(errbuf));
+    if(rc) fprintf(stderr, "verify FAIL: %s\n", errbuf[0] ? errbuf : "unknown");
+    return rc;
+}
 
-    if (!target_hex || !target_hex[0]) {
-        return -1;
-    }
-
-    FILE *hf = fopen(hdr_path, "rb");
-    if (!hf) {
-        perror("verify: header open");
-        return -1;
-    }
-    if (fread(header, 1, sizeof(header), hf) != sizeof(header)) {
-        fprintf(stderr, "verify: header must be %d bytes\n", INCOMPLETE_HEADER_BYTES);
-        fclose(hf);
-        return -1;
-    }
-    fclose(hf);
-
-    if (cp_hex_to_bytes(target_hex, target_be, 32) != 32) {
-        fprintf(stderr, "verify: invalid target hex\n");
-        return -1;
-    }
-
-    pf = fopen(proof_path, "rb");
-    if (!pf) {
-        perror("verify: proof open");
-        return -1;
-    }
-    fseek(pf, 0, SEEK_END);
-    const long fsz = ftell(pf);
-    fseek(pf, 0, SEEK_SET);
-    if (fsz <= 0 || fsz > (long)PLAIN_PROOF_B64_MAX) {
-        fprintf(stderr, "verify: invalid proof size %ld\n", fsz);
-        fclose(pf);
-        return -1;
-    }
-    cap = (size_t)fsz + 1;
-    b64 = (char *)malloc(cap);
-    if (!b64) {
-        fclose(pf);
-        return -1;
-    }
-    n = fread(b64, 1, (size_t)fsz, pf);
-    fclose(pf);
-    if (n != (size_t)fsz) {
-        free(b64);
-        return -1;
-    }
-    while (n > 0 && (b64[n - 1] == '\n' || b64[n - 1] == '\r')) {
-        b64[--n] = 0;
-    }
-
-    errbuf[0] = 0;
-    if (cp_proof_verify(header, sizeof(header), (const uint8_t *)b64, n, target_be, cert_version,
-                        errbuf, sizeof(errbuf)) != 0) {
-        fprintf(stderr, "verify FAIL: %s\n", errbuf[0] ? errbuf : "unknown");
-        free(b64);
-        return -1;
-    }
-    free(b64);
-    return 0;
+static bool write_diagnostic(const char* path, const void* data, size_t size)
+{
+    FILE* file = path ? fopen(path, "wb") : nullptr;
+    if(!file){ perror("proof diagnostic open"); return false; }
+    const bool written = fwrite(data, 1, size, file) == size;
+    const bool closed = fclose(file) == 0;
+    if(!written || !closed) fprintf(stderr, "proof diagnostic write failed: %s\n", path);
+    return written && closed;
 }
 
 struct CpShareQueueImpl {
@@ -130,7 +84,7 @@ struct CpShareQueueImpl {
     int8_t *returned_a = nullptr;
     int8_t *returned_bt = nullptr;
     CpShareJobCtx job_ctx{};
-    char job_key[320]{};
+    char job_key[CP_JOB_KEY_CAP]{};
     std::atomic<int> last_outcome{CP_SHARE_OUTCOME_NONE};
 
     void worker_main();
@@ -240,7 +194,7 @@ void CpShareQueueImpl::process_snapshot(ShareSnapshot *snap) {
         return;
     }
 
-    if (!cp_job_key_matches(snap->job_key)) {
+    if (cp_job_should_cancel() || !cp_job_key_matches(snap->job_key)) {
         printf("[plain] stale share nonce=%llu dropped (job changed)\n",
                (unsigned long long)snap->nonce);
         fflush(stdout);
@@ -287,15 +241,7 @@ void CpShareQueueImpl::process_snapshot(ShareSnapshot *snap) {
         return;
     }
 
-    if (g_dry_run || g_plain_verify) {
-        FILE *pf = fopen(job_ctx.proof_path, "wb");
-        if (pf) {
-            fwrite(b64, 1, (size_t)bn, pf);
-            fclose(pf);
-        }
-    }
-
-    if (!cp_job_key_matches(snap->job_key)) {
+    if (cp_job_should_cancel() || !cp_job_key_matches(snap->job_key)) {
         printf("[plain] stale share nonce=%llu dropped before verify/submit\n",
                (unsigned long long)snap->nonce);
         fflush(stdout);
@@ -307,10 +253,9 @@ void CpShareQueueImpl::process_snapshot(ShareSnapshot *snap) {
     }
 
     double proof_verify_sec = 0.0;
-    if (g_plain_verify && snap->target_hex[0]) {
+    if (g_plain_verify) {
         const double verify_started = cp_now_sec();
-        if (verify_proof_file(job_ctx.hdr_path, snap->target_hex, job_ctx.proof_path,
-                              job_ctx.cert_version) != 0) {
+        if (verify_snapshot(*snap, b64, (size_t)bn, job_ctx.cert_version) != 0) {
             printf("[plain] verify failed (nonce=%llu cert_version=%u)\n",
                    (unsigned long long)snap->nonce, (unsigned)job_ctx.cert_version);
             fflush(stdout);
@@ -345,33 +290,40 @@ void CpShareQueueImpl::process_snapshot(ShareSnapshot *snap) {
      * gzip-compressed (base64 of the gzip stream in the same plain_proof field).
      * Dry-run/mock also compress, to report what gzip buys on this backend. */
     char *gz_b64 = nullptr;
-    if (g_pool_proof_gzip || g_dry_run) {
+    const int proof_gzip = cp_pool_proof_gzip();
+    if (proof_gzip || g_dry_run) {
         gz_b64 = (char *)malloc(PLAIN_PROOF_B64_MAX);
         if (gz_b64) {
             errbuf[0] = 0;
             const double gz_started = cp_now_sec();
             if (cp_proof_gzip_b64(b64, gz_b64, PLAIN_PROOF_B64_MAX, errbuf, sizeof(errbuf)) != 0) {
-                printf("[plain] proof gzip failed (nonce=%llu): %s%s\n",
-                       (unsigned long long)snap->nonce, errbuf[0] ? errbuf : "unknown",
-                       g_pool_proof_gzip ? " - submitting plain base64" : "");
+                printf("[plain] proof gzip failed (nonce=%llu): %s\n",
+                       (unsigned long long)snap->nonce, errbuf[0] ? errbuf : "unknown");
                 free(gz_b64);
                 gz_b64 = nullptr;
             } else {
                 printf("[plain] proof gzip: %d -> %zu chars (%.1fx, %.3fs)%s\n", bn,
                        strlen(gz_b64), (double)bn / (double)(strlen(gz_b64) ? strlen(gz_b64) : 1),
                        cp_now_sec() - gz_started,
-                       g_pool_proof_gzip ? "" : " (not submitted compressed: pool is not v2)");
+                       proof_gzip ? "" : " (not submitted compressed: pool is not v2)");
             }
             fflush(stdout);
+        } else {
+            fprintf(stderr, "[plain] OOM proof gzip buffer (nonce=%llu)\n",
+                    (unsigned long long)snap->nonce);
         }
     }
-    const char *submit_b64 = (g_pool_proof_gzip && gz_b64) ? gz_b64 : b64;
 
     if (g_dry_run) {
-        printf("[plain] dry-run: proof saved to %s (nonce=%llu)\n", job_ctx.proof_path,
-               (unsigned long long)snap->nonce);
+        const bool header_saved = write_diagnostic(job_ctx.hdr_path, snap->header, snap->header_len);
+        const bool proof_saved = write_diagnostic(job_ctx.proof_path, b64, (size_t)bn);
+        if(header_saved && proof_saved)
+            printf("[plain] dry-run: proof saved to %s (nonce=%llu)\n", job_ctx.proof_path,
+                   (unsigned long long)snap->nonce);
+        else
+            fprintf(stderr, "[plain] dry-run: could not save proof diagnostics\n");
         fflush(stdout);
-        set_outcome(CP_SHARE_OUTCOME_OK);
+        set_outcome(header_saved && proof_saved ? CP_SHARE_OUTCOME_OK : CP_SHARE_OUTCOME_PROOF_FAIL);
         free(gz_b64);
         free(b64);
         return_snapshot_matrices(snap);
@@ -388,6 +340,31 @@ void CpShareQueueImpl::process_snapshot(ShareSnapshot *snap) {
         return;
     }
 
+    /* The pool negotiated gzip: plain base64 is not a valid fallback.
+     * Drop only this proof and return the matrices so mining can continue. */
+    if (proof_gzip && !gz_b64) {
+        printf("[plain] share nonce=%llu dropped: pool requires gzip\n",
+               (unsigned long long)snap->nonce);
+        fflush(stdout);
+        set_outcome(CP_SHARE_OUTCOME_PROOF_FAIL);
+        free(b64);
+        return_snapshot_matrices(snap);
+        share_snapshot_delete(snap);
+        return;
+    }
+    const char *submit_b64 = proof_gzip ? gz_b64 : b64;
+
+    /* Verification/compression may take long enough for a new job to arrive. */
+    if (cp_job_should_cancel() || !cp_job_key_matches(snap->job_key)) {
+        printf("[plain] stale share nonce=%llu dropped before submit\n",
+               (unsigned long long)snap->nonce);
+        set_outcome(CP_SHARE_OUTCOME_DROPPED);
+        free(gz_b64);
+        free(b64);
+        return_snapshot_matrices(snap);
+        share_snapshot_delete(snap);
+        return;
+    }
     const int submit_id = (*job_ctx.msg_id)++;
     if (!cp_pool_send_plain_proof_submit(job_ctx.sock, submit_id, snap->job_id, submit_b64, hs)) {
         printf("[plain] submit failed (nonce=%llu)\n", (unsigned long long)snap->nonce);
@@ -400,7 +377,6 @@ void CpShareQueueImpl::process_snapshot(ShareSnapshot *snap) {
         return;
     }
 
-    cp_pool_set_submit_inflight(1);
     printf("[net] plain_proof submit sent (nonce=%llu%s)\n", (unsigned long long)snap->nonce,
            submit_b64 == gz_b64 ? ", gzip" : "");
     cp_pool_log_share_submit_outcome();

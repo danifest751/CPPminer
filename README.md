@@ -11,7 +11,7 @@ This is a fork of [1640675651/CPPminer](https://github.com/1640675651/CPPminer) 
 - support for the Kryptex and HeroMiners pools;
 - ready-to-run Windows and Linux builds.
 
-Everything the fork changes in the miner itself is also offered upstream as [pull requests](https://github.com/1640675651/CPPminer/pulls?q=is%3Apr+author%3Adanifest751).
+Changes are developed in this fork. Selected changes are offered upstream as [pull requests](https://github.com/1640675651/CPPminer/pulls?q=is%3Apr+author%3Adanifest751).
 
 **Download:** [latest release](https://github.com/danifest751/CPPminer/releases/latest) — Windows x64 zip, Linux x64 tar.gz.
 
@@ -160,6 +160,12 @@ cppminer --backend cuda --mock              # mines offline until the first shar
 
 **Proof compression.** Kryptex and HeroMiners speak the gzip stratum v2 ([spec](https://gist.github.com/maxmalysh/eaaf4332dbc5ca99d0a78f24a733fffe)), and the miner enables it automatically when the pool answers `"type":"v2"`. A GPU share then takes ~40 KB instead of ~130 KB.
 
+**Connection recovery.** The miner waits up to 30 seconds for an accepted authorization and another 30 seconds for a valid first job. Rejected authorization or a missing response/job causes a reconnect; failures on the fee pool count toward its three-attempt fallback. Each submitted share is tracked by its JSON-RPC id and must receive a reply within 60 seconds. New shares and unrelated replies do not extend that deadline.
+
+**Work delivery.** Pearl and Quantus keep one pending job: the latest valid job replaces older pending work and cancels a different active job. A job received before authorization is retained. Pearl difficulty resets to 32 for each connection; a targetless job keeps the difficulty and computed target from the moment it arrived. Malformed JSON and invalid authorization results are rejected. Backend or resource failures terminate the miner with status 1 so a supervisor can restart it. See [pool reliability changes and tests](docs/pool_reliability.md).
+
+TCP connection attempts share a 10-second budget across the pool's resolved IPv4/IPv6 addresses, with time reserved for later addresses. DNS resolution uses the system resolver and is outside that budget. Timeouts and hashrate measurements use a monotonic clock, so adjusting the system clock does not change them.
+
 **Russia.** Some Russian ISPs let a connection to foreign hosting pass its first ~15 KB and then drop every packet. Login and jobs work, but shares never arrive, and the pool shows no hashrate. Use `prl-ru.kryptex.network` or `ru.pearl.herominers.com`.
 
 **How many shares to expect.** At the default difficulty 2097152 (Kryptex, HeroMiners) one share is expected every `2^53 / hashrate` seconds:
@@ -215,7 +221,7 @@ OpenCL uses one device per process. For several AMD/Intel GPUs, start one miner 
 
 | Option | Description |
 |---|---|
-| `--pool URI` | `stratum+tcp://host:port` |
+| `--pool URI` | `stratum+tcp://host:port` (IPv6: `stratum+tcp://[address]:port`) |
 | `--wallet ADDR` | Wallet address or pool account |
 | `--worker NAME` | Worker name (default `rig01`) |
 | `--pool-pass STR` | `mining.authorize` password (default `x`). Kryptex: `d=N` sets the share difficulty (default 2097152) |
@@ -283,8 +289,10 @@ These backends come from upstream and are not in the release builds; build them 
 | `--simd-test` | Compare every CPU SIMD kernel with scalar (use with `--mock`) |
 | `--prepack-test` | Check CPU prepack modes against each other |
 | `--profile-scan [N]`, `--profile-prep [N]` | Time GEMM vs jackpot, or OpenCL matrix prep |
-| `--dry-run` | Build proofs but do not submit |
+| `--dry-run` | Build proofs without submitting; save `pp_<pid>_<job>_header.bin` and `pp_<pid>_<job>_proof.b64` beside the executable |
 | `--verify` | Verify each proof in-process before submitting |
+
+Normal mining keeps proof data in memory; `--verify` checks it before submitting. Neither writes proof diagnostics. `--dry-run` requires a writable executable directory and reports failed diagnostic writes. Unknown options, missing values, malformed numbers and values that would be truncated are rejected before connecting to a pool. Value options also accept `--option=value`; `--threads 0` selects automatic thread count and `--max-nonce 0` removes the nonce limit.
 
 ---
 

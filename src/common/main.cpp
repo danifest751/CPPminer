@@ -2,6 +2,7 @@
  * CPminer 鈥?cross-platform LuckyPool plain_proof miner (CPU / CUDA / 鈥?.
  */
 #include "cp_config.h"
+#include "cp_cli.h"
 #include "cp_algo.h"
 #include "cp_fee.h"
 #include "cp_mine.h"
@@ -14,6 +15,7 @@
 #include "cp_share_queue.h"
 #include "cp_state.h"
 #include "cp_util.h"
+#include "cp_tcp.h"
 #include "cp_worker.h"
 #if defined(CP_ENABLE_OPENCL) && CP_ENABLE_OPENCL
 #include "cp_qpow_opencl_worker.h"
@@ -58,7 +60,7 @@ static void print_usage(void)
     printf("  --pool URI         stratum+tcp://host:port (required for quantus unless --mock)\n");
     printf("  --wallet ADDR      wallet address\n");
     printf("  --worker NAME      worker name (default: rig01)\n");
-    printf("  --agent NAME       agent string (default: cpminer/1.0)\n");
+    printf("  --agent NAME       agent string (default: cppminer/0.5-fork.4)\n");
     printf("  --pool-pass STR    mining.authorize password (default: x); Kryptex custom\n");
     printf("                     share difficulty: d=N (default d=2097152)\n");
     printf("  --backend NAME     cpu");
@@ -197,88 +199,39 @@ static void print_usage(void)
     printf("                       from SMT, AVX512-VNNI gains ~30%% on Zen4)\n");
 }
 
-static int handle_notify_line(const char* line, int* msg_id, char* cur_job_key)
+static int handle_pearl_job(const CpPearlJob& job, int* msg_id,
+                            char (&cur_job_key)[CP_JOB_KEY_CAP])
 {
-    char job_id[128] = {0};
-    char header_hex[320] = {0};
-    char target_hex[80] = {0};
-    uint32_t cert_version = 0;
-    if(!cp_pool_parse_notify(line, job_id, sizeof(job_id),
-                            header_hex, sizeof(header_hex),
-                            target_hex, sizeof(target_hex),
-                            &cert_version)){
-        printf("[pool] mining.notify parse failed\n"); fflush(stdout);
-        return CP_JOB_NONE;
-    }
-    cert_version = cp_resolve_cert_version(cert_version);
-
-    char job_key[320];
-    snprintf(job_key, sizeof(job_key), "%s:%.16s", job_id, header_hex);
-    if(!strcmp(job_key, cur_job_key)){
-        printf("[pool] duplicate notify ignored job=%s\n", job_id); fflush(stdout);
-        return CP_JOB_NONE;
-    }
-    strncpy(cur_job_key, job_key, sizeof(cur_job_key) - 1);
-    cur_job_key[319] = 0;
-
-    uint8_t header[INCOMPLETE_HEADER_BYTES];
-    int hlen = cp_hex_to_bytes(header_hex, header, INCOMPLETE_HEADER_BYTES);
-    if(hlen != INCOMPLETE_HEADER_BYTES){
-        printf("[pool] bad header length %d (need %d)\n", hlen, INCOMPLETE_HEADER_BYTES);
+    if(!strcmp(job.job_key, cur_job_key)){
+        printf("[pool] duplicate notify ignored job=%s\n", job.job_id);
         fflush(stdout);
         return CP_JOB_NONE;
     }
-
-    uint32_t tgt[8];
-    memset(tgt, 0, sizeof(tgt));
-    if(target_hex[0] && cp_be_target_hex_to_le_words(target_hex, tgt)){
+    memcpy(cur_job_key, job.job_key, strlen(job.job_key) + 1);
+    char header_hex[INCOMPLETE_HEADER_BYTES * 2 + 1];
+    cp_bin_to_hex(job.header, sizeof(job.header), header_hex);
+    if(job.has_pool_target)
         printf("[job] notify id=%s header=%.16s... pool_target (unscaled) cert_version=%u\n",
-               job_id, header_hex, (unsigned)cert_version);
-    } else {
-        cp_target_from_difficulty(cp_pool_difficulty(), tgt);
+               job.job_id, header_hex, (unsigned)job.cert_version);
+    else
         printf("[job] notify id=%s header=%.16s... diff=%.1f (no target in notify) cert_version=%u\n",
-               job_id, header_hex, cp_pool_difficulty(), (unsigned)cert_version);
-    }
-    fflush(stdout);
-
-    printf("[plain] mining job=%s%s...\n", job_id,
+               job.job_id, header_hex, job.difficulty, (unsigned)job.cert_version);
+    printf("[plain] mining job=%s%s...\n", job.job_id,
            cp_fee_next_is_dev() ? " [DEV FEE]" : "");
     fflush(stdout);
-    int rc = cp_mine_job(header, hlen, job_id, target_hex, tgt, cert_version,
-                         cp_pool_socket(), msg_id);
-    if(rc == CP_JOB_FEE_SWITCH){
-        printf("[fee] pausing job for wallet switch\n"); fflush(stdout);
-        return rc;
-    }
+    const int rc = cp_mine_job(job.header, sizeof(job.header), job.job_id, job.target_hex,
+                               job.tgt, job.cert_version, cp_pool_socket(), msg_id);
     if(rc == CP_JOB_CANCELLED){
-        printf("[plain] job ended (new notify or disconnect)\n"); fflush(stdout);
-    } else if(rc == CP_JOB_NONE){
-        printf("[plain] job stopped (max_nonce or error)\n"); fflush(stdout);
+        cur_job_key[0] = 0;
+        printf("[plain] job ended (new notify or disconnect)\n");
+    }else if(rc == CP_JOB_NONE){
+        printf("[plain] job stopped (max_nonce)\n");
     }
-
-    CpPendingJob pj;
-    while(rc == CP_JOB_CANCELLED && cp_pool_take_pending_job(&pj)){
-        strncpy(cur_job_key, pj.job_key, 320);
-        cur_job_key[319] = 0;
-        printf("[plain] mining queued job=%s%s...\n", pj.job_id,
-               cp_fee_next_is_dev() ? " [DEV FEE]" : "");
-        fflush(stdout);
-        rc = cp_mine_job(pj.header, INCOMPLETE_HEADER_BYTES, pj.job_id,
-                         pj.target_hex, pj.tgt, pj.cert_version, cp_pool_socket(), msg_id);
-        if(rc == CP_JOB_FEE_SWITCH){
-            printf("[fee] pausing job for wallet switch\n"); fflush(stdout);
-            return rc;
-        }
-        if(rc == CP_JOB_CANCELLED){
-            printf("[plain] job ended (new notify or disconnect)\n"); fflush(stdout);
-        } else if(rc == CP_JOB_NONE){
-            printf("[plain] job stopped (max_nonce or error)\n"); fflush(stdout);
-        }
-    }
+    fflush(stdout);
     return rc;
 }
 
-static int handle_qpow_job(const CpQpowJob* job, int* msg_id, char* cur_job_key)
+static int handle_qpow_job(const CpQpowJob* job, int* msg_id, char (&cur_job_key)[CP_JOB_KEY_CAP])
 {
     if(!job || !job->job_id[0]) return CP_JOB_NONE;
     if(!strcmp(job->job_key, cur_job_key)){
@@ -286,48 +239,22 @@ static int handle_qpow_job(const CpQpowJob* job, int* msg_id, char* cur_job_key)
         fflush(stdout);
         return CP_JOB_NONE;
     }
-    strncpy(cur_job_key, job->job_key, 319);
-    cur_job_key[319] = 0;
-
+    memcpy(cur_job_key, job->job_key, strlen(job->job_key) + 1);
     printf("[qpow] job id=%s mining_hash=%.16s... diff=%.0f\n", job->job_id,
-           job->job_key + (int)strlen(job->job_id) + 1, job->difficulty);
+           job->job_key + strlen(job->job_id) + 1, job->difficulty);
     fflush(stdout);
-
-    int rc = cp_qpow_mine_job(job, cp_pool_socket(), msg_id, worker_global);
-    if(rc == CP_JOB_FEE_SWITCH){
-        printf("[fee] pausing quantus job for wallet switch\n");
-        fflush(stdout);
-        return rc;
-    }
+    const int rc = cp_qpow_mine_job(job, cp_pool_socket(), msg_id, worker_global);
     if(rc == CP_JOB_CANCELLED){
+        cur_job_key[0] = 0;
         printf("[qpow] job ended (new job or disconnect)\n");
         fflush(stdout);
-    }
-
-    CpQpowJob pj;
-    while(rc == CP_JOB_CANCELLED && cp_qpow_pool_take_pending(&pj)){
-        strncpy(cur_job_key, pj.job_key, 319);
-        cur_job_key[319] = 0;
-        printf("[qpow] mining queued job=%s%s...\n", pj.job_id,
-               cp_fee_next_is_dev() ? " [DEV FEE]" : "");
-        fflush(stdout);
-        rc = cp_qpow_mine_job(&pj, cp_pool_socket(), msg_id, worker_global);
-        if(rc == CP_JOB_FEE_SWITCH){
-            printf("[fee] pausing quantus job for wallet switch\n");
-            fflush(stdout);
-            return rc;
-        }
-        if(rc == CP_JOB_CANCELLED){
-            printf("[qpow] job ended (new job or disconnect)\n");
-            fflush(stdout);
-        }
     }
     return rc;
 }
 
 static int run_quantus_pool(const char* pool_host, int pool_port)
 {
-    char cur_job_key[160] = {0};
+    char cur_job_key[CP_JOB_KEY_CAP] = {0};
     int msg_id = 1;
 
     cp_qpow_pool_set_active(1);
@@ -339,7 +266,6 @@ static int run_quantus_pool(const char* pool_host, int pool_port)
 reconnect:
     cp_pool_reader_stop();
     cp_pool_disconnect();
-    cp_pool_inbox_clear();
     cp_qpow_pool_clear();
     cur_job_key[0] = 0;
 
@@ -354,24 +280,12 @@ reconnect:
     if(!cp_qpow_pool_send_login(msg_id++, cp_fee_wallet(), worker_global, agent_global))
         goto reconnect;
 
-    char login_line[65536];
-    int got = cp_pool_recv_one(login_line, sizeof(login_line), 30000);
-    if(got <= 0){
-        printf("[net] login response missing, reconnecting...\n");
-        fflush(stdout);
-        goto reconnect;
-    }
-    printf("[pool-raw] %s\n", login_line);
-    fflush(stdout);
-
     char session[80] = {0};
     CpQpowJob first_job;
     memset(&first_job, 0, sizeof(first_job));
-    if(!cp_qpow_pool_parse_login_result(login_line, session, (int)sizeof(session),
-                                        &first_job)){
-        printf("[net] login parse failed: %s\n", login_line);
-        fflush(stdout);
-        cp_sleep(3);
+    if(!cp_qpow_pool_wait_login(msg_id - 1, session, (int)sizeof(session), &first_job)){
+        cp_pool_disconnect();
+        cp_sleep(1);
         goto reconnect;
     }
     cp_qpow_pool_set_session_id(session);
@@ -386,45 +300,27 @@ reconnect:
     printf("[net] session=%s first_job=%s\n", session, first_job.job_id);
     fflush(stdout);
 
+    cp_pool_publish_quantus(&first_job);
     cp_pool_reader_start();
-
-    {
-        int rc = handle_qpow_job(&first_job, &msg_id, cur_job_key);
-        if(rc == CP_JOB_FEE_SWITCH || cp_pool_conn_lost()) goto reconnect;
-    }
-
     while(1){
-        char line_buf[65536];
-        int wr = cp_pool_wait_line(line_buf, sizeof(line_buf), -1);
+        CpPoolWork work;
+        const int wr = cp_pool_wait_work(&work, -1);
         if(wr < 0){
             printf("[net] Connection lost, reconnecting...\n");
             fflush(stdout);
             goto reconnect;
         }
-        if(wr == 0) continue;
-
-        if(strstr(line_buf, "\"method\":\"job\"") ||
-           strstr(line_buf, "\"method\": \"job\"")){
-            CpQpowJob job;
-            if(!cp_qpow_pool_parse_job(line_buf, &job)){
-                printf("[pool] quantus job parse failed\n");
-                fflush(stdout);
-                continue;
-            }
-            int rc = handle_qpow_job(&job, &msg_id, cur_job_key);
-            if(rc == CP_JOB_FEE_SWITCH || cp_pool_conn_lost()) goto reconnect;
-            continue;
+        if(wr == 0 || work.algo != CP_ALGO_QUANTUS) continue;
+        const int rc = handle_qpow_job(&work.quantus, &msg_id, cur_job_key);
+        if(rc == CP_JOB_ERROR){
+            fprintf(stderr, "[qpow] backend failure; exiting with status 1\n");
+            cp_pool_reader_stop();
+            cp_pool_disconnect();
+            return 1;
         }
-
-        if(strstr(line_buf, "result") || strstr(line_buf, "error")){
-            printf("[pool] jsonrpc: %s\n", line_buf);
-            fflush(stdout);
-            continue;
-        }
-
-        printf("[pool] (unhandled) %s\n", line_buf);
-        fflush(stdout);
+        if(rc == CP_JOB_FEE_SWITCH || cp_pool_conn_lost()) goto reconnect;
     }
+
 }
 
 int main(int argc, char** argv)
@@ -523,31 +419,30 @@ int main(int argc, char** argv)
     if(simd_env_invalid)
         return 1;
 
+    std::string parsing_option;
+    try {
     for(int i = 1; i < argc; i++){
-        if(!strcmp(argv[i], "--pool") && i + 1 < argc){
-            const char* u = argv[++i];
-            const char* h = strstr(u, "://");
-            if(h){
-                h += 3;
-                const char* colon = strchr(h, ':');
-                if(colon){
-                    int hlen = (int)(colon - h);
-                    static char hbuf[256];
-                    strncpy(hbuf, h, hlen); hbuf[hlen] = 0;
-                    pool_host = hbuf;
-                    pool_port = atoi(colon + 1);
-                    pool_specified = 1;
-                }
+        parsing_option = argv[i];
+        const size_t equals = parsing_option.find('=');
+        if(equals != std::string::npos) parsing_option.resize(equals);
+        if(cp_cli_option(argv[i], "--pool")){
+            const char* u = cp_cli_value(argc, argv, i);
+            static char hbuf[256];
+            if(!cp_pool_parse_uri(u, hbuf, sizeof(hbuf), &pool_port)){
+                fprintf(stderr, "invalid --pool URI (expected scheme://host:port)\n");
+                return 1;
             }
-        } else if(!strcmp(argv[i], "--algo") && i + 1 < argc){
-            if(cp_algo_parse(argv[++i], &algo_sel) != 0){
+            pool_host = hbuf;
+            pool_specified = 1;
+        } else if(cp_cli_option(argv[i], "--algo")){
+            if(cp_algo_parse(cp_cli_value(argc, argv, i), &algo_sel) != 0){
                 fprintf(stderr, "unknown --algo %s (want pearl|quantus)\n", argv[i]);
                 return 1;
             }
-        } else if(!strcmp(argv[i], "--wallet") && i + 1 < argc){
-            wallet = argv[++i];
-        } else if(!strcmp(argv[i], "--backend") && i + 1 < argc){
-            const char* b = argv[++i];
+        } else if(cp_cli_option(argv[i], "--wallet")){
+            wallet = cp_cli_value(argc, argv, i, sizeof(wallet_global));
+        } else if(cp_cli_option(argv[i], "--backend")){
+            const char* b = cp_cli_value(argc, argv, i);
             if(!strcmp(b, "cpu")) backend_sel = CP_BACKEND_CPU;
             else if(!strcmp(b, "cuda")) backend_sel = CP_BACKEND_CUDA;
             else if(!strcmp(b, "opencl")) backend_sel = CP_BACKEND_OPENCL;
@@ -557,30 +452,19 @@ int main(int argc, char** argv)
                 fprintf(stderr, "unknown --backend %s\n", b);
                 return 1;
             }
-        } else if((!strcmp(argv[i], "--device") || !strcmp(argv[i], "--devices")) && i + 1 < argc){
-            const char* s = argv[++i];
-            char tmp[256];
-            strncpy(tmp, s, 255); tmp[255] = 0;
-            char* tok = strtok(tmp, ",");
-            while(tok && ndev < MAX_GPUS){ devs[ndev++] = atoi(tok); tok = strtok(NULL, ","); }
+        } else if((cp_cli_option(argv[i], "--device") || cp_cli_option(argv[i], "--devices"))){
+            cp_cli_devices(cp_cli_value(argc, argv, i), devs, ndev, MAX_GPUS);
             devices_specified = 1;
         } else if(!strcmp(argv[i], "--list-devices")){
             list_devices = 1;
 #if defined(CP_ENABLE_OPENCL) && CP_ENABLE_OPENCL
-        } else if(!strcmp(argv[i], "--ocl-platform") && i + 1 < argc){
-            ocl_platform = atoi(argv[++i]);
-        } else if(!strncmp(argv[i], "--ocl-tile", 10)){
-            const char* v = argv[i] + 10;
-            if(*v == '=') v++;
-            else if(*v == '\0' && i + 1 < argc) v = argv[++i];
-            else {
-                fprintf(stderr, "--ocl-tile requires MxN or MxN/MACROMxMACRON "
-                                "(e.g. 4x8, 4x8/64x64)\n");
-                return 1;
-            }
+        } else if(cp_cli_option(argv[i], "--ocl-platform")){
+            ocl_platform = cp_cli_int(cp_cli_value(argc, argv, i));
+        } else if(cp_cli_option(argv[i], "--ocl-tile")){
+            const char* v = cp_cli_value(argc, argv, i);
             int tile_macro_m = 0, tile_macro_n = 0;
-            const int nfields = sscanf(v, "%dx%d/%dx%d", &ocl_tile_mr, &ocl_tile_nr,
-                                       &tile_macro_m, &tile_macro_n);
+            const int nfields = cp_cli_dimensions(v, &ocl_tile_mr, &ocl_tile_nr,
+                                                   &tile_macro_m, &tile_macro_n);
             if(nfields == 2){
                 /* tile only */
             } else if(nfields == 4){
@@ -607,29 +491,17 @@ int main(int argc, char** argv)
                         v);
                 return 1;
             }
-        } else if(!strncmp(argv[i], "--ocl-macro", 11)){
-            const char* v = argv[i] + 11;
-            if(*v == '=') v++;
-            else if(*v == '\0' && i + 1 < argc) v = argv[++i];
-            else {
-                fprintf(stderr, "--ocl-macro requires MxN (64x64 or 128x128)\n");
-                return 1;
-            }
-            if(sscanf(v, "%dx%d", &ocl_macro_m, &ocl_macro_n) != 2 ||
+        } else if(cp_cli_option(argv[i], "--ocl-macro")){
+            const char* v = cp_cli_value(argc, argv, i);
+            if(cp_cli_dimensions(v, &ocl_macro_m, &ocl_macro_n) != 2 ||
                !((ocl_macro_m == 64 && ocl_macro_n == 64) ||
                  (ocl_macro_m == 128 && ocl_macro_n == 128))){
                 fprintf(stderr,
                         "invalid --ocl-macro %s (expected 64x64 or 128x128)\n", v);
                 return 1;
             }
-        } else if(!strncmp(argv[i], "--ocl-issue", 11)){
-            const char* v = argv[i] + 11;
-            if(*v == '=') v++;
-            else if(*v == '\0' && i + 1 < argc) v = argv[++i];
-            else {
-                fprintf(stderr, "--ocl-issue requires auto, broadcast, or packed\n");
-                return 1;
-            }
+        } else if(cp_cli_option(argv[i], "--ocl-issue")){
+            const char* v = cp_cli_value(argc, argv, i);
             if(!strcmp(v, "auto")){
                 ocl_issue_mode = 0;
             } else if(!strcmp(v, "broadcast")){
@@ -640,14 +512,8 @@ int main(int argc, char** argv)
                 fprintf(stderr, "invalid --ocl-issue %s (expected auto, broadcast, or packed)\n", v);
                 return 1;
             }
-        } else if(!strncmp(argv[i], "--ocl-dot", 9)){
-            const char* v = argv[i] + 9;
-            if(*v == '=') v++;
-            else if(*v == '\0' && i + 1 < argc) v = argv[++i];
-            else {
-                fprintf(stderr, "--ocl-dot requires auto, sudot, sdot4, khr, force-khr, asm, wmma, or off\n");
-                return 1;
-            }
+        } else if(cp_cli_option(argv[i], "--ocl-dot")){
+            const char* v = cp_cli_value(argc, argv, i);
             if(!strcmp(v, "auto")){
                 ocl_dot_policy = 0;
             } else if(!strcmp(v, "force-khr") || !strcmp(v, "force")){
@@ -670,14 +536,8 @@ int main(int argc, char** argv)
                         v);
                 return 1;
             }
-        } else if(!strncmp(argv[i], "--ocl-cpm-type", 14)){
-            const char* v = argv[i] + 14;
-            if(*v == '=') v++;
-            else if(*v == '\0' && i + 1 < argc) v = argv[++i];
-            else {
-                fprintf(stderr, "--ocl-cpm-type requires float or int\n");
-                return 1;
-            }
+        } else if(cp_cli_option(argv[i], "--ocl-cpm-type")){
+            const char* v = cp_cli_value(argc, argv, i);
             if(!strcmp(v, "float") || !strcmp(v, "fp32")){
                 ocl_cpm_int = 0;
             } else if(!strcmp(v, "int") || !strcmp(v, "int32")){
@@ -686,14 +546,8 @@ int main(int argc, char** argv)
                 fprintf(stderr, "invalid --ocl-cpm-type %s (expected float or int)\n", v);
                 return 1;
             }
-        } else if(!strncmp(argv[i], "--ocl-lds", 9)){
-            const char* v = argv[i] + 9;
-            if(*v == '=') v++;
-            else if(*v == '\0' && i + 1 < argc) v = argv[++i];
-            else {
-                fprintf(stderr, "--ocl-lds requires on or off\n");
-                return 1;
-            }
+        } else if(cp_cli_option(argv[i], "--ocl-lds")){
+            const char* v = cp_cli_value(argc, argv, i);
             if(!strcmp(v, "on") || !strcmp(v, "1") || !strcmp(v, "true")){
                 ocl_lds = 1;
             } else if(!strcmp(v, "off") || !strcmp(v, "0") || !strcmp(v, "false")){
@@ -704,14 +558,8 @@ int main(int argc, char** argv)
             }
 #endif
 #if defined(CP_ENABLE_WGPU) && CP_ENABLE_WGPU
-        } else if(!strncmp(argv[i], "--wgpu-lds", 10)){
-            const char* v = argv[i] + 10;
-            if(*v == '=') v++;
-            else if(*v == '\0' && i + 1 < argc) v = argv[++i];
-            else {
-                fprintf(stderr, "--wgpu-lds requires on or off\n");
-                return 1;
-            }
+        } else if(cp_cli_option(argv[i], "--wgpu-lds")){
+            const char* v = cp_cli_value(argc, argv, i);
             if(!strcmp(v, "on") || !strcmp(v, "1") || !strcmp(v, "true")){
                 wgpu_lds = 1;
             } else if(!strcmp(v, "off") || !strcmp(v, "0") || !strcmp(v, "false")){
@@ -720,18 +568,11 @@ int main(int argc, char** argv)
                 fprintf(stderr, "invalid --wgpu-lds %s (expected on or off)\n", v);
                 return 1;
             }
-        } else if(!strncmp(argv[i], "--wgpu-tile", 11)){
-            const char* v = argv[i] + 11;
-            if(*v == '=') v++;
-            else if(*v == '\0' && i + 1 < argc) v = argv[++i];
-            else {
-                fprintf(stderr, "--wgpu-tile requires MxN or MxN/MACROMxMACRON "
-                                "(e.g. 4x8, 4x8/64x64)\n");
-                return 1;
-            }
+        } else if(cp_cli_option(argv[i], "--wgpu-tile")){
+            const char* v = cp_cli_value(argc, argv, i);
             int tile_macro_m = 0, tile_macro_n = 0;
-            const int nfields = sscanf(v, "%dx%d/%dx%d", &wgpu_tile_mr, &wgpu_tile_nr,
-                                       &tile_macro_m, &tile_macro_n);
+            const int nfields = cp_cli_dimensions(v, &wgpu_tile_mr, &wgpu_tile_nr,
+                                                   &tile_macro_m, &tile_macro_n);
             if(nfields != 2 && nfields != 4){
                 fprintf(stderr,
                         "invalid --wgpu-tile %s (expected 4x4, 4x8, 8x8, 8x16, "
@@ -756,15 +597,9 @@ int main(int argc, char** argv)
                 wgpu_macro_m = tile_macro_m;
                 wgpu_macro_n = tile_macro_n;
             }
-        } else if(!strncmp(argv[i], "--wgpu-macro", 12)){
-            const char* v = argv[i] + 12;
-            if(*v == '=') v++;
-            else if(*v == '\0' && i + 1 < argc) v = argv[++i];
-            else {
-                fprintf(stderr, "--wgpu-macro requires MxN (64x64 or 128x128)\n");
-                return 1;
-            }
-            if(sscanf(v, "%dx%d", &wgpu_macro_m, &wgpu_macro_n) != 2 ||
+        } else if(cp_cli_option(argv[i], "--wgpu-macro")){
+            const char* v = cp_cli_value(argc, argv, i);
+            if(cp_cli_dimensions(v, &wgpu_macro_m, &wgpu_macro_n) != 2 ||
                !((wgpu_macro_m == 64 && wgpu_macro_n == 64) ||
                  (wgpu_macro_m == 128 && wgpu_macro_n == 128))){
                 fprintf(stderr,
@@ -772,40 +607,24 @@ int main(int argc, char** argv)
                 return 1;
             }
 #endif
-        } else if(!strcmp(argv[i], "--m") || !strncmp(argv[i], "--m=", 4) ||
-                  !strcmp(argv[i], "--n") || !strncmp(argv[i], "--n=", 4)){
+        } else if(cp_cli_option(argv[i], "--m") || cp_cli_option(argv[i], "--n")){
             const int is_m = argv[i][2] == 'm';
-            const char* v = argv[i][3] == '=' ? argv[i] + 4 : (i + 1 < argc ? argv[++i] : NULL);
-            char* end = NULL;
-            const long units = v ? strtol(v, &end, 10) : 0;
-            if(!v || end == v || *end || units < 1 || units > CP_MATRIX_UNITS_MAX){
-                fprintf(stderr, "%s requires 1..%d (units of %d)\n", is_m ? "--m" : "--n",
-                        CP_MATRIX_UNITS_MAX, CP_MATRIX_UNIT);
-                return 1;
-            }
+            const int units = cp_cli_int(cp_cli_value(argc, argv, i), 1, CP_MATRIX_UNITS_MAX);
             if(is_m) m_units = (int)units;
             else n_units = (int)units;
         } else if(!strcmp(argv[i], "--no-period-gemm")){
             no_period_gemm = 1;
-        } else if(!strncmp(argv[i], "--batch-size", 12)){
-            const char* v = argv[i] + 12;
-            if(*v == '=') batch_size = atoi(v + 1);
-            else if(i + 1 < argc) batch_size = atoi(argv[++i]);
+        } else if(cp_cli_option(argv[i], "--batch-size")){
+            batch_size = cp_cli_int(cp_cli_value(argc, argv, i), 1);
             batch_size_set = 1;
-        } else if(!strncmp(argv[i], "--period-batch", 14)){
-            const char* v = argv[i] + 14;
-            if(*v == '=') batch_size = atoi(v + 1);
-            else if(i + 1 < argc) batch_size = atoi(argv[++i]);
+        } else if(cp_cli_option(argv[i], "--period-batch")){
+            batch_size = cp_cli_int(cp_cli_value(argc, argv, i), 1);
             batch_size_set = 1;
-        } else if(!strncmp(argv[i], "--col-period-batch", 18)){
-            const char* v = argv[i] + 18;
-            if(*v == '=') batch_size = atoi(v + 1);
-            else if(i + 1 < argc) batch_size = atoi(argv[++i]);
+        } else if(cp_cli_option(argv[i], "--col-period-batch")){
+            batch_size = cp_cli_int(cp_cli_value(argc, argv, i), 1);
             batch_size_set = 1;
-        } else if(!strncmp(argv[i], "--row-period-batch", 18)){
-            const char* v = argv[i] + 18;
-            if(*v == '=') row_period_batch = atoi(v + 1);
-            else if(i + 1 < argc) row_period_batch = atoi(argv[++i]);
+        } else if(cp_cli_option(argv[i], "--row-period-batch")){
+            row_period_batch = cp_cli_int(cp_cli_value(argc, argv, i), 1);
         } else if(!strcmp(argv[i], "--row-major-ap")){
             step_major_ap = 0;
         } else if(!strcmp(argv[i], "--step-major")){
@@ -823,8 +642,8 @@ int main(int argc, char** argv)
 #endif
         } else if(!strcmp(argv[i], "--no-cutlass-fused")){
             cutlass_fused = 0;
-        } else if(!strcmp(argv[i], "--cuda-mma") && i + 1 < argc){
-            const char* v = argv[++i];
+        } else if(cp_cli_option(argv[i], "--cuda-mma")){
+            const char* v = cp_cli_value(argc, argv, i);
             if(!strcmp(v, "auto")) cuda_mma = 0;
             else if(!strcmp(v, "simt")) cuda_mma = 1;
             else if(!strcmp(v, "tensorop")) cuda_mma = 2;
@@ -835,8 +654,8 @@ int main(int argc, char** argv)
                                 "or tensoropms\n");
                 return 1;
             }
-        } else if(!strcmp(argv[i], "--cuda-tb") && i + 1 < argc){
-            const char* v = argv[++i];
+        } else if(cp_cli_option(argv[i], "--cuda-tb")){
+            const char* v = cp_cli_value(argc, argv, i);
 #if defined(CP_ENABLE_CUDA) && CP_ENABLE_CUDA
             const int tb = cp_cutlass_tb_parse(v);
             if(tb < 0){
@@ -851,18 +670,17 @@ int main(int argc, char** argv)
             onednn_fused_jackpot = 1;
         } else if(!strcmp(argv[i], "--no-fused-jackpot")){
             onednn_fused_jackpot = 0;
-        } else if(!strcmp(argv[i], "--onednn-layout")){
-            if(i + 1 >= argc){
-                fprintf(stderr, "--onednn-layout requires TN, TT, NT, or NN\n");
-                return 1;
-            }
-            onednn_layout = argv[++i];
+        } else if(cp_cli_option(argv[i], "--onednn-layout")){
+            onednn_layout = cp_cli_value(argc, argv, i);
+            if(strcmp(onednn_layout, "TN") && strcmp(onednn_layout, "TT") &&
+               strcmp(onednn_layout, "NT") && strcmp(onednn_layout, "NN"))
+                throw std::invalid_argument("--onednn-layout requires TN, TT, NT, or NN");
         } else if(!strcmp(argv[i], "--cpu-gen")){
             g_cpu_matrix_gen = 1;
         } else if(!strcmp(argv[i], "--inplace-prepack")){
             prepack_mode = CP_PREPACK_REUSE;
-        } else if(!strcmp(argv[i], "--prepack") && i + 1 < argc){
-            const char* mode = argv[++i];
+        } else if(cp_cli_option(argv[i], "--prepack")){
+            const char* mode = cp_cli_value(argc, argv, i);
             if(!strcmp(mode, "separate"))
                 prepack_mode = CP_PREPACK_SEPARATE;
             else if(!strcmp(mode, "reuse") || !strcmp(mode, "inplace"))
@@ -873,8 +691,8 @@ int main(int argc, char** argv)
                 fprintf(stderr, "unknown --prepack mode %s (separate|reuse|fused)\n", mode);
                 return 1;
             }
-        } else if(!strcmp(argv[i], "--simd") && i + 1 < argc){
-            const char* isa = argv[++i];
+        } else if(cp_cli_option(argv[i], "--simd")){
+            const char* isa = cp_cli_value(argc, argv, i);
             if(!strcmp(isa, "auto"))
                 simd_isa = CP_SIMD_AUTO;
             else if(!strcmp(isa, "avx512vnni") || !strcmp(isa, "avx512-vnni"))
@@ -909,29 +727,29 @@ int main(int argc, char** argv)
             simd_test = 1;
         } else if(!strcmp(argv[i], "--prepack-test")){
             prepack_test = 1;
-        } else if(!strcmp(argv[i], "--max-nonce") && i + 1 < argc){
-            g_max_nonce = atoi(argv[++i]);
-        } else if(!strcmp(argv[i], "--python") && i + 1 < argc){
-            strncpy(g_python_exe, argv[++i], sizeof(g_python_exe) - 1);
+        } else if(cp_cli_option(argv[i], "--max-nonce")){
+            g_max_nonce = cp_cli_int(cp_cli_value(argc, argv, i));
+        } else if(cp_cli_option(argv[i], "--python")){
+            strncpy(g_python_exe, cp_cli_value(argc, argv, i, sizeof(g_python_exe)), sizeof(g_python_exe) - 1);
             g_python_exe[sizeof(g_python_exe) - 1] = 0;
-        } else if(!strcmp(argv[i], "--host-bridge") && i + 1 < argc){
-            strncpy(g_host_bridge, argv[++i], sizeof(g_host_bridge) - 1);
+        } else if(cp_cli_option(argv[i], "--host-bridge")){
+            strncpy(g_host_bridge, cp_cli_value(argc, argv, i, sizeof(g_host_bridge)), sizeof(g_host_bridge) - 1);
             g_host_bridge[sizeof(g_host_bridge) - 1] = 0;
-        } else if(!strcmp(argv[i], "--worker") && i + 1 < argc){
-            strncpy(worker_global, argv[++i], sizeof(worker_global) - 1);
+        } else if(cp_cli_option(argv[i], "--worker")){
+            strncpy(worker_global, cp_cli_value(argc, argv, i, sizeof(worker_global)), sizeof(worker_global) - 1);
             worker_global[sizeof(worker_global) - 1] = 0;
-        } else if(!strcmp(argv[i], "--agent") && i + 1 < argc){
-            strncpy(agent_global, argv[++i], sizeof(agent_global) - 1);
+        } else if(cp_cli_option(argv[i], "--agent")){
+            strncpy(agent_global, cp_cli_value(argc, argv, i, sizeof(agent_global)), sizeof(agent_global) - 1);
             agent_global[sizeof(agent_global) - 1] = 0;
-        } else if(!strcmp(argv[i], "--pool-pass") && i + 1 < argc){
-            strncpy(pool_pass_global, argv[++i], sizeof(pool_pass_global) - 1);
+        } else if(cp_cli_option(argv[i], "--pool-pass")){
+            strncpy(pool_pass_global, cp_cli_value(argc, argv, i, sizeof(pool_pass_global)), sizeof(pool_pass_global) - 1);
             pool_pass_global[sizeof(pool_pass_global) - 1] = 0;
         } else if(!strcmp(argv[i], "--dry-run")){
             g_dry_run = 1;
         } else if(!strcmp(argv[i], "--verify")){
             g_plain_verify = 1;
-        } else if(!strcmp(argv[i], "--cert-version") && i + 1 < argc){
-            int v = atoi(argv[++i]);
+        } else if(cp_cli_option(argv[i], "--cert-version")){
+            int v = cp_cli_int(cp_cli_value(argc, argv, i), 1, 3);
             if(v < 1 || v > 3){
                 fprintf(stderr, "--cert-version must be 1, 2, or 3 (got %d)\n", v);
                 return 1;
@@ -940,37 +758,29 @@ int main(int argc, char** argv)
             g_cert_version_forced = 1;
         } else if(!strcmp(argv[i], "--mock") || !strcmp(argv[i], "-mock")){
             g_mock = 1;
-        } else if(!strcmp(argv[i], "--mock-diff") && i + 1 < argc){
-            g_mock_diff = atof(argv[++i]);
-            if(g_mock_diff < 1.0) g_mock_diff = 1.0;
+        } else if(cp_cli_option(argv[i], "--mock-diff")){
+            g_mock_diff = cp_cli_real(cp_cli_value(argc, argv, i), 1.0);
             g_mock_diff_forced = 1;
         } else if(!strcmp(argv[i], "--align-test")){
             align_test = 1;
         } else if(!strcmp(argv[i], "--align-test-prod")){
             align_test = 1;
             align_test_prod = 1;
-        } else if(!strncmp(argv[i], "--profile-scan", 14)){
+        } else if(cp_cli_option(argv[i], "--profile-scan")){
             profile_scan = 1;
-            const char* v = argv[i] + 14;
-            if(*v == '=') profile_runs = atoi(v + 1);
-            else if(i + 1 < argc && argv[i + 1][0] != '-')
-                profile_runs = atoi(argv[++i]);
-            if(profile_runs < 1) profile_runs = 1;
+            if(strchr(argv[i], '=') || (i + 1 < argc && argv[i + 1][0] != '-'))
+                profile_runs = cp_cli_int(cp_cli_value(argc, argv, i), 1);
 #if defined(CP_ENABLE_OPENCL) && CP_ENABLE_OPENCL
-        } else if(!strncmp(argv[i], "--profile-prep", 14)){
+        } else if(cp_cli_option(argv[i], "--profile-prep")){
             profile_prep = 1;
-            const char* v = argv[i] + 14;
-            if(*v == '=') profile_prep_runs = atoi(v + 1);
-            else if(i + 1 < argc && argv[i + 1][0] != '-')
-                profile_prep_runs = atoi(argv[++i]);
-            if(profile_prep_runs < 1) profile_prep_runs = 1;
+            if(strchr(argv[i], '=') || (i + 1 < argc && argv[i + 1][0] != '-'))
+                profile_prep_runs = cp_cli_int(cp_cli_value(argc, argv, i), 1);
 #endif
         } else if(!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")){
             print_usage();
             return 0;
-        } else if(!strcmp(argv[i], "--threads") && i + 1 < argc){
-            int n = atoi(argv[++i]);
-            if(n < 0) n = 0;
+        } else if(cp_cli_option(argv[i], "--threads")){
+            int n = cp_cli_int(cp_cli_value(argc, argv, i));
             g_qpow_threads = n;
             g_cpu_threads = n;
         } else if(!strcmp(argv[i], "--smt")){
@@ -999,7 +809,7 @@ int main(int argc, char** argv)
             char session[80];
             CpQpowJob j0, j1;
             int fail = 0;
-            if(!cp_qpow_pool_parse_login_result(login, session, (int)sizeof(session), &j0)){
+            if(!cp_qpow_pool_parse_login_result(login, 1, session, (int)sizeof(session), &j0)){
                 fprintf(stderr, "FAIL login parse\n");
                 fail++;
             } else if(strcmp(session, "d5adbda4-fd6c-4f33-8924-b3c1ae35dcbc") != 0){
@@ -1048,7 +858,14 @@ int main(int argc, char** argv)
             }
             printf("qpow selftest passed\n");
             return 0;
+        } else {
+            fprintf(stderr, "unknown option: %s\n", parsing_option.c_str());
+            return 1;
         }
+    }
+    } catch(const std::invalid_argument& error){
+        fprintf(stderr, "invalid command line %s: %s\n", parsing_option.c_str(), error.what());
+        return 1;
     }
 
     {
@@ -1674,6 +1491,10 @@ int main(int argc, char** argv)
         cp_mine_free_host_buffers();
         cp_worker_shutdown();
 
+        if(rc == CP_JOB_ERROR){
+            fprintf(stderr, "[mock] FAIL: backend/resource failure\n");
+            return 1;
+        }
         if(rc == CP_JOB_CANCELLED){
             fprintf(stderr, "[mock] cancelled before share\n");
             return 1;
@@ -1695,13 +1516,12 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    char cur_job_key[320] = {0};
+    char cur_job_key[CP_JOB_KEY_CAP] = {0};
     int msg_id = 1;
 
 reconnect:
     cp_pool_reader_stop();
     cp_pool_disconnect();
-    cp_pool_inbox_clear();
     cur_job_key[0] = 0;
 
     /* Fork fee cycles are mined on the fork's fee pool (see cp_fee.cpp). */
@@ -1731,6 +1551,12 @@ reconnect:
         if(on_fee_pool) cp_fee_pool_result(0);
         goto reconnect;
     }
+    cp_pool_reader_start();
+    if(!cp_pool_wait_authorized()){
+        if(on_fee_pool) cp_fee_pool_result(0);
+        cp_sleep(2);
+        goto reconnect;
+    }
     cp_fee_on_authorized();
     if(cp_fee_enabled()){
         printf("[fee] authorized as %s (debt=%llu / 100*T=%llu)\n",
@@ -1740,50 +1566,30 @@ reconnect:
         fflush(stdout);
     }
 
-    cp_pool_reader_start();
-
     while(1){
-        char line_buf[65536];
-        int got = cp_pool_wait_line(line_buf, sizeof(line_buf), -1);
+        CpPoolWork work;
+        const int got = cp_pool_wait_work(&work, -1);
         if(got < 0){
-            printf("[net] Connection lost, reconnecting...\n"); fflush(stdout);
+            printf("[net] Connection lost, reconnecting...\n");
+            fflush(stdout);
             if(on_fee_pool && !fee_pool_job) cp_fee_pool_result(0);
             goto reconnect;
         }
-        if(got == 0) continue;
-
-        if(strstr(line_buf, "mining.notify")){
-            if(on_fee_pool && !fee_pool_job){
-                fee_pool_job = 1;
-                cp_fee_pool_result(1);
-            }
-            int rc = handle_notify_line(line_buf, &msg_id, cur_job_key);
-            if(rc == CP_JOB_FEE_SWITCH || cp_pool_conn_lost()) goto reconnect;
-            continue;
+        if(got == 0 || work.algo != CP_ALGO_PEARL) continue;
+        if(on_fee_pool && !fee_pool_job){
+            fee_pool_job = 1;
+            cp_fee_pool_result(1);
         }
-
-        if(strstr(line_buf, "mining.set_difficulty")){
-            double d = cp_json_num(line_buf, "params");
-            if(!d){
-                const char* p = strstr(line_buf, "\"params\":[");
-                if(p){
-                    p = strchr(p, '[');
-                    if(p) d = atof(p + 1);
-                }
-            }
-            if(d > 0.0){
-                cp_pool_set_difficulty(d);
-                printf("[pool] mining.set_difficulty %.0f\n", d); fflush(stdout);
-            }
-            continue;
+        const int rc = handle_pearl_job(work.pearl, &msg_id, cur_job_key);
+        if(rc == CP_JOB_ERROR){
+            fprintf(stderr, "[plain] backend/resource failure; exiting with status 1\n");
+            cp_pool_reader_stop();
+            cp_pool_disconnect();
+            cp_mine_free_host_buffers();
+            cp_worker_shutdown();
+            return 1;
         }
-
-        if(strstr(line_buf, "result") || strstr(line_buf, "error")){
-            printf("[pool] jsonrpc: %s\n", line_buf); fflush(stdout);
-            continue;
-        }
-
-        printf("[pool] (unhandled) %s\n", line_buf); fflush(stdout);
+        if(rc == CP_JOB_FEE_SWITCH || cp_pool_conn_lost()) goto reconnect;
     }
 
     cp_mine_free_host_buffers();

@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "cp_job_ctrl.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -15,7 +16,7 @@ extern "C" {
 
 typedef struct {
     char job_id[128];
-    char job_key[160];
+    char job_key[CP_JOB_KEY_CAP];
     uint8_t mining_hash[CP_QPOW_HEADER_BYTES];
     uint8_t target[CP_QPOW_TARGET_BYTES];
     uint8_t extranonce[CP_QPOW_EXTRANONCE_MAX];
@@ -39,16 +40,22 @@ int cp_qpow_pool_send_login(int msg_id, const char* login, const char* worker,
 
 int cp_qpow_pool_send_submit(int sock, int msg_id, const char* job_id,
                              const uint8_t nonce[CP_QPOW_NONCE_BYTES]);
+/* Recheck the mining epoch/connection after search and before allocating a submit id. */
+int cp_qpow_pool_submit_share(const CpQpowJob* job, int sock, int* msg_id,
+                               const uint8_t nonce[CP_QPOW_NONCE_BYTES], int tid);
 
 /* Parse login ack or job notify. Returns 1 on success. */
-int cp_qpow_pool_parse_login_result(const char* json, char* session_out, int session_len,
+int cp_qpow_pool_parse_login_result(const char* json, int expected_id, char* session_out, int session_len,
                                     CpQpowJob* job_out);
+/* Reader must be stopped. One 30-second budget for ACK and initial work;
+ * preserves the latest early job and never accepts an unrelated response. */
+int cp_qpow_pool_wait_login(int expected_id, char* session_out, int session_len,
+                             CpQpowJob* job_out);
 int cp_qpow_pool_parse_job(const char* json, CpQpowJob* out);
 
 /* Called from Pearl pool reader when Quantus mode is active. Returns 1 if handled. */
 int cp_qpow_pool_on_line(const char* line);
 
-int cp_qpow_pool_take_pending(CpQpowJob* out);
 
 #ifdef __cplusplus
 }

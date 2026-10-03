@@ -1,4 +1,6 @@
+#include "cp_json_frame.h"
 #include "cp_util.h"
+#include <limits.h>
 #include "cp_config.h"
 #include "cp_state.h"
 #include "cp_platform.h"
@@ -7,9 +9,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <chrono>
 
 #ifndef _WIN32
-#include <sys/time.h>
+#include <errno.h>
 #include <unistd.h>
 #else
 #include <bcrypt.h>
@@ -18,17 +21,8 @@
 
 double cp_now_sec(void)
 {
-#ifdef _WIN32
-    static LARGE_INTEGER freq = {0};
-    LARGE_INTEGER t;
-    if(!freq.QuadPart) QueryPerformanceFrequency(&freq);
-    QueryPerformanceCounter(&t);
-    return (double)t.QuadPart / (double)freq.QuadPart;
-#else
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return (double)tv.tv_sec + (double)tv.tv_usec * 1e-6;
-#endif
+    return std::chrono::duration<double>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
 int cp_random_bytes(void* buf, size_t n)
@@ -266,67 +260,69 @@ int cp_hex_to_bytes(const char* hex, uint8_t* out, int out_cap)
     return nb;
 }
 
-/* Find a JSON member name, skipping string contents (including escapes).
- * The pool protocol uses unique member names for the fields read here. */
-static const char* cp_json_value(const char* json, const char* key)
+int cp_pearl_job_key(char* out, size_t cap, const char* job_id,
+                     const uint8_t* header, int hlen, const uint32_t target[8],
+                     uint32_t cert_version)
 {
-    if(!json || !key || !*key) return NULL;
-    const size_t key_len = strlen(key);
-    for(const char* p = json; *p; ++p){
-        if(*p != '"') continue;
-        const char* begin = ++p;
-        while(*p && *p != '"'){
-            if(*p == '\\' && p[1]) ++p;
-            ++p;
-        }
-        if(!*p) return NULL;
-        const char* after = p + 1;
-        while(*after == ' ' || *after == '\t' || *after == '\r' || *after == '\n') ++after;
-        if((size_t)(p - begin) == key_len && !memcmp(begin, key, key_len) && *after == ':'){
-            ++after;
-            while(*after == ' ' || *after == '\t' || *after == '\r' || *after == '\n') ++after;
-            return after;
-        }
-    }
-    return NULL;
+    if(!out || !cap) return 0;
+    out[0] = 0;
+    if(!job_id || !header || hlen != INCOMPLETE_HEADER_BYTES || !target) return 0;
+    char header_hex[INCOMPLETE_HEADER_BYTES * 2 + 1], target_hex[65];
+    cp_bin_to_hex(header, INCOMPLETE_HEADER_BYTES, header_hex);
+    cp_le_words_to_be_target_hex(target, target_hex);
+    const int n = snprintf(out, cap, "%s:%s:%s:%u", job_id, header_hex, target_hex,
+                           (unsigned)cert_version);
+    if(n < 0 || (size_t)n >= cap){ out[0] = 0; return 0; }
+    return 1;
+}
+
+const char* cp_json_member(const char* json, const char* key)
+{
+    return cp_json_find_member(json, key);
+}
+
+int cp_json_str_value(const char* value, char* out, int outlen)
+{
+    if(!out || outlen <= 0) return 0;
+    out[0] = 0;
+    std::string decoded;
+    if(!cp_json_decode_string(value, decoded) || decoded.size() >= (size_t)outlen) return 0;
+    /* Pool identifiers cannot contain NUL or control characters. */
+    for(unsigned char c : decoded) if(c < 0x20) return 0;
+    memcpy(out, decoded.c_str(), decoded.size() + 1);
+    return 1;
 }
 
 int cp_json_str(const char* json, const char* key, char* out, int outlen)
 {
-    if(!out || outlen <= 0) return 0;
-    out[0] = 0;
-    const char* p = cp_json_value(json, key);
-    if(!p || *p++ != '"') return 0;
-    int i = 0;
-    while(*p && *p != '"'){
-        unsigned char c = (unsigned char)*p++;
-        if(c == '\\'){
-            c = (unsigned char)*p++;
-            switch(c){
-                case '"': case '\\': case '/': break;
-                case 'b': c = '\b'; break;
-                case 'f': c = '\f'; break;
-                case 'n': c = '\n'; break;
-                case 'r': c = '\r'; break;
-                case 't': c = '\t'; break;
-                default: out[0] = 0; return 0;
-            }
-        }
-        if(c < 0x20 || i >= outlen - 1){ out[0] = 0; return 0; }
-        out[i++] = (char)c;
-    }
-    if(*p != '"'){ out[0] = 0; return 0; }
-    out[i] = 0;
-    return 1;
+    return cp_json_str_value(cp_json_member(json, key), out, outlen);
 }
 
 double cp_json_num(const char* json, const char* key)
 {
-    const char* p = cp_json_value(json, key);
-    if(!p) return 0;
-    char* end = NULL;
-    double value = strtod(p, &end);
-    return end != p && isfinite(value) ? value : 0;
+    double number = 0;
+    cp_json_number_value(cp_json_member(json, key), &number);
+    return number;
+}
+
+int cp_json_rpc_response(const char* json, int* id, int* accepted)
+{
+    if(accepted) *accepted = 0;
+    if(!cp_json_valid(json) || cp_json_member(json, "method")) return 0;
+    const char* result = cp_json_member(json, "result");
+    const char* error = cp_json_member(json, "error");
+    uint64_t request_id;
+    if((!result && !error) || !cp_json_uint64_value(cp_json_member(json, "id"), &request_id) ||
+       request_id > INT_MAX) return 0;
+    if(id) *id = (int)request_id;
+    bool success = result && !strncmp(result, "true", 4);
+    if(result && *result == '{'){
+        const char* status = cp_json_member(result, "status");
+        char text[16];
+        success = !status || (cp_json_str_value(status, text, sizeof(text)) && !strcmp(text, "OK"));
+    }
+    if(accepted) *accepted = success && (!error || !strncmp(error, "null", 4));
+    return 1;
 }
 
 static int g_pp_hash_h_override = 0;
@@ -464,7 +460,12 @@ int cp_send_all(int sock, const void* data, size_t len)
         int chunk = (len > 65536) ? 65536 : (int)len;
         int n = send(sock, p, chunk, 0);
 #else
-        ssize_t n = send(sock, p, len, 0);
+        int flags = 0;
+#ifdef MSG_NOSIGNAL
+        flags = MSG_NOSIGNAL;
+#endif
+        ssize_t n = send(sock, p, len, flags);
+        if(n < 0 && errno == EINTR) continue;
 #endif
         if(n <= 0){
             perror("send");

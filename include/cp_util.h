@@ -8,6 +8,7 @@
 extern "C" {
 #endif
 
+/* Monotonic seconds for durations/deadlines; the origin is not calendar time. */
 double cp_now_sec(void);
 int cp_file_exists(const char* path);
 void cp_path_to_posix(char* path);
@@ -23,9 +24,20 @@ int cp_write_file_bin(const char* path, const void* buf, size_t nbytes);
 
 void cp_bin_to_hex(const uint8_t* in, size_t n, char* out);
 int cp_hex_to_bytes(const char* hex, uint8_t* out, int out_cap);
+/* Canonical work identity; includes every header byte and the effective target. */
+int cp_pearl_job_key(char* out, size_t cap, const char* job_id,
+                     const uint8_t* header, int hlen, const uint32_t target[8],
+                     uint32_t cert_version);
 
 int cp_json_str(const char* json, const char* key, char* out, int outlen);
+/* Direct member of this object, skipping nested names and string contents. */
+const char* cp_json_member(const char* json, const char* key);
+int cp_json_str_value(const char* value, char* out, int outlen);
 double cp_json_num(const char* json, const char* key);
+/* Response with a top-level integer id and no method. Nested ids do not
+ * match outstanding requests. Success requires result:true or an object with
+ * absent/OK status, and no non-null error. Wrong result types are rejected. */
+int cp_json_rpc_response(const char* json, int* id, int* accepted);
 
 void cp_target_from_difficulty(double difficulty, uint32_t tgt[8]);
 int cp_be_target_hex_to_le_words(const char* hex, uint32_t tgt[8]);

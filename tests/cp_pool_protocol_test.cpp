@@ -1,15 +1,454 @@
 #include "cp_json_frame.h"
 #include "cp_json_text.hpp"
 #include "cp_util.h"
+#include "cp_pool_session.hpp"
+#include "cp_fee.h"
+#include "cp_job_ctrl.h"
+#include "cp_pool.h"
+#include "cp_qpow_pool.h"
+#include "cp_platform.h"
 
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
 #include <cassert>
 #include <cstring>
+#include <thread>
+#include <chrono>
+#include <vector>
+#include <string>
+
+static void test_response_ids()
+{
+    int id = -1, accepted = 0;
+    assert(cp_json_rpc_response("{\"id\":7,\"result\":true,\"error\":null}", &id, &accepted));
+    assert(id == 7 && accepted);
+    assert(cp_json_rpc_response("{\"result\":{\"id\":99},\"id\":7}", &id, &accepted));
+    assert(id == 7 && accepted);
+    assert(cp_json_rpc_response("{\"id\":0,\"result\":false}", &id, &accepted));
+    assert(id == 0 && !accepted);
+    assert(cp_json_rpc_response("{\"id\":7,\"error\":{\"code\":-1}}", &id, &accepted));
+    assert(!accepted);
+    assert(!cp_json_rpc_response("{\"result\":{\"id\":7}}", &id, &accepted));
+    assert(!cp_json_rpc_response("{\"id\":null,\"result\":true}", &id, &accepted));
+    assert(!cp_json_rpc_response("{\"id\":\"7\",\"result\":true}", &id, &accepted));
+    assert(!cp_json_rpc_response("{\"id\":7.5,\"result\":true}", &id, &accepted));
+    assert(!cp_json_rpc_response("{\"id\":2147483648,\"result\":true}", &id, &accepted));
+    assert(!cp_json_rpc_response("{\"id\":7,\"method\":\"job\",\"result\":true}", &id, &accepted));
+}
+
+static void test_submit_deadlines()
+{
+    CpPoolSession session;
+    assert(session.begin_submit(2, 100));
+    assert(!session.finish_submit(999)); // Unrelated responses must not clear the request.
+    assert(!session.begin_submit(2, 110)); // Nor may duplicate ids move its deadline.
+    assert(session.begin_submit(3, 150));
+    assert(session.expired(159.9) == CpPoolSession::Timeout::None);
+    assert(session.expired(160) == CpPoolSession::Timeout::Submit);
+    assert(session.finish_submit(3)); // An out-of-order ACK leaves id 2 outstanding.
+    assert(session.expired(165) == CpPoolSession::Timeout::Submit);
+    assert(session.finish_submit(2));
+    assert(!session.has_pending_submits());
+    assert(session.expired(200) == CpPoolSession::Timeout::None);
+
+    // A fast ACK can arrive on the reader thread before send returns.
+    assert(session.begin_submit(4, 200));
+    std::thread reader([&] { assert(session.finish_submit(4)); });
+    reader.join();
+    assert(!session.has_pending_submits());
+    assert(session.expired(300) == CpPoolSession::Timeout::None);
+
+    assert(session.begin_submit(5, 300));
+    assert(session.finish_submit(5)); // Send failure removes only that request.
+    assert(!session.has_pending_submits());
+    assert(session.begin_submit(6, 300));
+    session.reset(); // Reconnect discards old ids/deadlines.
+    assert(!session.finish_submit(6));
+    assert(session.expired(400) == CpPoolSession::Timeout::None);
+}
+
+static void test_handshake_deadlines()
+{
+    CpPoolSession session;
+    session.begin_authorize(1, 100);
+    assert(!session.authorize_response(999, true, true, 110));
+    assert(session.expired(129.9) == CpPoolSession::Timeout::None);
+    assert(session.expired(130) == CpPoolSession::Timeout::Authorize);
+
+    session.reset();
+    session.begin_authorize(2, 200);
+    assert(session.authorize_response(2, false, true, 201));
+    assert(!session.authorized() && !session.proof_gzip());
+
+    session.reset();
+    session.begin_authorize(3, 300);
+    assert(session.authorize_response(3, true, true, 305));
+    assert(session.authorized() && session.proof_gzip());
+    assert(session.expired(334.9) == CpPoolSession::Timeout::None);
+    assert(session.expired(335) == CpPoolSession::Timeout::FirstJob);
+    session.received_job();
+    assert(session.expired(400) == CpPoolSession::Timeout::None);
+
+    // Some pools notify before the authorize ACK; keep the job but still wait for ACK.
+    session.reset();
+    session.begin_authorize(4, 400);
+    session.received_job();
+    assert(!session.authorized());
+    assert(session.authorize_response(4, true, false, 410));
+    assert(session.authorized() && !session.proof_gzip());
+    assert(session.expired(500) == CpPoolSession::Timeout::None);
+
+    session.reset();
+    session.begin_authorize(5, 500);
+    session.received_job();
+    assert(session.expired(530) == CpPoolSession::Timeout::Authorize);
+    session.reset();
+    assert(!session.authorized() && !session.proof_gzip());
+}
+
+static void test_fee_pool_fallback()
+{
+    cp_fee_set_pool_host("prl.kryptex.network");
+    cp_fee_init("test-account", 1, CP_ALGO_PEARL);
+    cp_fee_set_tiles_per_matrix(1);
+    cp_fee_note_tiles(CP_FEE_PERIOD);
+    cp_fee_prepare_matrix();
+    assert(cp_fee_use_fee_pool());
+    cp_fee_pool_result(0);
+    cp_fee_pool_result(0);
+    assert(cp_fee_use_fee_pool());
+    cp_fee_pool_result(1); // A valid first job resets consecutive failures.
+    cp_fee_pool_result(0);
+    cp_fee_pool_result(0);
+    assert(cp_fee_use_fee_pool());
+    cp_fee_pool_result(0);
+    assert(!cp_fee_use_fee_pool());
+    assert(cp_fee_next_is_dev());
+    assert(!strcmp(cp_fee_pool_wallet(), cp_fee_wallet()));
+    cp_fee_init("test-account", 0, CP_ALGO_PEARL);
+}
+
+static void test_work_identity_and_cancellation()
+{
+    uint8_t header[INCOMPLETE_HEADER_BYTES] = {};
+    uint32_t target[8] = {};
+    char key[CP_JOB_KEY_CAP], changed[CP_JOB_KEY_CAP];
+    char job_id[128];
+    memset(job_id, 'j', sizeof(job_id) - 1);
+    job_id[sizeof(job_id) - 1] = 0;
+    assert(cp_pearl_job_key(key, sizeof(key), job_id, header, sizeof(header), target, 3));
+    header[75] = 1; // Same ID and first eight bytes, different work.
+    assert(cp_pearl_job_key(changed, sizeof(changed), job_id, header, sizeof(header), target, 3));
+    assert(strcmp(key, changed));
+    header[75] = 0;
+    target[0] = 1;
+    assert(cp_pearl_job_key(changed, sizeof(changed), job_id, header, sizeof(header), target, 3));
+    assert(strcmp(key, changed));
+    target[0] = 0;
+    assert(cp_pearl_job_key(changed, sizeof(changed), job_id, header, sizeof(header), target, 2));
+    assert(strcmp(key, changed));
+    assert(!cp_pearl_job_key(changed, 8, job_id, header, sizeof(header), target, 3));
+    assert(!changed[0]);
+
+    cp_job_mine_begin(key);
+    assert(cp_job_key_matches(key) && !cp_job_should_cancel());
+    cp_job_request_cancel();
+    assert(cp_job_should_cancel()); // A proof must stop even though the old key still matches.
+    cp_job_mine_end();
+    cp_job_mine_begin(key);
+    assert(!cp_job_should_cancel()); // A new mining epoch clears the old cancellation.
+    const char* snapshot = cp_job_mining_key();
+    cp_job_mine_begin("next-job");
+    assert(!strcmp(snapshot, key)); // Logging reads a snapshot, not concurrently mutable storage.
+    assert(cp_job_key_matches("next-job"));
+    cp_job_mine_end();
+}
+
+static std::string quantus_job_json(const std::string& hash, const std::string& target,
+                                    const std::string& extranonce)
+{
+    return "{\"job_id\":\"" + std::string(127, 'q') + "\",\"mining_hash\":\"" + hash +
+           "\",\"target\":\"" + target + "\",\"extranonce\":\"" + extranonce + "\"}";
+}
+
+static void test_quantus_work_identity()
+{
+    CpQpowJob original, changed;
+    std::string hash(64, 'a'), target(128, '0'), extranonce(64, 'b');
+    assert(cp_qpow_pool_parse_job(quantus_job_json(hash, target, extranonce).c_str(), &original));
+    assert(strlen(original.job_key) == 386); // All maximum-length fields fit without truncation.
+    assert(cp_qpow_pool_parse_job(quantus_job_json(std::string(64, 'A'), target,
+                                                std::string(64, 'B')).c_str(), &changed));
+    assert(!strcmp(original.job_key, changed.job_key));
+    hash.back() = 'c';
+    assert(cp_qpow_pool_parse_job(quantus_job_json(hash, target, extranonce).c_str(), &changed));
+    assert(strcmp(original.job_key, changed.job_key));
+    hash.back() = 'a';
+    target.back() = '1';
+    assert(cp_qpow_pool_parse_job(quantus_job_json(hash, target, extranonce).c_str(), &changed));
+    assert(strcmp(original.job_key, changed.job_key));
+    target.back() = '0';
+    extranonce.back() = 'a';
+    assert(cp_qpow_pool_parse_job(quantus_job_json(hash, target, extranonce).c_str(), &changed));
+    assert(strcmp(original.job_key, changed.job_key));
+}
+
+static void test_quantus_login()
+{
+    const std::string job = quantus_job_json(std::string(64, '0'), std::string(128, '0'), "");
+    char session[80];
+    CpQpowJob parsed;
+    const std::string result = "{\"job\":" + job + ",\"id\":\"session\",\"status\":\"OK\"}";
+    const std::string ack = "{\"id\":7,\"result\":" + result + ",\"error\":null}";
+    assert(cp_qpow_pool_parse_login_result(ack.c_str(), 7, session, sizeof(session), &parsed));
+    assert(!strcmp(session, "session") && parsed.job_id[0]);
+    assert(!cp_qpow_pool_parse_login_result(ack.c_str(), 8, session, sizeof(session), &parsed));
+    assert(!session[0] && !parsed.job_id[0]);
+    const std::string error = "{\"id\":7,\"result\":" + result + ",\"error\":{\"code\":-1}}";
+    assert(!cp_qpow_pool_parse_login_result(error.c_str(), 7, session, sizeof(session), &parsed));
+    assert(!cp_qpow_pool_parse_login_result("{\"id\":7,\"result\":{\"id\":\"s\",\"status\":\"FAIL\"}}",
+                                           7, session, sizeof(session), &parsed));
+    assert(!cp_qpow_pool_parse_login_result("{\"id\":7,\"result\":{\"id\":\"s\",\"status\":null}}",
+                                           7, session, sizeof(session), &parsed));
+    // Nested or sibling ids/statuses cannot supply a missing session or override a failure.
+    assert(!cp_qpow_pool_parse_login_result("{\"id\":7,\"result\":{\"job\":{\"id\":\"fake\"}},\"other\":{\"id\":\"fake\"}}",
+                                           7, session, sizeof(session), &parsed));
+    assert(!cp_qpow_pool_parse_login_result("{\"id\":7,\"result\":{\"job\":{\"status\":\"OK\"},\"id\":\"s\",\"status\":\"FAIL\"}}",
+                                           7, session, sizeof(session), &parsed));
+    assert(cp_qpow_pool_parse_login_result("{\"id\":7,\"result\":{\"id\":\"s\"}}",
+                                          7, session, sizeof(session), &parsed));
+    assert(!strcmp(session, "s") && !parsed.job_id[0]); // A notification may supply initial work.
+    const std::string wrapped = "{\"method\" : \"job\",\"params\":{\"clean_jobs\":true,\"job\":" + job + "}}";
+    assert(cp_qpow_pool_parse_job(wrapped.c_str(), &parsed) && parsed.clean_jobs);
+    const std::string nested_clean = "{\"method\":\"job\",\"params\":{\"job\":{\"clean_jobs\":true," + job.substr(1) + "}}";
+    assert(cp_qpow_pool_parse_job(nested_clean.c_str(), &parsed) && parsed.clean_jobs);
+    assert(!cp_qpow_pool_parse_job(quantus_job_json(std::string(64, '0'), std::string(128, '0'),
+                                                   std::string(100, 'a')).c_str(), &parsed));
+}
+
+static void test_pearl_notify_validation()
+{
+    char id[128], header[320], target[80];
+    uint32_t cert;
+    auto parse = [&](const std::string& json) {
+        return cp_pool_parse_notify(json.c_str(), id, sizeof(id), header, sizeof(header),
+                                    target, sizeof(target), &cert);
+    };
+    const std::string h(152, '0'), t(64, '0');
+    auto object = [&](const std::string& job, const std::string& fields) {
+        return "{\"method\":\"mining.notify\",\"params\":{\"job_id\":\"" + job +
+               "\",\"header\":\"" + h + "\"" + fields + "}}";
+    };
+    assert(parse(object(std::string(127, 'j'), ",\"target\":\"" + t + "\",\"cert_version\":3")));
+    assert(strlen(id) == 127 && cert == 3 && !strcmp(target, t.c_str()));
+    assert(parse(object("absent-target", "")) && !target[0] && cert == 0);
+    for(const std::string& fields : {",\"target\":\"zz\"", ",\"target\":\"\"", ",\"target\":null",
+                                    ",\"cert_version\":1.5", ",\"cert_version\":4"})
+        assert(!parse(object("bad-fields", fields)));
+    assert(!parse(object("", "")));
+    assert(!parse(object(std::string(128, 'j'), "")));
+    assert(!parse(object("nested-target", ",\"target\":{},\"other\":{\"target\":\"" + t + "\"}")));
+    assert(!parse("{\"params\":{\"other\":{\"job_id\":\"fake\",\"header\":\"" + h + "\"}}}"));
+    assert(!parse("{\"params\":{\"job_id\":\"bad-header\",\"header\":\"" + std::string(152, 'g') + "\"}}"));
+    auto array = [&](const std::string& job, const std::string& values) {
+        return "{\"method\":\"mining.notify\",\"params\" : [\"" + job + "\", " + values + "]}";
+    };
+    assert(parse(array("legacy", "\"" + h + "\",\"" + t + "\",true")));
+    assert(parse(array("legacy", "\"" + t + "\",\"" + h + "\"")));
+    assert(parse(array("escaped\\\"id", "\"" + h + "\"")) && !strcmp(id, "escaped\"id"));
+    assert(!parse(array(std::string(128, 'j'), "\"" + h + "\"")));
+    assert(!parse(array("", "\"" + h + "\"")));
+    assert(!parse(array("legacy", "\"" + h + "\",\"zz\"")));
+    assert(!parse(array("legacy", "\"" + h + "\",\"" + std::string(64, 'g') + "\"")));
+}
+
+static bool readable(cp_sock_t sock, int millis)
+{
+    fd_set set;
+    FD_ZERO(&set);
+    FD_SET(sock, &set);
+    timeval timeout = {millis / 1000, (millis % 1000) * 1000};
+#ifdef _WIN32
+    return select(0, &set, nullptr, nullptr, &timeout) > 0;
+#else
+    return select(sock + 1, &set, nullptr, nullptr, &timeout) > 0;
+#endif
+}
+
+static void test_quantus_submit_after_search()
+{
+    assert(cp_net_init() == 0);
+    cp_sock_t listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    assert(listener != CP_INVALID_SOCK);
+    sockaddr_in address = {};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    assert(bind(listener, (sockaddr*)&address, sizeof(address)) == 0);
+#ifdef _WIN32
+    int len = sizeof(address);
+#else
+    socklen_t len = sizeof(address);
+#endif
+    assert(getsockname(listener, (sockaddr*)&address, &len) == 0);
+    assert(listen(listener, 1) == 0);
+    assert(cp_pool_connect("127.0.0.1", ntohs(address.sin_port)));
+    cp_sock_t peer = accept(listener, nullptr, nullptr);
+    assert(peer != CP_INVALID_SOCK);
+    CpQpowJob job = {};
+    strcpy(job.job_id, "submit-guard");
+    strcpy(job.job_key, "submit-guard-key");
+    cp_qpow_pool_set_session_id("test-session");
+    uint8_t nonce[CP_QPOW_NONCE_BYTES] = {};
+    int msg_id = 1;
+    auto submit = [&] { return cp_qpow_pool_submit_share(&job, cp_pool_socket(), &msg_id, nonce, 0); };
+    auto receive = [&](int expected) {
+        std::string json;
+        while(json.find('\n') == std::string::npos){
+            assert(readable(peer, 2000));
+            char buf[1024];
+            const int n = recv(peer, buf, sizeof(buf), 0);
+            assert(n > 0);
+            json.append(buf, n);
+        }
+        assert(json.find("\"id\":" + std::to_string(expected) + ",") != std::string::npos);
+        assert(json.find("\"job_id\":\"submit-guard\"") != std::string::npos);
+    };
+    cp_job_mine_begin(job.job_key);
+    assert(submit() && msg_id == 2);
+    receive(1);
+    // Search has returned a nonce, then a notify cancels the same mining key.
+    cp_job_request_cancel();
+    assert(!submit() && msg_id == 2 && !readable(peer, 50));
+    cp_job_mine_begin("different-work");
+    assert(!submit() && msg_id == 2 && !readable(peer, 50));
+    cp_job_mine_begin(job.job_key);
+    assert(submit() && msg_id == 3); // A fresh epoch can submit normally.
+    receive(2);
+    cp_pool_reader_start();
+    CP_SOCK_CLOSE(peer);
+    const double deadline = cp_now_sec() + 2;
+    while(!cp_pool_conn_lost() && cp_now_sec() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    assert(cp_pool_conn_lost());
+    cp_job_mine_begin(job.job_key); // Connection guard must hold even if cancel was reset.
+    assert(!submit() && msg_id == 3);
+    cp_pool_reader_stop();
+    cp_pool_disconnect();
+    CP_SOCK_CLOSE(listener);
+    cp_job_mine_end();
+}
+
+static void test_strict_json_and_numbers()
+{
+    const char* complete = "{\"id\":7,\"text\":\"\\u0031\\u0410\\ud83d\\ude80\",\"x\":[true,null,-1.25e+2]}";
+    assert(cp_json_valid(complete));
+    size_t len = 0;
+    for(size_t i = 1; i < strlen(complete); ++i)
+        assert(cp_json_object_length(complete, i, &len) == 0);
+    assert(cp_json_object_length(complete, strlen(complete), &len) == 1);
+    char text[32];
+    assert(cp_json_str(complete, "text", text, sizeof(text)));
+    assert(!strcmp(text, "1\xd0\x90\xf0\x9f\x9a\x80"));
+    assert(cp_json_str("{\"\\u0069d\":\"decoded-key\"}", "id", text, sizeof(text)));
+    assert(!strcmp(text, "decoded-key"));
+    for(const char* invalid : {"{\"id\":1 \"result\":true}", "{\"result\":truex}",
+            "{\"result\":true,\"error\":nullx}", "{\"n\":0x10}", "{\"n\":01}",
+            "{\"n\":1.}", "{\"n\":.1}", "{\"n\":+1}", "{\"n\":1e}", "{\"a\":[1,]}",
+            "{\"a\":1,}", "{\"a\":\"\\x41\"}", "{\"a\":\"\\ud800\"}", "{\"a\":\"\\udc00\"}",
+            "{\"a\":\"\xc0\xaf\"}", "{\"id\":1,\"\\u0069d\":2}", "{}junk"})
+        assert(!cp_json_valid(invalid));
+    assert(!cp_json_str("{\"id\":\"\\u0000hidden\"}", "id", text, sizeof(text)) && !text[0]);
+    for(const char* result : {"0", "\"\"", "[]", "{\"status\":\"FAIL\"}", "{\"status\":null}"}){
+        const std::string json = "{\"id\":1,\"result\":" + std::string(result) + "}";
+        int accepted = 1;
+        assert(cp_json_rpc_response(json.c_str(), nullptr, &accepted) && !accepted);
+    }
+    const std::string base = quantus_job_json(std::string(64, '0'), std::string(128, '0'), "");
+    CpQpowJob job;
+    for(const char* seq : {"9007199254740993", "18446744073709551615"}){
+        const std::string json = base.substr(0, base.size() - 1) + ",\"seq\":" + seq + "}";
+        assert(cp_qpow_pool_parse_job(json.c_str(), &job));
+        assert(job.seq == (!strcmp(seq, "9007199254740993") ? UINT64_C(9007199254740993) : UINT64_MAX));
+    }
+    for(const char* seq : {"-1", "1e300", "1.5", "18446744073709551616", "\"1\"", "null"}){
+        const std::string json = base.substr(0, base.size() - 1) + ",\"seq\":" + seq + "}";
+        assert(!cp_qpow_pool_parse_job(json.c_str(), &job));
+    }
+    for(const char* difficulty : {"0", "-1", "1e309", "\"1\"", "null"}){
+        const std::string json = base.substr(0, base.size() - 1) + ",\"difficulty\":" + difficulty + "}";
+        assert(!cp_qpow_pool_parse_job(json.c_str(), &job));
+    }
+}
+
+static void test_latest_work_handoff()
+{
+    CpQpowJob old_job, new_job;
+    assert(cp_qpow_pool_parse_job(quantus_job_json(std::string(64, '0'), std::string(128, '0'), "").c_str(), &old_job));
+    assert(cp_qpow_pool_parse_job(quantus_job_json(std::string(64, '1'), std::string(128, '0'), "").c_str(), &new_job));
+    CpPoolWork work;
+    cp_pool_publish_quantus(&old_job);
+    cp_pool_publish_quantus(&new_job);
+    assert(cp_pool_wait_work(&work, 0) == 1 && work.algo == CP_ALGO_QUANTUS);
+    assert(!strcmp(work.quantus.job_key, new_job.job_key));
+    assert(cp_pool_wait_work(&work, 0) == 0);
+    cp_job_mine_begin(old_job.job_key); // A newer job arrived between taking work and beginning it.
+    assert(cp_job_should_cancel());
+    cp_job_mine_end();
+    cp_job_mine_begin(new_job.job_key);
+    assert(!cp_job_should_cancel());
+    cp_pool_publish_quantus(&old_job); // Also cancels after begin, including a reused pool id.
+    assert(cp_job_should_cancel());
+    cp_job_mine_end();
+    cp_pool_disconnect();
+    assert(cp_pool_wait_work(&work, 0) == 0);
+    cp_job_reset_work();
+}
 
 int main()
 {
+    double difficulty = 0;
+    for(const char* json : {"{\"params\":[123]}", "{\"params\" : [ \n 1.23e2 \t ]}", "{\"params\":123}"}){
+        assert(cp_pool_parse_difficulty(json, &difficulty) && difficulty == 123);
+    }
+    for(const char* json : {"{\"params\":[]}", "{\"params\":[1,2]}", "{\"params\":[0]}",
+                            "{\"params\":[-1]}", "{\"params\":[1e309]}", "{\"params\":[\"123\"]}",
+                            "{\"metadata\":{\"params\":[123]}}"})
+        assert(!cp_pool_parse_difficulty(json, &difficulty));
+    std::vector<std::thread> clocks;
+    for(int i = 0; i < 4; ++i){
+        clocks.emplace_back([] {
+            double previous = cp_now_sec();
+            for(int j = 0; j < 1000; ++j){
+                const double before = std::chrono::duration<double>(
+                    std::chrono::steady_clock::now().time_since_epoch()).count();
+                const double now = cp_now_sec();
+                const double after = std::chrono::duration<double>(
+                    std::chrono::steady_clock::now().time_since_epoch()).count();
+                assert(now >= previous && now >= before && now <= after);
+                previous = now;
+            }
+        });
+    }
+    for(auto& clock : clocks) clock.join();
+    test_response_ids();
+    test_submit_deadlines();
+    test_handshake_deadlines();
+    test_fee_pool_fallback();
+    test_work_identity_and_cancellation();
+    test_quantus_work_identity();
+    test_quantus_login();
+    test_pearl_notify_validation();
+    test_strict_json_and_numbers();
+    test_latest_work_handoff();
+    test_quantus_submit_after_search();
+#ifdef __linux__
+    int pair[2];
+    assert(socketpair(AF_UNIX, SOCK_STREAM, 0, pair) == 0);
+    close(pair[1]);
+    assert(!cp_send_all(pair[0], "test", 4)); // Broken peer returns an error, not SIGPIPE exit.
+    close(pair[0]);
+#endif
     size_t len = 0;
     const char* combined = "{\"job_id\":\"a}b\\\"{c\",\"target\":[1,2]}{\"id\":2}";
     assert(cp_json_object_length(combined, strlen(combined), &len) == 1);

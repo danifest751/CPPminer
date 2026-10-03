@@ -5,6 +5,9 @@
 #include <stdint.h>
 
 #include "cp_config.h"
+#include "cp_job_ctrl.h"
+#include "cp_algo.h"
+#include "cp_qpow_pool.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -16,29 +19,32 @@ int cp_pool_socket(void);
 
 /* mining.authorize with wallet/worker/agent (LuckyPool), plus "password"
  * (custom difficulty "d=N" on Kryptex) and "type":"v2" (Kryptex gzip stratum
- * offer). Resets g_pool_proof_gzip; the reader sets it from the response. */
+ * offer). Resets the proof encoding; the reader sets it from the response. */
 int cp_pool_send_authorize(int msg_id, const char* wallet,
                            const char* worker, const char* agent,
                            const char* password);
 /* Reader-side: pool line with the pending authorize id → parse "type":"v2".
  * Returns 1 if the line was the authorize response (handled). */
 int cp_pool_on_authorize_response(const char* line);
+/* Reader enforces authorize/first-job deadlines while this waits for success. */
+int cp_pool_wait_authorized(void);
+int cp_pool_proof_gzip(void);
 int cp_pool_send_plain_proof_submit(int sock, int msg_id, const char* job_id,
                                     const char* plain_b64, double hs);
+/* Registers the id before sending, and removes it on failure or its own ACK. */
+int cp_pool_send_tracked_submit(int sock, int msg_id, const char* json);
 
 void cp_pool_reader_start(void);
 void cp_pool_reader_stop(void);
-void cp_pool_inbox_clear(void);
 
 /* Blocking read of one JSON object (reader must be stopped). 1=ok, 0=timeout, -1=lost */
 int cp_pool_recv_one(char* out, size_t out_cap, int timeout_ms);
 
-/* 1 = line copied, 0 = timeout, -1 = connection lost */
-int cp_pool_wait_line(char* out, size_t out_cap, int timeout_ms);
 int cp_pool_conn_lost(void);
 
-void cp_pool_set_submit_inflight(int on);
 void cp_pool_log_share_submit_outcome(void);
+/* Positive finite difficulty from direct params or a singleton array. */
+int cp_pool_parse_difficulty(const char* json, double* difficulty_out);
 
 int cp_pool_parse_notify(const char* json,
                          char* job_id, int job_len,
@@ -48,14 +54,24 @@ int cp_pool_parse_notify(const char* json,
 
 typedef struct {
     char job_id[128];
-    char job_key[320];
+    char job_key[CP_JOB_KEY_CAP];
     char target_hex[80];
     uint8_t header[INCOMPLETE_HEADER_BYTES];
     uint32_t tgt[8];
     uint32_t cert_version; /* 1/2=legacy seeds, 3=salted */
-} CpPendingJob;
+    double difficulty;
+    int has_pool_target;
+} CpPearlJob;
 
-int cp_pool_take_pending_job(CpPendingJob* out);
+typedef struct {
+    CpAlgoId algo;
+    CpPearlJob pearl;
+    CpQpowJob quantus;
+} CpPoolWork;
+
+/* One latest parsed job, shared by idle and active mining. 1=work, 0=timeout, -1=lost. */
+int cp_pool_wait_work(CpPoolWork* out, int timeout_ms);
+void cp_pool_publish_quantus(const CpQpowJob* job);
 
 double cp_pool_difficulty(void);
 void cp_pool_set_difficulty(double d);

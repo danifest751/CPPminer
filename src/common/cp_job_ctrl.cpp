@@ -8,17 +8,34 @@
 static std::atomic<uint64_t> g_mine_epoch{0};
 static std::atomic<uint64_t> g_cancel_epoch{0};
 static std::atomic<int> g_mining_active{0};
-static char g_mining_job_key[320] = {0};
+static char g_mining_job_key[CP_JOB_KEY_CAP] = {0};
+static char g_latest_job_key[CP_JOB_KEY_CAP] = {0};
 static std::mutex g_mine_mx;
 
 extern "C" void cp_job_mine_begin(const char* job_key)
 {
     std::lock_guard<std::mutex> lk(g_mine_mx);
     g_mine_epoch.fetch_add(1);
-    g_cancel_epoch.store(0);
+    const uint64_t epoch = g_mine_epoch.load();
+    g_cancel_epoch.store(g_latest_job_key[0] && strcmp(g_latest_job_key, job_key) ? epoch : 0);
     strncpy(g_mining_job_key, job_key, sizeof(g_mining_job_key) - 1);
     g_mining_job_key[sizeof(g_mining_job_key) - 1] = 0;
     g_mining_active.store(1);
+}
+
+extern "C" void cp_job_publish_work(const char* job_key)
+{
+    std::lock_guard<std::mutex> lk(g_mine_mx);
+    strncpy(g_latest_job_key, job_key, sizeof(g_latest_job_key) - 1);
+    g_latest_job_key[sizeof(g_latest_job_key) - 1] = 0;
+    if(g_mining_active.load() && strcmp(g_mining_job_key, job_key))
+        g_cancel_epoch.store(g_mine_epoch.load());
+}
+
+extern "C" void cp_job_reset_work(void)
+{
+    std::lock_guard<std::mutex> lk(g_mine_mx);
+    g_latest_job_key[0] = 0;
 }
 
 extern "C" void cp_job_mine_end(void)
@@ -37,6 +54,7 @@ extern "C" int cp_job_should_cancel(void)
 /* Called from pool module when a new job arrives during mining. */
 extern "C" void cp_job_request_cancel(void)
 {
+    std::lock_guard<std::mutex> lk(g_mine_mx);
     g_cancel_epoch.store(g_mine_epoch.load());
 }
 
@@ -47,10 +65,14 @@ extern "C" int cp_job_mining_active(void)
 
 extern "C" const char* cp_job_mining_key(void)
 {
-    return g_mining_job_key;
+    thread_local char key[CP_JOB_KEY_CAP];
+    std::lock_guard<std::mutex> lk(g_mine_mx);
+    memcpy(key, g_mining_job_key, sizeof(key));
+    return key;
 }
 
 extern "C" int cp_job_key_matches(const char* job_key)
 {
+    std::lock_guard<std::mutex> lk(g_mine_mx);
     return !strcmp(g_mining_job_key, job_key);
 }
