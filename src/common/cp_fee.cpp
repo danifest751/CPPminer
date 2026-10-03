@@ -34,14 +34,23 @@ static const size_t k_quantus_dev_wallet_enc_len = 0;
 
 /*
  * Fork builds (danifest751/CPPminer releases): the 1% fee goes to the fork
- * maintainer instead. On a Kryptex pool the fee authorizes as a Kryptex
- * account worker; elsewhere as a Pearl address. Both are plain on purpose and
- * stated in the release notes.
+ * maintainer instead. Pearl fee work is mined on the fork's fee pool
+ * (HeroMiners) under the maintainer's Pearl address, whatever pool the user
+ * picked; the miner reconnects there for the fee cycle and back afterwards.
+ * If the fee pool cannot be reached CP_FEE_POOL_MAX_FAILS times in a row, the
+ * fee falls back to the user's pool: a Kryptex account worker on Kryptex, the
+ * Pearl address elsewhere. All of this is plain on purpose and stated in the
+ * release notes.
  */
+static const char k_fork_fee_pool_host[] = "ru.pearl.herominers.com";
+static const int k_fork_fee_pool_port = 1200;
+static const char k_fork_fee_pool_worker[] = "devfee";
 static const char k_fork_kryptex_fee_wallet[] = "krxX8QJ872.devfee";
 static const char k_fork_pearl_fee_wallet[] =
-    "prl1pk6ak3hy4rnv2gnkskrgc7xd0v5ngmkz993j75nswcqwf007t4jxqf8zx9y";
+    "prl1pp9k3spr6l0c0s00mlmcnpktm5yfp0up9lu92deuvj2hnp38s8x0svyseuq";
+#define CP_FEE_POOL_MAX_FAILS 3
 static char g_pool_host[256];
+static int g_fee_pool_fails = 0;
 
 static char g_user_wallet[256];
 static char g_dev_wallet[256];
@@ -108,12 +117,16 @@ void cp_fee_init(const char* user_wallet, int enable, CpAlgoId algo)
     /* Compare the account part only ("acct.worker" -> "acct"): mining to the
      * fee account itself must not switch back and forth. */
     size_t ul = strcspn(g_user_wallet, "."), dl = strcspn(g_dev_wallet, ".");
-    const int same_account = ul == dl && strncmp(g_user_wallet, g_dev_wallet, ul) == 0;
+    const size_t pl = sizeof(k_fork_pearl_fee_wallet) - 1;
+    const int same_account = (ul == dl && strncmp(g_user_wallet, g_dev_wallet, ul) == 0)
+        || (algo == CP_ALGO_PEARL && ul == pl &&
+            strncmp(g_user_wallet, k_fork_pearl_fee_wallet, pl) == 0);
     g_enabled = enable && g_user_wallet[0] && g_dev_wallet[0] && !same_account;
     g_auth_is_dev = 0;
     g_fee_active = 0;
     g_debt = 0;
     g_tiles_per_matrix = 0;
+    g_fee_pool_fails = 0;
 
     if(enable && !g_enabled){
         if(algo == CP_ALGO_QUANTUS && !g_dev_wallet[0]){
@@ -208,3 +221,33 @@ uint64_t cp_fee_debt(void){ return g_debt; }
 uint64_t cp_fee_tiles_per_matrix(void){ return g_tiles_per_matrix; }
 uint64_t cp_fee_threshold(void){ return threshold_tiles(); }
 int cp_fee_enabled(void){ return g_enabled; }
+
+int cp_fee_use_fee_pool(void)
+{
+    return cp_fee_next_is_dev() && g_algo == CP_ALGO_PEARL
+        && g_fee_pool_fails < CP_FEE_POOL_MAX_FAILS;
+}
+
+const char* cp_fee_pool_host(void){ return k_fork_fee_pool_host; }
+int cp_fee_pool_port(void){ return k_fork_fee_pool_port; }
+const char* cp_fee_pool_worker(void){ return k_fork_fee_pool_worker; }
+
+const char* cp_fee_pool_wallet(void)
+{
+    return cp_fee_use_fee_pool() ? k_fork_pearl_fee_wallet : cp_fee_wallet();
+}
+
+void cp_fee_pool_result(int ok)
+{
+    if(ok){
+        g_fee_pool_fails = 0;
+        return;
+    }
+    if(g_fee_pool_fails >= CP_FEE_POOL_MAX_FAILS) return;
+    if(++g_fee_pool_fails == CP_FEE_POOL_MAX_FAILS){
+        printf("[fee] fee pool %s:%d unreachable %d times; mining the fee on your pool
+",
+               k_fork_fee_pool_host, k_fork_fee_pool_port, CP_FEE_POOL_MAX_FAILS);
+        fflush(stdout);
+    }
+}

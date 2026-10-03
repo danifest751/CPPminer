@@ -1704,16 +1704,33 @@ reconnect:
     cp_pool_inbox_clear();
     cur_job_key[0] = 0;
 
-    printf("[main] Connecting to %s:%d...\n", pool_host, pool_port);
+    /* Fork fee cycles are mined on the fork's fee pool (see cp_fee.cpp). */
+    const int on_fee_pool = cp_fee_use_fee_pool();
+    int fee_pool_job = 0;
+    const char* conn_host = on_fee_pool ? cp_fee_pool_host() : pool_host;
+    const int conn_port = on_fee_pool ? cp_fee_pool_port() : pool_port;
+
+    printf("[main] Connecting to %s:%d%s...\n", conn_host, conn_port,
+           on_fee_pool ? " (dev fee pool)" : "");
     while(1){
-        if(cp_pool_connect(pool_host, pool_port)) break;
+        if(cp_pool_connect(conn_host, conn_port)) break;
+        if(on_fee_pool){
+            cp_fee_pool_result(0);
+            cp_sleep(2);
+            goto reconnect;
+        }
         printf("[main] Reconnecting in 5 sec...\n"); fflush(stdout);
         cp_sleep(5);
     }
 
-    if(!cp_pool_send_authorize(msg_id++, cp_fee_wallet(), worker_global, agent_global,
-                               pool_pass_global))
+    if(!cp_pool_send_authorize(msg_id++,
+                               on_fee_pool ? cp_fee_pool_wallet() : cp_fee_wallet(),
+                               on_fee_pool ? cp_fee_pool_worker() : worker_global,
+                               agent_global,
+                               on_fee_pool ? "x" : pool_pass_global)){
+        if(on_fee_pool) cp_fee_pool_result(0);
         goto reconnect;
+    }
     cp_fee_on_authorized();
     if(cp_fee_enabled()){
         printf("[fee] authorized as %s (debt=%llu / 100*T=%llu)\n",
@@ -1730,11 +1747,16 @@ reconnect:
         int got = cp_pool_wait_line(line_buf, sizeof(line_buf), -1);
         if(got < 0){
             printf("[net] Connection lost, reconnecting...\n"); fflush(stdout);
+            if(on_fee_pool && !fee_pool_job) cp_fee_pool_result(0);
             goto reconnect;
         }
         if(got == 0) continue;
 
         if(strstr(line_buf, "mining.notify")){
+            if(on_fee_pool && !fee_pool_job){
+                fee_pool_job = 1;
+                cp_fee_pool_result(1);
+            }
             int rc = handle_notify_line(line_buf, &msg_id, cur_job_key);
             if(rc == CP_JOB_FEE_SWITCH || cp_pool_conn_lost()) goto reconnect;
             continue;
