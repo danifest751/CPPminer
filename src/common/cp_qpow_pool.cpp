@@ -116,11 +116,12 @@ int cp_qpow_pool_parse_job(const char* json, CpQpowJob* out)
     }
     /* clean_jobs can be alongside params.job, as well as in a direct job. */
     const char* clean = cp_json_member(json, "clean_jobs");
-    out->clean_jobs = clean && !strncmp(clean, "true", 4);
     if(cp_json_member(json, "job")){
         if(!json_object(cp_json_member(json, "job"), nested_job)) return 0;
         json = nested_job.c_str();
     }
+    if(!clean) clean = cp_json_member(json, "clean_jobs");
+    out->clean_jobs = clean && !strncmp(clean, "true", 4);
 
     if(!json_str_from(json, "job_id", out->job_id, (int)sizeof(out->job_id)) || !out->job_id[0])
         return 0;

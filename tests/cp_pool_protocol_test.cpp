@@ -221,6 +221,8 @@ static void test_quantus_login()
     assert(!strcmp(session, "s") && !parsed.job_id[0]); // A notification may supply initial work.
     const std::string wrapped = "{\"method\" : \"job\",\"params\":{\"clean_jobs\":true,\"job\":" + job + "}}";
     assert(cp_qpow_pool_parse_job(wrapped.c_str(), &parsed) && parsed.clean_jobs);
+    const std::string nested_clean = "{\"method\":\"job\",\"params\":{\"job\":{\"clean_jobs\":true," + job.substr(1) + "}}}";
+    assert(cp_qpow_pool_parse_job(nested_clean.c_str(), &parsed) && parsed.clean_jobs);
     assert(!cp_qpow_pool_parse_job(quantus_job_json(std::string(64, '0'), std::string(128, '0'),
                                                    std::string(100, 'a')).c_str(), &parsed));
 }

@@ -1,6 +1,9 @@
 # Changelog
 
 ## v0.5 (tentative)
+- Quantus work identity includes the full mining hash, target and extranonce; equivalent hex casing remains a duplicate.
+- Quantus login matches the request ID, rejects explicit errors/failed status and preserves the latest early job. Login and initial work share a fixed 30-second deadline.
+- When a pool requires gzip proofs, a compression/allocation failure drops that share instead of submitting the wrong encoding; the proof queue returns its buffers and processes subsequent shares.
 - Fix Quantus current-job buffer overflow and make job handlers retain array bounds.
 - Pearl work identity includes the complete header, effective target and certificate version; ignore true duplicates and drop cancelled proofs after building/encoding. Clear queued work on reconnect.
 - Pool TCP connections try all resolved IPv4/IPv6 addresses within a shared 10-second budget, reserving time for later addresses. Validate pool URI host/port lengths and accept bracketed IPv6. A broken connection returns a send error instead of terminating Linux mining with SIGPIPE.

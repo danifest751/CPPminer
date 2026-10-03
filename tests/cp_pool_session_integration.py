@@ -339,7 +339,8 @@ if __name__ == "__main__":
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
         futures = [executor.submit(case, binary) for case in (
             quantus_early_job, quantus_rejected_login, quantus_missing_login,
-            quantus_job_changes, active_job_change, changed_job_identity, quantus_job_buffer, rejected_authorize, missing_authorize, missing_first_job, job_before_authorize,
+            quantus_job_changes, active_job_change, changed_job_identity, quantus_job_buffer,
+            rejected_authorize, missing_authorize, missing_first_job, job_before_authorize,
             accepted_share, unacknowledged_share)]
         for future in futures:
             print("PASS:", future.result(), flush=True)
