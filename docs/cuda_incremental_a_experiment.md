@@ -100,6 +100,10 @@ Independent checks passed 172 CPU-root/full-GPU-subroot comparisons. Six verifie
 
 The live HeroMiners test produced a share that passed local proof verification and was accepted by the pool with gzip encoding. The test performed 322 full-reference tree checks across 307 scan attempts, with no verification failure. One accepted share validates this example; it does not measure the long-run accepted-share rate.
 
+The accepted proof compressed from 90,560 to 2,240 base64 characters (40.4x).
+The sparse signal strips contain many zero bytes, reducing the wire payload;
+this one proof is not a measurement of average compression across shares.
+
 The original v0.5-fork.4 executable, wallet, pool, worker, environment and arguments were restored and checked against the published binary checksum. GitHub Actions were not used. The experiment remains opt-in on its own branch; no release binary is replaced by this change.
 
 Recommendation: retain the prototype for a longer pool comparison and GPU memory instrumentation on hardware that supports Compute Sanitizer before considering a default change. The measured improvement is modest because production already overlaps preparation with scanning.
