@@ -217,7 +217,7 @@ inline bool digest_beats_target(const uint digest[8], __global const uint *bound
 #if defined(CASE32_USE_ASM_DOT) || defined(CASE32_USE_BUILTIN_SDOT4) || \
         defined(CASE32_USE_BUILTIN_SUDOT4) || \
         defined(CASE32_USE_DOT) || defined(CASE32_INT_DOT) || \
-        defined(CASE32_FORCE_PACKED)
+        defined(CASE32_FORCE_PACKED) || defined(CASE32_GCN_MAD24)
 #define CASE32_PACKED_DOT 1
 #else
 #define CASE32_PACKED_DOT 0
@@ -332,9 +332,60 @@ inline void case32_cpm_flush(__private int *acc, __private const cpm_vec *cpm) {
 }
 #endif
 
+#if defined(CASE32_GCN_MAD24)
+/* AMD GPUs without int8 dot instructions (GCN gfx8 Polaris/Fiji/Tonga, gfx900 Vega 10,
+   gfx1010 RDNA1). The best they do is one v_mad_i32_i24 per MAC, so accumulate straight
+   into the int32 tile (no float cpm panel: cpm + acc = 2x MR*NR registers spilled to
+   scratch on gfx803 at 8x16) and unpack the int8 operands one k at a time, MR + NR
+   v_bfe_i32 per MR*NR mads (~19% at 8x16), keeping ~MR*NR + 3*(MR+NR) VGPRs live. */
+/* Byte k of a packed int8 quad, sign-extended. With a run-time k (rolled loop) clang's
+   AMDGPU backend emits v_lshrrev + v_bfe_i32 for the portable form; the builtin is a
+   single v_bfe_i32 with a register offset. */
+#if defined(__AMDGCN__) && defined(__has_builtin)
+#if __has_builtin(__builtin_amdgcn_sbfe)
+#define CASE32_GCN_BYTE(x, k) __builtin_amdgcn_sbfe((x), (uint)(8 * (k)), 8u)
+#endif
+#endif
+#ifndef CASE32_GCN_BYTE
+#define CASE32_GCN_BYTE(x, k) ((int)(char)((x) >> (8 * (k))))
+#endif
+
+inline void case32_gcn_kgroup(__private int *acc, __private const int *a_pack,
+                              __private const int *b_pack) {
+#ifndef CASE32_GCN_KUNROLL
+#define CASE32_GCN_KUNROLL 1
+#endif
+    #pragma unroll CASE32_GCN_KUNROLL
+    for (int k = 0; k < RANK; ++k) {
+        int av[MR];
+        int bv[NR];
+        #pragma unroll
+        for (int i = 0; i < MR; ++i) {
+            av[i] = CASE32_GCN_BYTE(a_pack[i], k);
+        }
+        #pragma unroll
+        for (int j = 0; j < NR; ++j) {
+            bv[j] = CASE32_GCN_BYTE(b_pack[j], k);
+        }
+        #pragma unroll
+        for (int j = 0; j < NR; ++j) {
+            #pragma unroll
+            for (int i = 0; i < MR; ++i) {
+                /* av/bv are sign-extended bytes, so the backend selects
+                   v_mad_i32_i24 on its own (no mad24() library call). */
+                acc[j * MR + i] += av[i] * bv[j];
+            }
+        }
+    }
+}
+#endif
+
 inline void case32_accum_kgroup(__private int *acc, __private cpm_vec *cpm,
                                 __private const int *a_pack, __private const int *b_pack) {
-#if CASE32_PACKED_DOT
+#if defined(CASE32_GCN_MAD24)
+    (void)cpm;
+    case32_gcn_kgroup(acc, a_pack, b_pack);
+#elif CASE32_PACKED_DOT
     (void)cpm;
     #pragma unroll
     for (int j = 0; j < NR; ++j) {
