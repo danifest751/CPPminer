@@ -1,8 +1,8 @@
-# Pool reliability fixes for the next fork release
+# Pool reliability fixes in v0.5-fork.4
 
-The changes on `fix/pool-session-watchdog` are intended for the preparing fork release.
-They must be integrated into `release/fork` before building a new release; an existing
-release binary is not updated by pushing this branch. No upstream PR is part of this batch.
+The changes developed on `fix/pool-session-watchdog` are integrated into `release/fork`
+for v0.5-fork.4. Release binaries must be built from that release commit; an older binary
+is not updated by pulling source alone. No upstream PR is part of this batch.
 
 | Fix | Result |
 |---|---|

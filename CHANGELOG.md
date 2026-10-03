@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.5-fork.4
+- Pool session recovery: authorization/first-job deadlines, per-request submit ACK tracking and oldest-share timeout.
+- Bounded latest-job delivery for Pearl and Quantus, complete work identities, preserved early jobs and cancellation across the idle/active transition.
+- Connection-local Pearl difficulty and immutable job targets; strict JSON, Unicode, authorization and numeric-field validation.
+- Quantus login correlation, full-width sequence parsing and final cancellation/connection checks before nonce submission.
+- Correct gzip negotiation and recovery from failed compression without sending the wrong encoding.
+- In-memory proof verification, including targetless jobs; checked dry-run diagnostics scoped to process and job.
+- Explicit backend/resource failure exits, bounded multi-address TCP connection attempts and monotonic deadlines/rates.
+- Strict command-line validation, local regression coverage and pool agent `cppminer/0.5-fork.4`.
+- Detailed release notes: [v0.5-fork.4](docs/releases/v0.5-fork.4.md).
+
 ## v0.5 (tentative)
 - Pearl parses difficulty notifications with arbitrary JSON whitespace and dispatches exact method names. Reject invalid explicit targets, empty/oversized job IDs and invalid headers before starting work; retain object and legacy array notifications.
 - Quantus rechecks cancellation, full work identity and connection state immediately before submitting a found nonce; disconnected sessions do not start queued work.
