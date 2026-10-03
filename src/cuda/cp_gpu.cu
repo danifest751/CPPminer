@@ -22,6 +22,7 @@
 #include "cp_gpu_gen.cuh"
 #include "cp_noise_phase.cuh"
 #include "cp_merkle_tree.cuh"
+#include "cp_incremental_a.cuh"
 #include "cp_noise.h"
 #include "cp_cutlass.h"
 #include "cp_proof.h"
@@ -98,6 +99,33 @@ typedef struct {
 } GpuCtx;
 
 static GpuCtx g_gpus[MAX_GPUS];
+static CpIncrementalA g_incremental_a[2];
+
+static int gpu_a_mode(void)
+{
+    static int mode = -1;
+    if(mode < 0){
+        const char* value = getenv("CP_CUDA_A_MODE");
+        if(!value || !*value || !strcmp(value, "dense")) mode = 0;
+        else if(!strcmp(value, "sparse")) mode = 1;
+        else if(!strcmp(value, "incremental")) mode = 2;
+        else {
+            fprintf(stderr, "[gpu] CP_CUDA_A_MODE must be dense, sparse or incremental\n");
+            exit(1);
+        }
+        if(mode) printf("[gpu] EXPERIMENTAL signal A mode: %s\n", value);
+    }
+    return mode;
+}
+
+static void gpu_a_cache_shutdown(void)
+{
+    for(auto& cache : g_incremental_a){
+        if(cache.tree) cudaFree(cache.tree);
+        if(cache.dirty) cudaFree(cache.dirty);
+        cache = CpIncrementalA{};
+    }
+}
 static int g_ngpu = 0;
 static int g_contiguous = 0;
 static int g_period_gemm = 1;
@@ -441,6 +469,10 @@ int cp_gpu_list_devices(void)
 void cp_gpu_shutdown(void)
 {
     gpu_overlap_shutdown();
+    if(g_ngpu > 0){
+        CU_CHECK(cudaSetDevice(g_gpus[0].dev));
+        gpu_a_cache_shutdown();
+    }
     for(int i = 0; i < g_ngpu; i++){
         GpuCtx* g = &g_gpus[i];
         CU_CHECK(cudaSetDevice(g->dev));
@@ -1048,10 +1080,19 @@ static int gpu_prepare_job_b(GpuCtx* g, const uint8_t job_key[32], int m, int n)
     return cp_job_should_cancel() ? -1 : 0;
 }
 
+static int gpu_prepare_cached_attempt_a(GpuCtx* g, cudaStream_t st, uint8_t* h_pin,
+    int8_t* signal, int8_t* noisy, uint8_t* subroots, AttemptACommit* commit,
+    uint64_t rng_seed, const uint8_t job_key[32], const uint8_t b_noise_seed[32],
+    int salted, int m, uint8_t a_key_out[32]);
+
 /* Per-nonce: random A + hash + A-side noise into d_Ap. Reuses cached b_noise_seed. */
 static int gpu_prepare_attempt_a(GpuCtx* g, uint64_t rng_seed, const uint8_t job_key[32],
                                  int m, int n, uint8_t a_key_out[32])
 {
+    if(gpu_a_mode())
+        return gpu_prepare_cached_attempt_a(g, 0, nullptr, g->d_A_sig, g->d_Ap,
+            g->d_a_subroots, &g_attempt_a, rng_seed, job_key, g_zero_b.b_noise_seed,
+            g_salted, m, a_key_out);
     size_t szAp = (size_t)m * K_DIM;
     size_t pad_a = (szAp + 1023) / 1024 * 1024;
     const int tpb = 256;
@@ -1178,6 +1219,102 @@ static int gpu_keyed_hash_a_stream(GpuCtx* g, cudaStream_t st, uint8_t* h_pin,
     return 0;
 }
 
+static int gpu_prepare_cached_attempt_a(GpuCtx* g, cudaStream_t st, uint8_t* h_pin,
+    int8_t* signal, int8_t* noisy, uint8_t* subroots, AttemptACommit* commit,
+    uint64_t rng_seed, const uint8_t job_key[32], const uint8_t b_noise_seed[32],
+    int salted, int m, uint8_t a_key_out[32])
+{
+    const double started = cp_now_sec();
+    const int mode = gpu_a_mode();
+    const size_t bytes = (size_t)m * K_DIM;
+    const int leaves = (int)(bytes / D_B3_CHUNK);
+    if(leaves < 2 || (leaves & (leaves - 1))){
+        fprintf(stderr, "[gpu] experimental A cache requires a power-of-two chunk count\n");
+        return -1;
+    }
+    CpIncrementalA* cache = nullptr;
+    for(auto& candidate : g_incremental_a)
+        if(candidate.signal == signal){ cache = &candidate; break; }
+    if(!cache){
+        for(auto& candidate : g_incremental_a)
+            if(!candidate.signal){ cache = &candidate; candidate.signal = signal; break; }
+    }
+    if(!cache) return -1;
+    commit->valid = 0;
+    if(!cache->ready || cache->leaves != leaves || memcmp(cache->job_key, job_key, 32)){
+        cache->ready = false;
+        CU_CHECK(cudaMemsetAsync(signal, 0, bytes, st));
+        if(mode == 2){
+            if(cache->leaves != leaves || !cache->tree){
+                if(cache->tree) CU_CHECK(cudaFree(cache->tree));
+                if(cache->dirty) CU_CHECK(cudaFree(cache->dirty));
+                CU_CHECK(cudaMalloc(&cache->tree, (size_t)2 * leaves * D_B3_OUT));
+                CU_CHECK(cudaMalloc(&cache->dirty, (size_t)2 * leaves * sizeof(unsigned)));
+                printf("[gpu] incremental A tree+flags: %.2f MiB per buffer\n",
+                       (double)2 * leaves * (D_B3_OUT + sizeof(unsigned)) / (1024 * 1024));
+            }
+            CU_CHECK(cudaMemsetAsync(cache->dirty, 1, (size_t)2 * leaves * sizeof(unsigned), st));
+        }
+        cache->leaves = leaves;
+        memcpy(cache->job_key, job_key, 32);
+    }
+    if(h_pin){
+        memcpy(h_pin, job_key, 32);
+        CU_CHECK(cudaMemcpyAsync(g->d_job_key, h_pin, 32, cudaMemcpyHostToDevice, st));
+    }else CU_CHECK(cudaMemcpyAsync(g->d_job_key, job_key, 32, cudaMemcpyHostToDevice, st));
+    cp_sparse_a_update_kernel<<<(K_DIM + 255) / 256, 256, 0, st>>>(
+        signal, m, K_DIM, rng_seed, mode == 2 ? cache->dirty : nullptr, leaves);
+    CU_CHECK(cudaGetLastError());
+    const int count = (leaves + CP_MT_THREADS - 1) / CP_MT_THREADS;
+    if(mode == 2){
+        cp_incremental_leaves_kernel<<<(leaves + 255) / 256, 256, 0, st>>>(
+            (const uint8_t*)signal, bytes, g->d_job_key, cache->tree, cache->dirty, leaves);
+        for(int count_at_level = leaves / 2; count_at_level; count_at_level /= 2)
+            cp_incremental_parents_kernel<<<(count_at_level + 255) / 256, 256, 0, st>>>(
+                g->d_job_key, cache->tree, cache->dirty, count_at_level, count_at_level);
+        cp_incremental_publish_kernel<<<(count + 255) / 256, 256, 0, st>>>(
+            g->d_job_key, cache->tree, leaves, subroots, g->d_merkle_roots);
+        CU_CHECK(cudaGetLastError());
+        CU_CHECK(cudaMemcpyAsync(commit->root, g->d_merkle_roots, 32, cudaMemcpyDeviceToHost, st));
+        CU_CHECK(cudaStreamSynchronize(st));
+    }else if(h_pin){
+        if(gpu_keyed_hash_a_stream(g, st, h_pin, signal, bytes, bytes, job_key,
+                                  subroots, &commit->num_subroots, commit->root)) return -1;
+    }else {
+        CU_CHECK(cudaStreamSynchronize(st));
+        if(gpu_matrix_keyed_hash_ex(g, signal, bytes, bytes, job_key, commit->root,
+                                   subroots, cudaMemcpyDeviceToDevice, &commit->num_subroots)) return -1;
+    }
+    commit->num_subroots = count;
+    const char* check = getenv("CP_CUDA_A_CHECK");
+    if(check && !strcmp(check, "1")){
+        uint8_t reference[32];
+        uint8_t* expected = (uint8_t*)malloc((size_t)count * 32);
+        uint8_t* actual = (uint8_t*)malloc((size_t)count * 32);
+        if(!expected || !actual){ free(expected); free(actual); return -1; }
+        int ref_count = 0;
+        const int rc = gpu_matrix_keyed_hash_ex(g, signal, bytes, bytes, job_key,
+            reference, expected, cudaMemcpyDeviceToHost, &ref_count);
+        CU_CHECK(cudaMemcpy(actual, subroots, (size_t)count * 32, cudaMemcpyDeviceToHost));
+        const bool match = rc == 0 && ref_count == count &&
+            !memcmp(reference, commit->root, 32) && !memcmp(expected, actual, (size_t)count * 32);
+        free(expected); free(actual);
+        if(!match){ fprintf(stderr, "[gpu] incremental A ROOT/SUBROOT MISMATCH\n"); return -1; }
+        printf("[gpu-prep] cache check: root and all %d subroots match full hash\n", count);
+    }
+    pearl_a_noise_seed_from_hash(b_noise_seed, commit->root, (uint32_t)m, salted, a_key_out);
+    CU_CHECK(cudaMemcpyAsync(g->d_seed_a, a_key_out, 32, cudaMemcpyHostToDevice, st));
+    gpu_noise_generate_a(g, m, st);
+    gpu_noise_apply_a(g, m, st, signal, noisy);
+    CU_CHECK(cudaStreamSynchronize(st));
+    cache->ready = true;
+    commit->valid = 1;
+    printf("[gpu-prep] cached A mode=%s total=%.6fs\n",
+           mode == 2 ? "incremental" : "sparse", cp_now_sec() - started);
+    fflush(stdout);
+    return cp_job_should_cancel() ? -1 : 0;
+}
+
 /* gpu_prepare_attempt_a on stream st into explicit buffers; no device-wide
  * syncs. Returns 0 when the buffers and *commit hold a complete attempt. */
 static int gpu_prepare_attempt_a_stream(GpuCtx* g, cudaStream_t st, uint8_t* h_pin,
@@ -1187,6 +1324,9 @@ static int gpu_prepare_attempt_a_stream(GpuCtx* g, cudaStream_t st, uint8_t* h_p
                                         const uint8_t b_noise_seed[32], int salted,
                                         int m, uint8_t a_key_out[32])
 {
+    if(gpu_a_mode())
+        return gpu_prepare_cached_attempt_a(g, st, h_pin, d_a_sig, d_ap, d_subroots,
+            commit, rng_seed, job_key, b_noise_seed, salted, m, a_key_out);
     const size_t szAp = (size_t)m * K_DIM;
     const size_t pad_a = (szAp + 1023) / 1024 * 1024;
     const int tpb = 256;
