@@ -1316,9 +1316,10 @@ inline int8 intel_sub_group_i8_i8_matrix_mad_k32(short8 a, int8 b, int8 acc) {
     r.s7 = dpas_emu_row(x.s7, b, acc.s7);
     return r;
 }
-#elif !defined(cl_intel_subgroup_matrix_multiply_accumulate)
-#error device compiler does not define cl_intel_subgroup_matrix_multiply_accumulate
 #else
+/* Intel device compiler: the builtins come with cl_intel_subgroup_matrix_multiply_accumulate
+   (the host checked CL_DEVICE_EXTENSIONS). The extension macro is deliberately not
+   required, so a driver that omits it still builds; missing builtins fail loudly anyway. */
 #define DPAS_REQD_SG __attribute__((intel_reqd_sub_group_size(DPAS_SG)))
 #endif
 
