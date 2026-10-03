@@ -1251,17 +1251,23 @@ uint DPAS_OVL intel_sub_group_shuffle_xor(uint x, uint m);
    validates the GEMM indexing, reduce-scatter, milestone words and jackpot of this path
    -- not the Intel hardware layout, which only the self-test on the device can confirm. */
 #define DPAS_REQD_SG
-inline uint dpas_emu_hw_lane(void) {
-    return __builtin_amdgcn_mbcnt_hi(~0u, __builtin_amdgcn_mbcnt_lo(~0u, 0u));
-}
 #define get_sub_group_local_id() ((uint)get_local_id(0) % (uint)DPAS_SG)
 #define get_sub_group_id() ((uint)get_local_id(0) / (uint)DPAS_SG)
 #define get_sub_group_size() ((uint)DPAS_SG)
+#ifdef CP_DPAS_EMULATE_HOST
+/* Value of x in emulated lane `src` of this lane's sub-group: provided by a host-side
+   harness that runs the kernel source compiled for the CPU (one thread per lane). */
+int dpas_emu_read(int x, uint src);
+#else
+inline uint dpas_emu_hw_lane(void) {
+    return __builtin_amdgcn_mbcnt_hi(~0u, __builtin_amdgcn_mbcnt_lo(~0u, 0u));
+}
 /* Value of x in emulated lane `src` of this lane's sub-group. */
 inline int dpas_emu_read(int x, uint src) {
     const uint base = dpas_emu_hw_lane() - get_sub_group_local_id();
     return __builtin_amdgcn_ds_bpermute((int)((base + src) << 2), x);
 }
+#endif
 #define intel_sub_group_shuffle_xor(x, m)                                              \
     as_uint(dpas_emu_read(as_int(x), get_sub_group_local_id() ^ (uint)(m)))
 inline int dpas_emu_dot4(int a, int b, int acc) {
