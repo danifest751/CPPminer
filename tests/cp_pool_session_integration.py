@@ -329,8 +329,10 @@ def active_job_change(binary, extra_args=()):
         raise AssertionError(pool.output())
 
 
-def receive_share(pool):
-    pool.send({"id": pool.auth_id, "result": True, "type": "v2"})
+def receive_share(pool, response=None, expect_gzip=True):
+    if response is None:
+        response = {"result": True, "type": "v2"}
+    pool.send(dict(response, id=pool.auth_id))
     pool.send({"method": "mining.notify", "params": {
         "job_id": "submit-test", "header": "00" * 76,
         "target": "0000004000000000" + "00" * 24, "cert_version": 3}})
@@ -341,10 +343,29 @@ def receive_share(pool):
         data += chunk
     share = json.loads(data.split(b"\n", 1)[0])
     assert share["method"] == "mining.submit", share
-    compressed = base64.b64decode(share["params"]["plain_proof"])
-    proof = gzip.decompress(compressed)
-    assert len(proof) > 1000 and len(compressed) < len(proof)
+    encoded = base64.b64decode(share["params"]["plain_proof"])
+    if expect_gzip:
+        proof = gzip.decompress(encoded)
+        assert len(proof) > 1000 and len(encoded) < len(proof)
+    else:
+        assert len(encoded) > 1000 and not encoded.startswith(b"\x1f\x8b"), pool.output()
     return share["id"]
+
+
+def proof_encoding_scope(binary):
+    cases = (
+        ({"result": True, "type": "v2"}, True),
+        ({"result": {"type": "v2"}}, True),
+        ({"result": True, "metadata": {"type": "v2"}}, False),
+        ({"result": {"metadata": {"type": "v2"}}}, False),
+        ({"result": {"metadata": {"type": "v2"}}, "type": "v1"}, False),
+        ({"result": {"type": "v2"}, "type": "v1"}, False),
+    )
+    for response, compressed in cases:
+        with PoolProbe(binary) as pool:
+            submit_id = receive_share(pool, response, compressed)
+            pool.send({"id": submit_id, "result": True})
+    return "proof wire encoding follows direct authorize type fields; nested metadata is ignored"
 
 
 def accepted_share(binary):
@@ -379,6 +400,7 @@ if __name__ == "__main__":
         futures = [executor.submit(case, binary) for case in (
             spaced_difficulty,
             invalid_pearl_jobs,
+            proof_encoding_scope,
             quantus_early_job, quantus_rejected_login, quantus_missing_login,
             quantus_job_changes, active_job_change, changed_job_identity, quantus_job_buffer,
             rejected_authorize, missing_authorize, missing_first_job, job_before_authorize,

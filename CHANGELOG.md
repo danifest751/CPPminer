@@ -1,6 +1,9 @@
 # Changelog
 
 ## v0.5 (tentative)
+- Pearl parses difficulty notifications with arbitrary JSON whitespace and dispatches exact method names. Reject invalid explicit targets, empty/oversized job IDs and invalid headers before starting work; retain object and legacy array notifications.
+- Quantus rechecks cancellation, full work identity and connection state immediately before submitting a found nonce; disconnected sessions do not start queued work.
+- Pearl negotiates gzip only from a direct authorize-response type or a direct result.type, ignoring unrelated nested metadata (outer type takes precedence).
 - Quantus work identity includes the full mining hash, target and extranonce; equivalent hex casing remains a duplicate.
 - Quantus login matches the request ID, rejects explicit errors/failed status and preserves the latest early job. Login and initial work share a fixed 30-second deadline.
 - When a pool requires gzip proofs, a compression/allocation failure drops that share instead of submitting the wrong encoding; the proof queue returns its buffers and processes subsequent shares.

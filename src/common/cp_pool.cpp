@@ -376,8 +376,20 @@ int cp_pool_on_authorize_response(const char* line)
 {
     int id = 0, accepted = 0;
     if(!cp_json_rpc_response(line, &id, &accepted)) return 0;
+    /* Only protocol fields can negotiate encoding. Arbitrary metadata.type
+     * must not override a plain-proof response. A direct outer type takes precedence. */
+    const char* type_value = cp_json_member(line, "type");
+    std::string result_object;
+    if(!type_value){
+        const char* result = cp_json_member(line, "result");
+        size_t len = 0;
+        if(result && *result == '{' && cp_json_object_length(result, strlen(result), &len) == 1){
+            result_object.assign(result, len);
+            type_value = cp_json_member(result_object.c_str(), "type");
+        }
+    }
     char type[16];
-    const int v2 = cp_json_str(line, "type", type, (int)sizeof(type)) &&
+    const int v2 = cp_json_str_value(type_value, type, (int)sizeof(type)) &&
                    strcmp(type, "v2") == 0;
     if(!g_session.authorize_response(id, accepted != 0, v2 != 0, cp_now_sec())) return 0;
     printf("[pool] authorize response: %s\n", line);
