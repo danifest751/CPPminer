@@ -371,11 +371,12 @@ inline void case32_cpm_flush(__private int *acc, __private const cpm_vec *cpm) {
 
 inline void case32_gcn_kgroup(__private int *acc, __private const int *a_pack,
                               __private const int *b_pack) {
-/* 4 (unrolled): constant byte offsets, one v_bfe_i32 each, and 2.32 vs 1.39 TMAC/s on a
-   780M; 1 only pays off where __builtin_amdgcn_sbfe exists (not the AMD Windows
-   driver compiler). */
+/* k-loop unroll. RX 580 (AMD Windows driver, 8k): rolled 2.17 vs unrolled 2.10 TMAC/s,
+   both with acc[] in registers (full pool size: 1.9 vs 1.38 for the float cpm nest).
+   Upstream clang without __builtin_amdgcn_sbfe prefers 4 (780M forced: 2.32 vs 1.39);
+   CP_OCL_GCN_KUNROLL overrides. */
 #ifndef CASE32_GCN_KUNROLL
-#define CASE32_GCN_KUNROLL 4
+#define CASE32_GCN_KUNROLL 1
 #endif
     #pragma unroll CASE32_GCN_KUNROLL
     for (int k = 0; k < RANK; ++k) {
