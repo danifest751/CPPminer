@@ -352,9 +352,8 @@ void CpShareQueueImpl::process_snapshot(ShareSnapshot *snap) {
             errbuf[0] = 0;
             const double gz_started = cp_now_sec();
             if (cp_proof_gzip_b64(b64, gz_b64, PLAIN_PROOF_B64_MAX, errbuf, sizeof(errbuf)) != 0) {
-                printf("[plain] proof gzip failed (nonce=%llu): %s%s\n",
-                       (unsigned long long)snap->nonce, errbuf[0] ? errbuf : "unknown",
-                       proof_gzip ? " - submitting plain base64" : "");
+                printf("[plain] proof gzip failed (nonce=%llu): %s\n",
+                       (unsigned long long)snap->nonce, errbuf[0] ? errbuf : "unknown");
                 free(gz_b64);
                 gz_b64 = nullptr;
             } else {
@@ -364,9 +363,11 @@ void CpShareQueueImpl::process_snapshot(ShareSnapshot *snap) {
                        proof_gzip ? "" : " (not submitted compressed: pool is not v2)");
             }
             fflush(stdout);
+        } else {
+            fprintf(stderr, "[plain] OOM proof gzip buffer (nonce=%llu)\n",
+                    (unsigned long long)snap->nonce);
         }
     }
-    const char *submit_b64 = (proof_gzip && gz_b64) ? gz_b64 : b64;
 
     if (g_dry_run) {
         printf("[plain] dry-run: proof saved to %s (nonce=%llu)\n", job_ctx.proof_path,
@@ -388,6 +389,20 @@ void CpShareQueueImpl::process_snapshot(ShareSnapshot *snap) {
         share_snapshot_delete(snap);
         return;
     }
+
+    /* The pool negotiated gzip: plain base64 is not a valid fallback.
+     * Drop only this proof and return the matrices so mining can continue. */
+    if (proof_gzip && !gz_b64) {
+        printf("[plain] share nonce=%llu dropped: pool requires gzip\n",
+               (unsigned long long)snap->nonce);
+        fflush(stdout);
+        set_outcome(CP_SHARE_OUTCOME_PROOF_FAIL);
+        free(b64);
+        return_snapshot_matrices(snap);
+        share_snapshot_delete(snap);
+        return;
+    }
+    const char *submit_b64 = proof_gzip ? gz_b64 : b64;
 
     /* Verification/compression may take long enough for a new job to arrive. */
     if (cp_job_should_cancel() || !cp_job_key_matches(snap->job_key)) {
