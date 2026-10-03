@@ -157,8 +157,8 @@ def job_before_authorize(binary):
         raise AssertionError(pool.output())
 
 
-def changed_job_identity(binary):
-    with PoolProbe(binary) as pool:
+def changed_job_identity(binary, extra_args=()):
+    with PoolProbe(binary, extra_args) as pool:
         pool.send({"id": pool.auth_id, "result": True})
         job = {"job_id": "same-id", "header": "00" * 76,
                "target": "00" * 32, "cert_version": 3}
@@ -184,6 +184,29 @@ def changed_job_identity(binary):
             elif expected == 3:
                 job = dict(job, cert_version=2)
     return "duplicate jobs are ignored; full header, target and certificate changes restart work"
+
+
+def active_job_change(binary, extra_args=()):
+    with PoolProbe(binary, ("--max-nonce", "0", *extra_args)) as pool:
+        pool.send({"id": pool.auth_id, "result": True})
+        job = {"job_id": "active-same-id", "header": "00" * 76,
+               "target": "00" * 32, "cert_version": 3}
+        pool.send({"method": "mining.notify", "params": job})
+        until = time.monotonic() + 15
+        while "[gen] nonce=0:" not in pool.output() and time.monotonic() < until:
+            assert pool.process.poll() is None, pool.output()
+            time.sleep(0.005)
+        assert "[gen] nonce=0:" in pool.output(), pool.output()
+        pool.send({"method": "mining.notify", "params": dict(job, header="00" * 75 + "01")})
+        until = time.monotonic() + 15
+        while time.monotonic() < until:
+            output = pool.output()
+            assert pool.process.poll() is None, output
+            if "mining queued job=active-same-id" in output:
+                assert "cancelling stale work" in output, output
+                return "changed header with the same ID cancels active mining and starts queued work"
+            time.sleep(0.005)
+        raise AssertionError(pool.output())
 
 
 def receive_share(pool):
@@ -234,7 +257,7 @@ if __name__ == "__main__":
     # Each miner has its own executable directory and proof files.
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
         futures = [executor.submit(case, binary) for case in (
-            changed_job_identity, quantus_job_buffer, rejected_authorize, missing_authorize, missing_first_job, job_before_authorize,
+            active_job_change, changed_job_identity, quantus_job_buffer, rejected_authorize, missing_authorize, missing_first_job, job_before_authorize,
             accepted_share, unacknowledged_share)]
         for future in futures:
             print("PASS:", future.result(), flush=True)

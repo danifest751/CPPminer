@@ -162,6 +162,8 @@ cppminer --backend cuda --mock              # mines offline until the first shar
 
 **Connection recovery.** The miner waits up to 30 seconds for an accepted authorization and another 30 seconds for a valid first job. Rejected authorization or a missing response/job causes a reconnect; failures on the fee pool count toward its three-attempt fallback. Each submitted share is tracked by its JSON-RPC id and must receive a reply within 60 seconds. New shares and unrelated replies do not extend that deadline.
 
+TCP connection attempts share a 10-second budget across the pool's resolved IPv4/IPv6 addresses, with time reserved for later addresses. DNS resolution uses the system resolver and is outside that budget. Timeouts and hashrate measurements use a monotonic clock, so adjusting the system clock does not change them.
+
 **Russia.** Some Russian ISPs let a connection to foreign hosting pass its first ~15 KB and then drop every packet. Login and jobs work, but shares never arrive, and the pool shows no hashrate. Use `prl-ru.kryptex.network` or `ru.pearl.herominers.com`.
 
 **How many shares to expect.** At the default difficulty 2097152 (Kryptex, HeroMiners) one share is expected every `2^53 / hashrate` seconds:
@@ -217,7 +219,7 @@ OpenCL uses one device per process. For several AMD/Intel GPUs, start one miner 
 
 | Option | Description |
 |---|---|
-| `--pool URI` | `stratum+tcp://host:port` |
+| `--pool URI` | `stratum+tcp://host:port` (IPv6: `stratum+tcp://[address]:port`) |
 | `--wallet ADDR` | Wallet address or pool account |
 | `--worker NAME` | Worker name (default `rig01`) |
 | `--pool-pass STR` | `mining.authorize` password (default `x`). Kryptex: `d=N` sets the share difficulty (default 2097152) |

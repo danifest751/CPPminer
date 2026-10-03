@@ -1,6 +1,10 @@
 # Changelog
 
 ## v0.5 (tentative)
+- Fix Quantus current-job buffer overflow and make job handlers retain array bounds.
+- Pearl work identity includes the complete header, effective target and certificate version; ignore true duplicates and drop cancelled proofs after building/encoding. Clear queued work on reconnect.
+- Pool TCP connections try all resolved IPv4/IPv6 addresses within a shared 10-second budget, reserving time for later addresses. Validate pool URI host/port lengths and accept bracketed IPv6. A broken connection returns a send error instead of terminating Linux mining with SIGPIPE.
+- Use monotonic clocks for mining rates and pool deadlines on every platform.
 - Pool recovery: track each share ACK by JSON-RPC id before sending, enforce the oldest unacknowledged share's 60-second deadline, and reconnect on rejected authorization or missing authorization/first job (30 seconds each). Fee-pool handshake failures trigger the existing fallback. Add deterministic session tests and loopback integration tests.
 - Experimental OneDNN backend for intel GPU
 - Fix OpenCL dot product extension on intel GPU
