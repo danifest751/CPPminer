@@ -130,6 +130,35 @@ def missing_authorize(binary):
     return "wrong-id traffic cannot extend authorize deadline"
 
 
+def quantus_job_changes(binary):
+    with PoolProbe(binary, ("--algo", "quantus")) as pool:
+        job = {"job_id": "quantus-same-id", "mining_hash": "ab" * 32,
+               "target": "00" * 64, "extranonce": "ab" * 32, "difficulty": 1}
+        pool.send({"id": pool.auth_id, "result": {
+            "id": "loopback-session", "status": "OK", "job": job}})
+        for expected in range(1, 5):
+            until = time.monotonic() + 10
+            marker = "[qpow] mine job=quantus-same-id "
+            while pool.output().count(marker) < expected and time.monotonic() < until:
+                assert pool.process.poll() is None, pool.output()
+                time.sleep(0.01)
+            assert pool.output().count(marker) == expected, pool.output()
+            if expected == 1:
+                pool.send({"method": "job", "params": dict(job,
+                    mining_hash=job["mining_hash"].upper(), extranonce=job["extranonce"].upper())})
+                time.sleep(0.2)
+                assert pool.output().count(marker) == 1, pool.output()
+                job = dict(job, mining_hash=job["mining_hash"][:-2] + "01")
+            elif expected == 2:
+                job = dict(job, target="00" * 63 + "01")
+            elif expected == 3:
+                job = dict(job, extranonce="ab" * 31 + "01")
+            else:
+                break
+            pool.send({"method": "job", "params": job})
+    return "Quantus full hash, target and extranonce changes restart work; hex case does not"
+
+
 def missing_first_job(binary):
     with PoolProbe(binary) as pool:
         pool.send({"id": pool.auth_id, "result": True, "type": "v2"})
@@ -257,7 +286,7 @@ if __name__ == "__main__":
     # Each miner has its own executable directory and proof files.
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
         futures = [executor.submit(case, binary) for case in (
-            active_job_change, changed_job_identity, quantus_job_buffer, rejected_authorize, missing_authorize, missing_first_job, job_before_authorize,
+            quantus_job_changes, active_job_change, changed_job_identity, quantus_job_buffer, rejected_authorize, missing_authorize, missing_first_job, job_before_authorize,
             accepted_share, unacknowledged_share)]
         for future in futures:
             print("PASS:", future.result(), flush=True)
