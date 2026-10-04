@@ -13,6 +13,12 @@
 #ifndef CP_PROFILE_VARIANT
 #define CP_PROFILE_VARIANT "full"
 #endif
+#ifndef CP_PROFILE_DIAGNOSTIC
+#define CP_PROFILE_DIAGNOSTIC (std::strcmp(CP_PROFILE_VARIANT,"full") != 0)
+#endif
+#ifndef CP_PROFILE_WARMUP
+#define CP_PROFILE_WARMUP 5
+#endif
 
 __global__ void fill_input(int8_t* data, size_t bytes, unsigned salt)
 {
@@ -78,7 +84,7 @@ template<typename T> static void measure(int M, int N, int repeats, const char* 
     jackpot.d_out_t_rows = output; jackpot.d_out_t_cols = cols;
     cp_cutlass::FusedMilestoneGemmOp<T> op;
     if(op.initialize(M, N, K, M, N, a, b, nullptr, N / 128, count, &jackpot) != cutlass::Status::kSuccess) std::exit(2);
-    for(int i = 0; i < 5; ++i){ if(op() != cutlass::Status::kSuccess) std::exit(2); }
+    for(int i = 0; i < CP_PROFILE_WARMUP; ++i){ if(op() != cutlass::Status::kSuccess) std::exit(2); }
     CHECK(cudaDeviceSynchronize());
     cudaEvent_t start, end;
     CHECK(cudaEventCreate(&start)); CHECK(cudaEventCreate(&end));
@@ -96,7 +102,7 @@ template<typename T> static void measure(int M, int N, int repeats, const char* 
     CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&blocks, cp_cutlass::FusedKernelEntry<T>, T::GemmKernel::kThreadCount, smem));
     std::vector<int> host(count);
     CHECK(cudaMemcpy(host.data(), output, count * sizeof(int), cudaMemcpyDeviceToHost));
-    if(std::strcmp(CP_PROFILE_VARIANT,"full")){
+    if(CP_PROFILE_DIAGNOSTIC){
         for(size_t index : {size_t(0), count/2+113, count-1}){
             if((uint32_t)host[index] != reference_diagnostic(index,N)){
                 std::fprintf(stderr,"Ablation CPU diagnostic mismatch at %zu\n",index); std::exit(4);

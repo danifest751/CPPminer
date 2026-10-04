@@ -137,6 +137,11 @@ tensor-core loops, including loops without diagnostic global stores. Testing
 constant-index jackpot state and its register cost is therefore a concrete next
 hypothesis; static counts do not establish dynamic stall time.
 
+The subsequent [constant-index jackpot experiment](cuda_jackpot_register_experiment.md)
+tests that hypothesis with independent state/hash oracles, valid full kernels
+and a complete miner comparison. It removes local-memory traffic but increases
+register usage; the two constant-index implementations do not perform equally.
+
 Nsight Compute returned `ERR_NVGPUCTRPERM`: the target driver denied access to
 performance counters. Driver policy was not changed. These results use CUDA
 events, CPU diagnostic comparisons, function attributes and static SASS, not
