@@ -1,0 +1,44 @@
+{
+  "dimensions": 131072,
+  "attempts_per_case": 6,
+  "cases": [
+    {
+      "label": "esimd",
+      "args": [
+        "--backend",
+        "onednn"
+      ],
+      "environment": {},
+      "timings_seconds": [
+        [
+          0.116,
+          3.681
+        ],
+        [
+          0.074,
+          3.674
+        ],
+        [
+          0.075,
+          3.673
+        ],
+        [
+          0.074,
+          3.674
+        ],
+        [
+          0.074,
+          3.667
+        ],
+        [
+          0.075,
+          3.669
+        ]
+      ],
+      "full_attempt_tmac_s": 18.786038810845216,
+      "scan_tmac_s": 19.166733174719184,
+      "mock_proof_passed": true
+    }
+  ],
+  "completed": true
+}

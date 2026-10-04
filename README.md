@@ -64,7 +64,7 @@ Hashrate is in **MAC/s**: multiply-accumulates per second of the int8 matrix pro
 | RTX 4090 | Ada, sm_89 | CUDA, tensor cores | 157–229 | rented card, v0.5-fork.1; varies with clocks |
 | RTX 3090 | Ampere, sm_86 | CUDA, `tensorop80` 128x128 | 95–97 | 350 W; 89 TMAC/s at a locked 1200 MHz and 263 W |
 | CMP 50HX | Turing, sm_75 | CUDA, `tensorop` 256x128 | 61 | 225 W |
-| Arc A380 | Xe-HPG (DG2) | oneDNN, systolic XMX 16x32 | 16.7 | XMX scan at 2000 MHz, ~53 W; unreleased fork candidate |
+| Arc A380 | Xe-HPG (DG2) | oneDNN + ESIMD XMX scan | 18.8 | `-DCP_ENABLE_ESIMD=ON`, compute-runtime 26.31; 16.7 with gemmstone; unreleased fork candidate |
 | Radeon 780M (iGPU) | RDNA3, gfx1103 | OpenCL, WMMA | 6.4 | laptop, shared memory |
 | RX 580 4 GB | Polaris, gfx803 | OpenCL, GCN kernel | 1.84 | AMD Windows driver |
 | Adreno 830 | Snapdragon 8 Elite | OpenCL, 4x4 tile | ~0.7 | 8192² |
@@ -105,7 +105,7 @@ Measured by the upstream author on upstream builds; the fork's kernels for these
 | AMD RX 5000 (RDNA1) | `opencl` | `v_dot4` where the chip has it, otherwise scalar |
 | AMD Vega 56 / 64 | `opencl` | scalar |
 | AMD RX 400 / 500, Fiji, Tonga (GCN) | `opencl` | GCN 24-bit kernel |
-| Intel Arc (Xe-HPG) | `onednn` | systolic XMX (gemmstone); build with `-DCP_ENABLE_ONEDNN=ON` |
+| Intel Arc (Xe-HPG) | `onednn` | ESIMD XMX scan when built with `-DCP_ENABLE_ESIMD=ON`, else gemmstone systolic XMX |
 | Intel Arc, Intel iGPU | `opencl` | `cl_khr_integer_dot_product`, or scalar |
 | Qualcomm Adreno, ARM Mali | `opencl` | 4x4 tile on Adreno |
 | Any CPU | `cpu` | best of AVX-512 VNNI / AVX-VNNI / AVX-512 / AVX2 / SSSE3, or I8MM / DotProd / NEON |
@@ -206,7 +206,8 @@ OpenCL uses one device per process. For several AMD/Intel GPUs, start one miner 
 
 The unreleased fork candidate fixes CUDA duplicate work and fetches proof data from
 the winning device. See [multi-GPU behavior and validation](docs/cuda_multi_gpu.md).
-For Intel Arc, `--backend onednn` runs gemmstone's systolic XMX kernels: 16.7 TMAC/s
+For Intel Arc, `--backend onednn` runs an ESIMD XMX scan (18.8 TMAC/s on an A380, see
+[ESIMD](docs/intel_esimd.md)) or gemmstone's systolic XMX kernels: 16.7 TMAC/s
 on an A380, 5.2x the opt-in `--backend opencl --ocl-dot dpas` path. See
 [oneDNN on A380](docs/intel_a380_onednn.md) and [DPAS validation](docs/intel_a380_dpas.md).
 Run Intel and NVIDIA in separate processes with distinct workers.

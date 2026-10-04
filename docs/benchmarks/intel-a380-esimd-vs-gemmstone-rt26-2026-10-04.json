@@ -1,0 +1,85 @@
+{
+  "dimensions": 131072,
+  "attempts_per_case": 6,
+  "cases": [
+    {
+      "label": "esimd",
+      "args": [
+        "--backend",
+        "onednn"
+      ],
+      "environment": {
+        "CP_INTEL_GEMM": "esimd"
+      },
+      "timings_seconds": [
+        [
+          0.115,
+          3.694
+        ],
+        [
+          0.074,
+          3.69
+        ],
+        [
+          0.075,
+          3.684
+        ],
+        [
+          0.075,
+          3.698
+        ],
+        [
+          0.075,
+          3.69
+        ],
+        [
+          0.075,
+          3.69
+        ]
+      ],
+      "full_attempt_tmac_s": 18.689244708823963,
+      "scan_tmac_s": 19.068053375694777,
+      "mock_proof_passed": true
+    },
+    {
+      "label": "gemmstone",
+      "args": [
+        "--backend",
+        "onednn"
+      ],
+      "environment": {
+        "CP_INTEL_GEMM": "gemmstone"
+      },
+      "timings_seconds": [
+        [
+          0.117,
+          5.881
+        ],
+        [
+          0.075,
+          5.871
+        ],
+        [
+          0.075,
+          5.87
+        ],
+        [
+          0.075,
+          5.872
+        ],
+        [
+          0.075,
+          5.87
+        ],
+        [
+          0.075,
+          5.871
+        ]
+      ],
+      "full_attempt_tmac_s": 11.83503383525581,
+      "scan_tmac_s": 11.986227460936158,
+      "mock_proof_passed": true
+    }
+  ],
+  "completed": true
+}
