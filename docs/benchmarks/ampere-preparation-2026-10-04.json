@@ -1,0 +1,458 @@
+{
+  "architecture": "sm_86",
+  "variant_count": 17,
+  "bundle_hashes_passed": true,
+  "native_gpu_execution": false,
+  "cpu_proofs": {
+    "baseline": {
+      "passed": true,
+      "binary_sha256": "bbe2e6d71047b27e4f6888df68d22fc541140a377abeebe17e6682818497d8fd"
+    },
+    "before_loads": {
+      "passed": true,
+      "binary_sha256": "0a204de11ebaffa6aacfa28aab908680756a6a90ff44413f019915193b3a1904"
+    },
+    "async_shadow": {
+      "passed": true,
+      "binary_sha256": "564c193b0fba2f7b5a6607f7036f688e483ba74de2a8ed3ae21414fcd432bf9a"
+    },
+    "predicated": {
+      "passed": true,
+      "binary_sha256": "3548522b8e1f03067d9b438ac941c164eb8e95c112663459373c939a6357dc84"
+    },
+    "before_predicated": {
+      "passed": true,
+      "binary_sha256": "9a8a34a75cf3fac9fe0d7cdf2df39a4452262d2335103ab2a290f0d7ff2ff583"
+    },
+    "shadow_predicated": {
+      "passed": true,
+      "binary_sha256": "212e82abc83e360650fd705cd450d5f484cf69dfd889a86c38d993c7b80e69cc"
+    },
+    "redux": {
+      "passed": true,
+      "binary_sha256": "5d1eee358515798e0fe981708b284f052526b7c9cb5d93761978e74868122e39"
+    },
+    "stages2": {
+      "passed": true,
+      "binary_sha256": "c3cfb2c60215018c09225f9aafb3d1b0b831bad45d3ccb9ff70bf6860433c543"
+    },
+    "stages4": {
+      "passed": true,
+      "binary_sha256": "a5ec2164d65cc4764ad64cb07a563d29c265192d628f09b40606c8548390cdb8"
+    },
+    "warp32": {
+      "passed": true,
+      "binary_sha256": "22e31f60df4ac36773fd7e142bc2d5e872f5a7536295eccc6ea7d5d2c1e79ee8"
+    },
+    "cache_a_ca": {
+      "passed": true,
+      "binary_sha256": "52db25fccb0b209a6008ea2015730fc2de4fc4805775906b69d7cfbd6d7c2ab9"
+    },
+    "cache_b_ca": {
+      "passed": true,
+      "binary_sha256": "ec9e824d10232a989fa6df846cfe4db42f3eb5ac6099e9cd5fa07f2ce31e1da2"
+    },
+    "cache_ab_ca": {
+      "passed": true,
+      "binary_sha256": "a854bbad67646b0cb5877906ccd62f7d91c03d634901c8455f5d0d92f26d01c2"
+    },
+    "group4": {
+      "passed": true,
+      "binary_sha256": "88be44a7250add268b7452ecdf99f2ca6b9e041e75a1f9e6dd830ca5a74cd160"
+    },
+    "group16": {
+      "passed": true,
+      "binary_sha256": "c88e9b4a4ab31488ebc370cc4ebe53f90eac22fafb4ea9e859881ee5a8f7e7e3"
+    },
+    "redux_predicated": {
+      "passed": true,
+      "binary_sha256": "a778c447686977e14d793566129f2b3da832423e0e59abfb4d95a9abbe6eb8bb"
+    },
+    "shadow_redux_predicated": {
+      "passed": true,
+      "binary_sha256": "55dd143bdb6736a9020e553d71f763db311864d0fd25c291f6bfcdd4cb70157d"
+    }
+  },
+  "compiler_resources": {
+    "baseline": {
+      "128x256x64": {
+        "registers": 240,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "256x128x64": {
+        "registers": 240,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "128x128x64": {
+        "registers": 242,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      }
+    },
+    "before_loads": {
+      "128x256x64": {
+        "registers": 243,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "256x128x64": {
+        "registers": 243,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "128x128x64": {
+        "registers": 249,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      }
+    },
+    "async_shadow": {
+      "128x256x64": {
+        "registers": 250,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "256x128x64": {
+        "registers": 250,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "128x128x64": {
+        "registers": 254,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      }
+    },
+    "predicated": {
+      "128x256x64": {
+        "registers": 254,
+        "stack_bytes": 0,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "256x128x64": {
+        "registers": 254,
+        "stack_bytes": 0,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "128x128x64": {
+        "registers": 254,
+        "stack_bytes": 0,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      }
+    },
+    "before_predicated": {
+      "128x256x64": {
+        "registers": 255,
+        "stack_bytes": 32,
+        "spill_store_bytes": 32,
+        "spill_load_bytes": 32
+      },
+      "256x128x64": {
+        "registers": 255,
+        "stack_bytes": 32,
+        "spill_store_bytes": 60,
+        "spill_load_bytes": 48
+      },
+      "128x128x64": {
+        "registers": 255,
+        "stack_bytes": 48,
+        "spill_store_bytes": 44,
+        "spill_load_bytes": 44
+      }
+    },
+    "shadow_predicated": {
+      "128x256x64": {
+        "registers": 255,
+        "stack_bytes": 56,
+        "spill_store_bytes": 224,
+        "spill_load_bytes": 152
+      },
+      "256x128x64": {
+        "registers": 255,
+        "stack_bytes": 56,
+        "spill_store_bytes": 220,
+        "spill_load_bytes": 148
+      },
+      "128x128x64": {
+        "registers": 255,
+        "stack_bytes": 64,
+        "spill_store_bytes": 232,
+        "spill_load_bytes": 160
+      }
+    },
+    "redux": {
+      "128x256x64": {
+        "registers": 218,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "256x128x64": {
+        "registers": 219,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "128x128x64": {
+        "registers": 224,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      }
+    },
+    "stages2": {
+      "128x256x64": {
+        "registers": 252,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "256x128x64": {
+        "registers": 252,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "128x128x64": {
+        "registers": 254,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      }
+    },
+    "stages4": {
+      "128x256x64": {
+        "registers": 228,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "256x128x64": {
+        "registers": 228,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "128x128x64": {
+        "registers": 236,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      }
+    },
+    "warp32": {
+      "128x256x64": {
+        "registers": 128,
+        "stack_bytes": 64,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "256x128x64": {
+        "registers": 128,
+        "stack_bytes": 64,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "128x128x64": {
+        "registers": 127,
+        "stack_bytes": 64,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      }
+    },
+    "cache_a_ca": {
+      "128x256x64": {
+        "registers": 240,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "256x128x64": {
+        "registers": 240,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "128x128x64": {
+        "registers": 242,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      }
+    },
+    "cache_b_ca": {
+      "128x256x64": {
+        "registers": 240,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "256x128x64": {
+        "registers": 240,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "128x128x64": {
+        "registers": 242,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      }
+    },
+    "cache_ab_ca": {
+      "128x256x64": {
+        "registers": 240,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "256x128x64": {
+        "registers": 240,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "128x128x64": {
+        "registers": 242,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      }
+    },
+    "group4": {
+      "128x256x64": {
+        "registers": 240,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "256x128x64": {
+        "registers": 240,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "128x128x64": {
+        "registers": 242,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      }
+    },
+    "group16": {
+      "128x256x64": {
+        "registers": 240,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "256x128x64": {
+        "registers": 240,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "128x128x64": {
+        "registers": 242,
+        "stack_bytes": 128,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      }
+    },
+    "redux_predicated": {
+      "128x256x64": {
+        "registers": 250,
+        "stack_bytes": 0,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "256x128x64": {
+        "registers": 251,
+        "stack_bytes": 0,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "128x128x64": {
+        "registers": 252,
+        "stack_bytes": 0,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      }
+    },
+    "shadow_redux_predicated": {
+      "128x256x64": {
+        "registers": 255,
+        "stack_bytes": 32,
+        "spill_store_bytes": 32,
+        "spill_load_bytes": 48
+      },
+      "256x128x64": {
+        "registers": 255,
+        "stack_bytes": 40,
+        "spill_store_bytes": 40,
+        "spill_load_bytes": 56
+      },
+      "128x128x64": {
+        "registers": 255,
+        "stack_bytes": 48,
+        "spill_store_bytes": 352,
+        "spill_load_bytes": 220
+      }
+    }
+  },
+  "cuda_version": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2024 NVIDIA Corporation\nBuilt on Tue_Oct_29_23:50:19_PDT_2024\nCuda compilation tools, release 12.6, V12.6.85\nBuild cuda_12.6.r12.6/compiler.35059454_0\n",
+  "callbacks_sm75": [
+    {
+      "variant": "baseline",
+      "architecture": "sm75 fallback (not native sm86)",
+      "checked_values": 196608,
+      "passed": true
+    },
+    {
+      "variant": "before_loads",
+      "architecture": "sm75 fallback (not native sm86)",
+      "checked_values": 196608,
+      "passed": true
+    },
+    {
+      "variant": "async_shadow",
+      "architecture": "sm75 fallback (not native sm86)",
+      "checked_values": 196608,
+      "passed": true
+    }
+  ],
+  "archive_sha256": "61ebe69f3723c485dbfe6bfd7c1891da6f3dce6aeb1f90db1d61c80baf2b245d",
+  "archive_bytes": 119276730,
+  "passed": true,
+  "cpu_tests": {
+    "count": 6,
+    "passed": true,
+    "scope": "local Windows Python; XOR equivalence and acceptance gates"
+  },
+  "clean_runtime_image": {
+    "bundle_integrity": true,
+    "runtime_dependencies": {
+      "full": true,
+      "verify": true,
+      "cppminer": true
+    },
+    "clean_image_cpu_proof_passed": true,
+    "sm75_architecture_guard_passed": true,
+    "gpu_driver_runtime_access_passed": true
+  }
+}
