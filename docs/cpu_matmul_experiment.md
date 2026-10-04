@@ -5,6 +5,10 @@ backend on the tested Pearl panels. Keep them as a standalone experiment, with
 no change to the miner or release defaults. This is a CPU result, not a CUDA
 Tensor Core comparison.
 
+The subsequent [CMP50 CUDA multiplication experiment](cuda_matmul_experiment.md)
+tests exact wider-operand Tensor Core leaves and all 32 GPU milestones. None
+of its tested alternatives beats the existing fused CUDA path either.
+
 ## Scope and reproducibility
 
 - AMD Ryzen 7 8745HS, Windows 10; GCC 16.2.0 from MSYS2 UCRT64.

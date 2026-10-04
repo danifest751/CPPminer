@@ -269,3 +269,10 @@ against the unchanged Case33 backend, including all 32 Pearl prefixes.
 No new implementation beats Case33 on the tested zero-B panels. It also records
 the existing AVX2 fast path's full-range INT8 saturation limit; the generated
 zero-B inputs pass.
+
+The subsequent [CMP50 multiplication experiment](cuda_matmul_experiment.md)
+checks exact INT8-limb Tensor Core versions of Strassen and Strassen–Winograd,
+plus classical and pairwise Winograd controls. All checked prefixes and hashes
+agree, but none beats the current fused CUDA path. On a 4096x131072x4096 panel,
+the production kernel takes 35.69 ms versus 1639.23 ms for depth-1 Strassen;
+the release multiplier remains unchanged.
