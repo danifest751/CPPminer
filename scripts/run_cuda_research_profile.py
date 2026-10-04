@@ -24,9 +24,13 @@ def main():
     parser.add_argument('--seconds',type=int,default=900)
     parser.add_argument('--repeats',type=int,default=60)
     parser.add_argument('--tile',choices=('256x128','128x128'),default='256x128')
+    parser.add_argument('--ablation-build',type=Path,
+                        help='optional diagnostic milestone build; never a valid miner')
+    parser.add_argument('--ablation-repeats',type=int,default=60)
     args=parser.parse_args()
     assert 60 <= args.seconds <= 2400
     assert 3 <= args.repeats <= 1000
+    assert 3 <= args.ablation_repeats <= 1000
     out=args.output;out.mkdir(parents=True,exist_ok=True)
     build=args.build;release=args.release
     binary=release/'cppminer-linux-x64-cuda/cppminer'
@@ -79,6 +83,13 @@ def main():
             assert hashlib.sha256((build/name/kind).read_bytes()).hexdigest()==manifest['variants'][name]['binaries'][kind]['sha256']
             cubin=manifest['variants'][name].get('cubins',{}).get(kind)
             if cubin:assert hashlib.sha256(Path(cubin['path']).read_bytes()).hexdigest()==cubin['sha256']
+    ablation_manifest=None
+    if args.ablation_build:
+        ablation_manifest=json.loads((args.ablation_build/'manifest.json').read_text())
+        assert ablation_manifest.get('completed') and ablation_manifest.get('diagnostic_only')
+        assert set(ablation_manifest['variants'])=={'full','no-final-hash','xor-only','final-milestone-only'}
+        for name,row in ablation_manifest['variants'].items():
+            assert hashlib.sha256((args.ablation_build/name/'profile').read_bytes()).hexdigest()==row['sha256']
     pid=int((release/'miner.pid').read_text());proc=Path('/proc')/str(pid)
     assert alive(pid) and Path(os.readlink(proc/'exe')).resolve()==binary.resolve()
     assert hashlib.sha256(binary.read_bytes()).hexdigest()==reference_sha
@@ -112,6 +123,31 @@ def main():
             for position,variant in enumerate(order):
                 assert run('r'+str(round_id)+'-p'+str(position)+'-'+variant,variant,'full',timing_args,180,
                            phase='measurement',round=round_id,position=position,tile=args.tile)
+        if ablation_manifest:
+            result.update(ablation_manifest=ablation_manifest,ablations=[],
+                          repeats_per_ablation_block=args.ablation_repeats)
+            ablation_args=[str(args.ablation_repeats)]+timing_args[1:]
+            names=list(ablation_manifest['variants'])
+            rotated=names[2:]+names[:2]
+            for round_id,order in enumerate([names,list(reversed(names)),rotated,list(reversed(rotated))]):
+                for position,name in enumerate(order):
+                    path=out/('ablation-r'+str(round_id)+'-'+name+'.log')
+                    before=time.monotonic()-started
+                    with path.open('w') as log:
+                        child=subprocess.Popen([str(args.ablation_build/name/'profile'),*ablation_args],
+                                               stdout=log,stderr=subprocess.STDOUT)
+                        try:code=child.wait(timeout=180)
+                        finally:stop_child()
+                    records=[json.loads(line) for line in path.read_text().splitlines() if line.startswith('{')]
+                    assert code==0 and len(records)==1,'diagnostic ablation failed'
+                    record=records[0]
+                    assert record['variant']==name and record['tile']==args.tile
+                    assert len(record['milliseconds'])==args.ablation_repeats
+                    result['ablations'].append({'variant':name,'round':round_id,'position':position,
+                        'started_seconds':before,'ended_seconds':time.monotonic()-started,'record':record,
+                        'diagnostic_checks_passed':name!='full'})
+                    save()
+                    print('ABLATION '+name+' median='+str(statistics.median(record['milliseconds']))+' ms',flush=True)
         result['completed']=True
     except BaseException as error:
         result.update(completed=False,error_type=type(error).__name__,error=str(error));print('FAILED '+str(error),flush=True)

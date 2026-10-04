@@ -11,9 +11,11 @@ branch that encloses the tensor-core instructions (IMMA/HMMA) -- and prints
 the opcode histogram of one loop iteration. One iteration of the Case-10
 multistage loop is exactly one milestone (kMilestoneIters K-tiles + the XOR /
 reduce-scatter / jackpot-fold callback). For the Sm75 2-stage loop
-(MmaMilestone) one iteration is one K-tile and the callback sits behind a
-branch; the script then reports the loop and the callback block separately
-(the code between the loop's last IMMA and the backward branch).
+(MmaMilestone) the callback executes only at milestone boundaries. Compiler
+loop rotation can put it before the first IMMA in the disassembly. Counts are
+static instruction spans, not dynamic instruction counts or measured cycles.
+The optional pre-MMA span helps inspect rotated callbacks but is not an exact
+callback boundary: it can also contain loads, address arithmetic and branches.
 
 Columns: total instructions, IMMA, and the opcodes the milestone code uses
 (LOP3 = 3-input logic, SHFL, SEL, SHF = funnel shift/rotate, LDL/STL = local
@@ -25,7 +27,7 @@ from collections import Counter
 
 FUNC_RE = re.compile(r"Function : (\S+)")
 INSN_RE = re.compile(r"/\*([0-9a-f]{4,})\*/\s+(@!?U?P\w+\s+)?([A-Z][A-Z0-9_.]*)\s*([^;]*);")
-KEY = ["IMMA", "HMMA", "LDSM", "LDGSTS", "LOP3", "xor3", "xor2", "SHFL", "SEL", "SHF", "LDL", "STL",
+KEY = ["IMMA", "HMMA", "LDG", "LDSM", "LDGSTS", "STS", "LOP3", "xor3", "xor2", "SHFL", "SEL", "SHF", "LDL", "STL",
        "IADD3", "IMAD", "ISETP", "MOV", "BAR", "BRA", "BRX"]
 
 
@@ -98,6 +100,25 @@ def row(label, c, total):
     print(f"  {label:<10} total={total:<5} {cols}")
 
 
+def reduction_spans(insns):
+    """Heuristic BFLY spans, independent of compiler loop rotation.
+
+    Separate groups across MMA or more than 64 intervening instructions.
+    This exposes callbacks outside the backward-branch interval; it does not
+    infer control-flow paths, include all local XORs, or identify stall cycles.
+    """
+    groups = []
+    for k, (_, op, _) in enumerate(insns):
+        if not op.startswith('SHFL.BFLY'):
+            continue
+        if (not groups or k-groups[-1][-1] > 65 or
+                any(base(o) in ('IMMA', 'HMMA')
+                    for _, o, _ in insns[groups[-1][-1]+1:k])):
+            groups.append([])
+        groups[-1].append(k)
+    return [(group[0], group[-1]) for group in groups]
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -119,10 +140,20 @@ def main():
             body = insns[j:i + 1]
             # The tile-xor dump loop (--align-test-prod) stores to global.
             kind = "dump-loop" if any(base(o) == "STG" for _, o, _ in body) else "mine-loop"
+            print(f"  span 0x{body[0][0]:x}..0x{body[-1][0]:x}")
             row(kind, hist(body), len(body))
+            first_mma = next(k for k, (_, op, _) in enumerate(body)
+                             if base(op) in ("IMMA", "HMMA"))
+            prefix = body[:first_mma]
+            if any(base(op) == "SHFL" for _, op, _ in prefix):
+                row("pre-MMA", hist(prefix), len(prefix))
         j, i, _ = lps[-1]
         rest = insns[i + 1:]
         row("tail", hist(rest), len(rest))
+        for first, last in reduction_spans(insns):
+            window = insns[first:last+1]
+            print(f"  shuffle span 0x{window[0][0]:x}..0x{window[-1][0]:x}")
+            row("reduction", hist(window), len(window))
     return 0
 
 

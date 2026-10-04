@@ -1,0 +1,12 @@
+{
+  "pid": 139287,
+  "original_binary": true,
+  "binary_sha256": "3e5a589350558afc34c5d15297612ef16aa3273d0999c3b5bc3d1e9737fd300e",
+  "argv_match": true,
+  "environment_match": true,
+  "cwd_match": true,
+  "log_destinations_match": true,
+  "unique_worker": true,
+  "observation_seconds": 12,
+  "fresh_attempts": 12
+}

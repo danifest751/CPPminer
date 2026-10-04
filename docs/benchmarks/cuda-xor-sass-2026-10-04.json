@@ -1,0 +1,611 @@
+{
+  "static_only": true,
+  "variants": {
+    "release": {
+      "physical_architecture": "sm_75",
+      "shape": "256x128",
+      "sass_sha256": "cf2923d48d043efa9bb28093e7f418788a2e4f5004630b21fbaabbdc14cf291a",
+      "static_loops": [
+        {
+          "start": "0x1ea0",
+          "end": "0x3e10",
+          "instructions": 504,
+          "counts": {
+            "SHF": 8,
+            "IMAD": 18,
+            "LOP3": 91,
+            "LEA": 9,
+            "LDL": 2,
+            "R2P": 1,
+            "SEL": 28,
+            "SHFL": 14,
+            "ISETP": 6,
+            "IADD3": 9,
+            "STG": 2,
+            "STL": 2,
+            "BRA": 2,
+            "IMMA": 256,
+            "CS2R": 12,
+            "ULDC": 2,
+            "LDSM": 16,
+            "LDG": 6,
+            "UISETP": 1,
+            "UMOV": 4,
+            "UIADD3": 8,
+            "STS": 6,
+            "BAR": 1,
+            "xor3": 48,
+            "xor2": 35
+          }
+        },
+        {
+          "start": "0x2830",
+          "end": "0x3e80",
+          "instructions": 358,
+          "counts": {
+            "IMMA": 256,
+            "CS2R": 12,
+            "LOP3": 10,
+            "IMAD": 9,
+            "ULDC": 2,
+            "LDSM": 16,
+            "LDG": 6,
+            "UISETP": 1,
+            "SHF": 4,
+            "ISETP": 7,
+            "LEA": 4,
+            "IADD3": 7,
+            "UMOV": 4,
+            "UIADD3": 8,
+            "STS": 6,
+            "BAR": 1,
+            "BRA": 2,
+            "ULOP3": 1,
+            "SEL": 2,
+            "xor2": 3
+          }
+        },
+        {
+          "start": "0x5640",
+          "end": "0x7460",
+          "instructions": 483,
+          "counts": {
+            "SHF": 7,
+            "IMAD": 11,
+            "LOP3": 88,
+            "LEA": 3,
+            "LDL": 2,
+            "R2P": 1,
+            "SEL": 28,
+            "SHFL": 14,
+            "ISETP": 6,
+            "IADD3": 8,
+            "STL": 2,
+            "BRA": 2,
+            "IMMA": 256,
+            "CS2R": 12,
+            "ULDC": 1,
+            "LDG": 6,
+            "UISETP": 1,
+            "UMOV": 4,
+            "LDSM": 16,
+            "UIADD3": 8,
+            "STS": 6,
+            "BAR": 1,
+            "xor3": 50,
+            "xor2": 31
+          }
+        },
+        {
+          "start": "0x5ec0",
+          "end": "0x74d0",
+          "instructions": 354,
+          "counts": {
+            "IMMA": 256,
+            "CS2R": 12,
+            "LOP3": 9,
+            "IMAD": 8,
+            "ULDC": 1,
+            "LDG": 6,
+            "UISETP": 1,
+            "SHF": 4,
+            "ISETP": 7,
+            "LEA": 2,
+            "UMOV": 4,
+            "IADD3": 8,
+            "LDSM": 16,
+            "UIADD3": 8,
+            "STS": 6,
+            "BAR": 1,
+            "BRA": 2,
+            "ULOP3": 1,
+            "SEL": 2,
+            "xor2": 3
+          }
+        }
+      ],
+      "heuristic_shuffle_spans": [
+        {
+          "start": "0x2380",
+          "end": "0x2700",
+          "instructions": 57,
+          "counts": {
+            "SHFL": 14,
+            "SEL": 23,
+            "IMAD": 3,
+            "ISETP": 1,
+            "LOP3": 12,
+            "IADD3": 2,
+            "LEA": 1,
+            "SHF": 1,
+            "xor2": 12
+          }
+        },
+        {
+          "start": "0x43a0",
+          "end": "0x4710",
+          "instructions": 56,
+          "counts": {
+            "SHFL": 14,
+            "SEL": 23,
+            "ISETP": 1,
+            "LOP3": 12,
+            "LEA": 1,
+            "SHF": 1,
+            "IMAD": 4,
+            "xor2": 12
+          }
+        },
+        {
+          "start": "0x5b20",
+          "end": "0x5e40",
+          "instructions": 51,
+          "counts": {
+            "SHFL": 14,
+            "SEL": 23,
+            "LOP3": 12,
+            "ISETP": 1,
+            "IADD3": 1,
+            "xor2": 12
+          }
+        },
+        {
+          "start": "0x79d0",
+          "end": "0x7ce0",
+          "instructions": 50,
+          "counts": {
+            "SHFL": 14,
+            "SEL": 23,
+            "ISETP": 1,
+            "LOP3": 12,
+            "xor2": 12
+          }
+        }
+      ]
+    },
+    "baseline": {
+      "physical_architecture": "sm_75",
+      "shape": "256x128",
+      "sass_sha256": "fdf965eb132dcfa50da0ea1fa18b1103d83963b214260220e79fc509f81c3801",
+      "static_loops": [
+        {
+          "start": "0x1ff0",
+          "end": "0x45a0",
+          "instructions": 604,
+          "counts": {
+            "IMMA": 256,
+            "CS2R": 12,
+            "LOP3": 121,
+            "ULDC": 2,
+            "LDSM": 16,
+            "LDG": 6,
+            "IMAD": 16,
+            "UISETP": 5,
+            "SHF": 38,
+            "ISETP": 38,
+            "LEA": 9,
+            "IADD3": 9,
+            "UMOV": 4,
+            "UIADD3": 9,
+            "STS": 6,
+            "BAR": 1,
+            "BRA": 4,
+            "R2P": 1,
+            "SEL": 30,
+            "SHFL": 14,
+            "PLOP3": 4,
+            "STG": 2,
+            "ULOP3": 1,
+            "xor2": 65,
+            "xor3": 48
+          }
+        },
+        {
+          "start": "0x6560",
+          "end": "0x8a60",
+          "instructions": 593,
+          "counts": {
+            "LOP3": 120,
+            "USHF": 1,
+            "IMAD": 9,
+            "ULEA": 1,
+            "ULOP3": 1,
+            "UIADD3": 10,
+            "UISETP": 20,
+            "SEL": 28,
+            "SHFL": 14,
+            "ISETP": 8,
+            "PLOP3": 30,
+            "SHF": 36,
+            "UP2UR": 2,
+            "BRA": 2,
+            "IMMA": 256,
+            "CS2R": 12,
+            "ULDC": 1,
+            "LDG": 6,
+            "UMOV": 4,
+            "LEA": 2,
+            "IADD3": 7,
+            "LDSM": 16,
+            "STS": 6,
+            "BAR": 1,
+            "xor3": 48,
+            "xor2": 65
+          }
+        },
+        {
+          "start": "0x74c0",
+          "end": "0x8af0",
+          "instructions": 356,
+          "counts": {
+            "IMMA": 256,
+            "CS2R": 12,
+            "LOP3": 9,
+            "IMAD": 8,
+            "ULDC": 1,
+            "LDG": 6,
+            "UISETP": 3,
+            "UMOV": 4,
+            "SHF": 4,
+            "ISETP": 5,
+            "LEA": 2,
+            "IADD3": 7,
+            "LDSM": 16,
+            "UIADD3": 9,
+            "STS": 6,
+            "BAR": 1,
+            "BRA": 2,
+            "PLOP3": 2,
+            "ULOP3": 1,
+            "SEL": 2,
+            "xor2": 3
+          }
+        }
+      ],
+      "heuristic_shuffle_spans": [
+        {
+          "start": "0x3a30",
+          "end": "0x3de0",
+          "instructions": 60,
+          "counts": {
+            "SHFL": 14,
+            "SEL": 24,
+            "IMAD": 4,
+            "LOP3": 13,
+            "ISETP": 1,
+            "SHF": 2,
+            "LEA": 1,
+            "PLOP3": 1,
+            "xor2": 12
+          }
+        },
+        {
+          "start": "0x4a40",
+          "end": "0x4d80",
+          "instructions": 53,
+          "counts": {
+            "SHFL": 14,
+            "SEL": 23,
+            "ISETP": 1,
+            "LOP3": 12,
+            "SHF": 2,
+            "PLOP3": 1,
+            "xor2": 12
+          }
+        },
+        {
+          "start": "0x6780",
+          "end": "0x6e90",
+          "instructions": 114,
+          "counts": {
+            "SHFL": 14,
+            "LOP3": 59,
+            "SEL": 27,
+            "ISETP": 2,
+            "PLOP3": 7,
+            "UISETP": 2,
+            "SHF": 3,
+            "xor3": 32,
+            "xor2": 27
+          }
+        },
+        {
+          "start": "0x9020",
+          "end": "0x93e0",
+          "instructions": 61,
+          "counts": {
+            "SHFL": 14,
+            "SEL": 23,
+            "ISETP": 2,
+            "LOP3": 12,
+            "PLOP3": 6,
+            "UISETP": 2,
+            "SHF": 2,
+            "xor2": 12
+          }
+        }
+      ]
+    },
+    "before_loads": {
+      "physical_architecture": "sm_75",
+      "shape": "256x128",
+      "sass_sha256": "f17b390513114cf91bda74a79f9cea001c72f602f565db3fb3f004c5633099b3",
+      "static_loops": [
+        {
+          "start": "0x1af0",
+          "end": "0x40c0",
+          "instructions": 606,
+          "counts": {
+            "UISETP": 6,
+            "UMOV": 6,
+            "PLOP3": 5,
+            "BRA": 4,
+            "LOP3": 121,
+            "R2P": 1,
+            "SEL": 30,
+            "SHFL": 14,
+            "ISETP": 37,
+            "SHF": 38,
+            "LEA": 9,
+            "IMAD": 15,
+            "IADD3": 8,
+            "STG": 2,
+            "IMMA": 256,
+            "CS2R": 12,
+            "ULDC": 2,
+            "LDSM": 16,
+            "LDG": 6,
+            "ULOP3": 1,
+            "UIADD3": 10,
+            "STS": 6,
+            "BAR": 1,
+            "xor3": 48,
+            "xor2": 65
+          }
+        },
+        {
+          "start": "0x6fb0",
+          "end": "0x85e0",
+          "instructions": 356,
+          "counts": {
+            "UISETP": 4,
+            "UMOV": 5,
+            "PLOP3": 3,
+            "BRA": 2,
+            "IMMA": 256,
+            "CS2R": 12,
+            "IMAD": 6,
+            "LOP3": 9,
+            "LDSM": 16,
+            "ULDC": 1,
+            "LDG": 6,
+            "SHF": 4,
+            "ULOP3": 1,
+            "ISETP": 4,
+            "UIADD3": 10,
+            "LEA": 2,
+            "IADD3": 6,
+            "SEL": 2,
+            "STS": 6,
+            "BAR": 1,
+            "xor2": 3
+          }
+        }
+      ],
+      "heuristic_shuffle_spans": [
+        {
+          "start": "0x1fc0",
+          "end": "0x2310",
+          "instructions": 54,
+          "counts": {
+            "SHFL": 14,
+            "SEL": 24,
+            "ISETP": 1,
+            "LOP3": 12,
+            "SHF": 1,
+            "PLOP3": 1,
+            "LEA": 1,
+            "xor2": 12
+          }
+        },
+        {
+          "start": "0x4570",
+          "end": "0x48b0",
+          "instructions": 53,
+          "counts": {
+            "SHFL": 14,
+            "SEL": 23,
+            "ISETP": 1,
+            "LOP3": 12,
+            "SHF": 2,
+            "PLOP3": 1,
+            "xor2": 12
+          }
+        },
+        {
+          "start": "0x62c0",
+          "end": "0x6970",
+          "instructions": 108,
+          "counts": {
+            "SHFL": 14,
+            "LOP3": 54,
+            "SEL": 26,
+            "ISETP": 2,
+            "PLOP3": 7,
+            "UISETP": 2,
+            "SHF": 3,
+            "xor3": 29,
+            "xor2": 25
+          }
+        },
+        {
+          "start": "0x8b20",
+          "end": "0x8ee0",
+          "instructions": 61,
+          "counts": {
+            "SHFL": 14,
+            "SEL": 23,
+            "ISETP": 2,
+            "LOP3": 12,
+            "PLOP3": 6,
+            "UISETP": 2,
+            "SHF": 2,
+            "xor2": 12
+          }
+        }
+      ]
+    },
+    "after_loads": {
+      "physical_architecture": "sm_75",
+      "shape": "256x128",
+      "sass_sha256": "c6ed7224e56bed3b80b1e5a60880f9fd5040d1da9b942603aeb6d31d2f23aff2",
+      "static_loops": [
+        {
+          "start": "0x1ff0",
+          "end": "0x45d0",
+          "instructions": 607,
+          "counts": {
+            "LOP3": 120,
+            "ULDC": 3,
+            "IMAD": 15,
+            "SHF": 38,
+            "CS2R": 12,
+            "ISETP": 37,
+            "LEA": 7,
+            "UIMAD": 2,
+            "LDG": 6,
+            "UIADD3": 11,
+            "UMOV": 7,
+            "UISETP": 6,
+            "LDSM": 16,
+            "PLOP3": 5,
+            "BRA": 4,
+            "R2P": 1,
+            "SEL": 30,
+            "SHFL": 14,
+            "IADD3": 7,
+            "STG": 2,
+            "IMMA": 256,
+            "ULOP3": 1,
+            "STS": 6,
+            "BAR": 1,
+            "xor2": 65,
+            "xor3": 48
+          }
+        },
+        {
+          "start": "0x74b0",
+          "end": "0x8ae0",
+          "instructions": 356,
+          "counts": {
+            "LOP3": 9,
+            "CS2R": 12,
+            "SHF": 4,
+            "ISETP": 4,
+            "LDG": 6,
+            "IMAD": 6,
+            "LEA": 2,
+            "ULDC": 1,
+            "IADD3": 6,
+            "UISETP": 4,
+            "LDSM": 16,
+            "UMOV": 5,
+            "PLOP3": 3,
+            "BRA": 2,
+            "IMMA": 256,
+            "ULOP3": 1,
+            "UIADD3": 10,
+            "SEL": 2,
+            "STS": 6,
+            "BAR": 1,
+            "xor2": 3
+          }
+        }
+      ],
+      "heuristic_shuffle_spans": [
+        {
+          "start": "0x2480",
+          "end": "0x2b40",
+          "instructions": 109,
+          "counts": {
+            "SHFL": 14,
+            "LOP3": 65,
+            "SEL": 26,
+            "ISETP": 1,
+            "SHF": 1,
+            "LEA": 1,
+            "PLOP3": 1,
+            "xor3": 38,
+            "xor2": 26
+          }
+        },
+        {
+          "start": "0x4a80",
+          "end": "0x4dd0",
+          "instructions": 54,
+          "counts": {
+            "SHFL": 14,
+            "SEL": 23,
+            "ISETP": 1,
+            "LOP3": 12,
+            "SHF": 2,
+            "PLOP3": 1,
+            "LEA": 1,
+            "xor2": 12
+          }
+        },
+        {
+          "start": "0x67c0",
+          "end": "0x6e70",
+          "instructions": 108,
+          "counts": {
+            "SHFL": 14,
+            "LOP3": 54,
+            "SEL": 26,
+            "ISETP": 2,
+            "PLOP3": 7,
+            "UISETP": 2,
+            "SHF": 3,
+            "xor3": 29,
+            "xor2": 25
+          }
+        },
+        {
+          "start": "0x9020",
+          "end": "0x93e0",
+          "instructions": 61,
+          "counts": {
+            "SHFL": 14,
+            "SEL": 23,
+            "ISETP": 2,
+            "LOP3": 12,
+            "PLOP3": 6,
+            "UISETP": 2,
+            "SHF": 2,
+            "xor2": 12
+          }
+        }
+      ]
+    }
+  }
+}
