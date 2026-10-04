@@ -1,7 +1,7 @@
 # Intel Arc A380: oneDNN systolic (XMX) backend
 
 On Arc A380 the oneDNN/gemmstone backend with XeHPG systolic kernels mines at
-**15.47 TMAC/s** per complete 131072² attempt, **4.8x** the OpenCL DPAS path
+**16.66 TMAC/s** per complete 131072² attempt, **5.2x** the OpenCL DPAS path
 (3.20 TMAC/s) measured the same day on the same card. Use it on Arc:
 
 ```sh
@@ -40,6 +40,14 @@ A380 it had never selected a systolic kernel:
   154 to 56 ms, signal generation from 21 to 12.5 ms, prep from 200 to 96 ms
   per attempt, and per-job noisy B from ~200 to ~80 ms. Pool jobs arrived
   every 15–20 s during the test. The OpenCL DPAS backend shares this code.
+- **Jackpot pass and pipelining.** The separate jackpot kernel kept its
+  milestone array, fold slots and BLAKE3 message permutation in private
+  memory (dynamic indexing). Constant indexing and a constant message schedule
+  give identical digests 20% faster. The scan now runs GEMM panel i and the
+  jackpot of panel i-1 on an out-of-order queue with two `tile_xor` buffers,
+  waiting only for the previous panel's found flag (`CASE5_PIPELINE=0` restores
+  the synchronous loop). Dropping `af` from the preferred strategy adds 1.06%
+  (ABAB at 131072²).
 - **Build.** `src/onednn/prepare_onednn_deps.sh` vendors oneDNN v3.13.2 on
   Linux; the oneDNN jackpot kernel is copied when OpenCL is also enabled.
 
@@ -51,11 +59,12 @@ Complete zero-target scans on a loopback pool (no early hit), first attempt
 discarded. Each case first builds and verifies a mock share through the Rust
 proof verifier. Script: `scripts/run_intel_scan_bench.py`.
 
-**Final, 131072², default flags, 5 attempts:**
+**Final, 131072², default flags, 5 attempts** (the first build of this
+backend, before the jackpot/pipeline/`af` changes, measured 15.468 / 15.783):
 
 | Backend | Full attempt, TMAC/s | Scan, TMAC/s |
 |---|---:|---:|
-| `onednn` (catalog-333, 1024x1024 panels) | **15.468** | 15.783 |
+| `onednn` (catalog-333 without `af`, 1024x1024 panels, pipelined) | **16.659** | 17.024 |
 | `opencl --ocl-dot dpas` | 3.196 | 3.360 |
 
 **Systolic catalog kernels, 32768², 256x256 panels:**
@@ -87,6 +96,10 @@ the prep change).
   2450 MHz; a non-XMX OpenCL load at 75 W reached 2200–2250 MHz and 60 W.
   The limit was restored to 55 W. At 2000 MHz the XMX peak is 8 Xe-cores ×
   2048 int8 MAC/clock = 32.8 TMAC/s, so the scan uses about 48% of it.
+- `grf128` variants (16x16, 8x32 per thread) double the thread slots but scan
+  at 11.4–12.6 TMAC/s; dropping `dw` (dpasw) costs 20%; `cs`, `sm`/`sn` and
+  `sB32 sB32` were neutral or slower; deeper SLM pipelines (`cab8`, `ks128`)
+  do not fit or are unsupported.
 - Larger custom tiles (32x32, 16x64 per thread; 8x8 work groups) either do
   not fit DG2's registers/SLM or are slower. Hilbert walk order, other
   B access widths and dropping `sr`/`pab` changed results within ±3%;
@@ -101,7 +114,7 @@ the separate `cp_onednn_jackpot_scan` 6.3%, prep kernels the rest (unitrace).
 | Counter | Value |
 |---|---:|
 | Average GPU core clock (OA) | 1676 MHz |
-| XMX pipeline active | 36.6% |
+| XMX pipeline active | 36.6% (43.4% after the jackpot, pipeline and `af` changes) |
 | XVE active / stalled | 34.7% / 46.5% |
 | XVE thread occupancy | 45.6% |
 | EM (integer) pipe active | 16.4% |
@@ -110,12 +123,12 @@ the separate `cp_onednn_jackpot_scan` 6.3%, prep kernels the rest (unitrace).
 | Barriers per 5 ms report | 1.9 M |
 
 The OA clock (1676 MHz) is lower than the 2000 MHz `rps_act_freq_mhz`
-reports. At 1676 MHz the XMX peak is 27.5 TMAC/s and the 15.8 TMAC/s scan is
-about 57% of it. Memory traffic is a fifth of the 186 GB/s bandwidth. The
+reports. At 1676 MHz the XMX peak is 27.5 TMAC/s; the final 17.0 TMAC/s scan
+is about 62% of it. Memory traffic is a fifth of the 186 GB/s bandwidth. The
 kernel is stall-bound: `grf256` caps occupancy at half the hardware threads,
 so SLM loads and the per-stage barriers are poorly hidden.
 
-Raw data: [final](benchmarks/intel-a380-onednn-final-2026-10-04.json),
+Raw data: [final](benchmarks/intel-a380-onednn-final2-2026-10-04.json) (first build: [final-1](benchmarks/intel-a380-onednn-final-2026-10-04.json)), [no-af ABAB](benchmarks/intel-a380-onednn-noaf-2026-10-04.json), [pipeline](benchmarks/intel-a380-onednn-pipeline-2026-10-04.json),
 [kernels](benchmarks/intel-a380-onednn-kernels-b-2026-10-04.json),
 [panels](benchmarks/intel-a380-onednn-panels-2026-10-04.json),
 [XOR ceiling](benchmarks/intel-a380-onednn-xor-nop-2026-10-04.json),
@@ -147,6 +160,7 @@ proof failed and was not investigated).
 | `CP_OCL_PREP_TIMING=1` | Per-stage prep timings |
 | `CP_OCL_PREP_CHECK=1` | Compare the work-group noise path with the per-row kernel |
 | `CP_OCL_PREP_WG=0` | Use the per-row noise kernels |
+| `CASE5_PIPELINE=0` | Synchronous GEMM -> jackpot -> flag loop |
 
 ## Reproduce
 

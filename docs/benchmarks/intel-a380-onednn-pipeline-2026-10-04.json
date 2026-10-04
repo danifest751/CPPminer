@@ -1,0 +1,75 @@
+{
+  "dimensions": 131072,
+  "attempts_per_case": 5,
+  "cases": [
+    {
+      "label": "pipe",
+      "args": [
+        "--backend",
+        "onednn"
+      ],
+      "environment": {},
+      "timings_seconds": [
+        [
+          0.132,
+          4.188
+        ],
+        [
+          0.091,
+          4.179
+        ],
+        [
+          0.09,
+          4.179
+        ],
+        [
+          0.09,
+          4.178
+        ],
+        [
+          0.091,
+          4.178
+        ]
+      ],
+      "full_attempt_tmac_s": 16.483659915123916,
+      "scan_tmac_s": 16.840671096724662,
+      "mock_proof_passed": true
+    },
+    {
+      "label": "sync",
+      "args": [
+        "--backend",
+        "onednn"
+      ],
+      "environment": {
+        "CASE5_PIPELINE": "0"
+      },
+      "timings_seconds": [
+        [
+          0.134,
+          4.241
+        ],
+        [
+          0.09,
+          4.233
+        ],
+        [
+          0.09,
+          4.236
+        ],
+        [
+          0.09,
+          4.246
+        ],
+        [
+          0.091,
+          4.252
+        ]
+      ],
+      "full_attempt_tmac_s": 16.24393909918375,
+      "scan_tmac_s": 16.5895548246983,
+      "mock_proof_passed": true
+    }
+  ],
+  "completed": true
+}

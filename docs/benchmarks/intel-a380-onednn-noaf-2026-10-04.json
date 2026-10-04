@@ -1,0 +1,139 @@
+{
+  "dimensions": 131072,
+  "attempts_per_case": 4,
+  "cases": [
+    {
+      "label": "af1",
+      "args": [
+        "--backend",
+        "onednn"
+      ],
+      "environment": {
+        "CASE5_KERNEL": "custom",
+        "CASE5_STRATEGY": "sB64_sB32_aB_wg_8x4_cab4_ks64_af_dw_vav_bo_bk0_sm_sn_grf256_sys_pab_l4_sr",
+        "CASE5_UNROLL": "16x32"
+      },
+      "timings_seconds": [
+        [
+          0.132,
+          4.189
+        ],
+        [
+          0.09,
+          4.181
+        ],
+        [
+          0.09,
+          4.181
+        ],
+        [
+          0.091,
+          4.182
+        ]
+      ],
+      "full_attempt_tmac_s": 16.47336968653859,
+      "scan_tmac_s": 16.829259608816326,
+      "mock_proof_passed": true
+    },
+    {
+      "label": "noaf1",
+      "args": [
+        "--backend",
+        "onednn"
+      ],
+      "environment": {
+        "CASE5_KERNEL": "custom",
+        "CASE5_STRATEGY": "sB64_sB32_aB_wg_8x4_cab4_ks64_dw_vav_bo_bk0_sm_sn_grf256_sys_pab_l4_sr",
+        "CASE5_UNROLL": "16x32"
+      },
+      "timings_seconds": [
+        [
+          0.133,
+          4.142
+        ],
+        [
+          0.091,
+          4.136
+        ],
+        [
+          0.091,
+          4.134
+        ],
+        [
+          0.091,
+          4.137
+        ]
+      ],
+      "full_attempt_tmac_s": 16.648756508911042,
+      "scan_tmac_s": 17.015090878777464,
+      "mock_proof_passed": true
+    },
+    {
+      "label": "af2",
+      "args": [
+        "--backend",
+        "onednn"
+      ],
+      "environment": {
+        "CASE5_KERNEL": "custom",
+        "CASE5_STRATEGY": "sB64_sB32_aB_wg_8x4_cab4_ks64_af_dw_vav_bo_bk0_sm_sn_grf256_sys_pab_l4_sr",
+        "CASE5_UNROLL": "16x32"
+      },
+      "timings_seconds": [
+        [
+          0.133,
+          4.188
+        ],
+        [
+          0.091,
+          4.181
+        ],
+        [
+          0.091,
+          4.181
+        ],
+        [
+          0.09,
+          4.179
+        ]
+      ],
+      "full_attempt_tmac_s": 16.475941039022246,
+      "scan_tmac_s": 16.833285426440636,
+      "mock_proof_passed": true
+    },
+    {
+      "label": "noaf2",
+      "args": [
+        "--backend",
+        "onednn"
+      ],
+      "environment": {
+        "CASE5_KERNEL": "custom",
+        "CASE5_STRATEGY": "sB64_sB32_aB_wg_8x4_cab4_ks64_dw_vav_bo_bk0_sm_sn_grf256_sys_pab_l4_sr",
+        "CASE5_UNROLL": "16x32"
+      },
+      "timings_seconds": [
+        [
+          0.133,
+          4.144
+        ],
+        [
+          0.09,
+          4.135
+        ],
+        [
+          0.091,
+          4.136
+        ],
+        [
+          0.091,
+          4.136
+        ]
+      ],
+      "full_attempt_tmac_s": 16.65006960588311,
+      "scan_tmac_s": 17.015090878777464,
+      "mock_proof_passed": true
+    }
+  ],
+  "completed": true
+}
