@@ -50,7 +50,7 @@ Changes are developed in this fork. Selected changes are offered upstream as [pu
 | **ARM CPU** | DotProd rewrite (+50%), new I8MM (`smmla`) kernel, faster NEON fallback (+79%) |
 | **Pools** | Kryptex gzip stratum v2 (also used by HeroMiners), `--pool-pass d=N` custom difficulty, `WALLET.worker` on Kryptex, TCP keepalive and a submit-reply watchdog |
 | **Robustness** | One miner per GPU, clean exit when no GPU works, fixed share-target scaling for non-8x16 hash tiles, MinGW static runtime, stdout buffering on MinGW |
-| **Releases** | Windows CI build (CUDA + OpenCL + oneDNN + CPU) and a Linux build (also the ESIMD scan with a bundled SYCL runtime), with start scripts for Kryptex and HeroMiners |
+| **Releases** | Windows and Linux builds with CUDA, OpenCL, oneDNN, CPU and the ESIMD scan with its bundled SYCL runtime, plus start scripts for Kryptex and HeroMiners |
 
 ---
 
@@ -127,6 +127,7 @@ Measured by the upstream author on upstream builds; the fork's kernels for these
 Requirements:
 - NVIDIA: a driver that supports CUDA 12. The CUDA runtime and the MSVC DLLs are in the zip.
 - AMD / Intel: the normal GPU driver; it includes OpenCL.
+- Intel ESIMD: `kernels/cp_esimd.dll` and its Intel runtime are bundled; oneAPI is not required. Windows package loading and CPU proof verification are checked without toolchain paths. Intel GPU execution on Windows still needs hardware validation; the A380 performance figures are from Linux.
 
 ### Linux
 
@@ -341,10 +342,16 @@ The release builds use these exact steps. You need:
 ### Windows (MSVC, all release backends)
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File build.ps1 -Backend Cpu,Cuda,OpenCl,OneDnn -CudaArch "75;86;89"
+./scripts/setup_windows_oneapi.ps1 -Prefix "$PWD/build/oneapi-esimd"
+$env:CP_ONEAPI_ROOT = "$PWD/build/oneapi-esimd"
+$env:PATH = "$env:CP_ONEAPI_ROOT/Library/bin;$env:PATH"
+powershell -ExecutionPolicy Bypass -File build.ps1 -Backend Cpu,Cuda,OpenCl,OneDnn -EnableEsimd -CudaArch "75;86;89"
+./scripts/smoke_windows.ps1
+./scripts/package_windows.ps1 -CudaRoot $env:CUDA_PATH -RuntimeRoot $env:CP_ONEAPI_ROOT
+./scripts/validate_windows_package.ps1 -PackageDir ./cppminer-win64-cuda
 ```
 
-`cppminer.exe` ends up in the repo root. Use `-CudaArch 61` for Pascal, `-Backend Cpu,OpenCl` without the CUDA Toolkit, and add `Wgpu` for that backend.
+`cppminer.exe` ends up in the repo root. `-EnableEsimd` builds `kernels/cp_esimd.dll` with Intel DPC++ 2026.1.1 (`icx`); omit it and the oneAPI setup for gemmstone only. Use `-CudaArch 61` for Pascal, `-Backend Cpu,OpenCl` without the CUDA Toolkit, and add `Wgpu` for that backend. The packaging script requires a fresh output directory.
 
 ### Windows (MSYS2 UCRT64, CPU + OpenCL)
 

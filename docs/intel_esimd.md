@@ -33,7 +33,7 @@ not been run on such hardware. Devices without XMX keep gemmstone.
 
 | `CP_INTEL_GEMM` | Behaviour |
 |---|---|
-| `auto` (default) | ESIMD when `kernels/libcp_esimd.so` loads and the GPU has XMX; otherwise gemmstone |
+| `auto` (default) | ESIMD when `kernels/libcp_esimd.so` (Linux) or `kernels/cp_esimd.dll` (Windows) loads and the GPU has XMX; otherwise gemmstone |
 | `esimd` | Require ESIMD; fail initialization otherwise |
 | `gemmstone` | Never load the library |
 
@@ -61,6 +61,20 @@ adapter, libumf, libhwloc and the Intel math/runtime libraries, ~70 MB) and
 Intel's license files next to it; the v0.5-fork.5 Linux package ships that.
 It was tested in containers with only the Intel compute-runtime installed
 (23.43 from Ubuntu 24.04 and 26.31).
+
+On Windows, `build.ps1 -Backend Cpu,Cuda,OpenCl,OneDnn -EnableEsimd` builds
+`kernels/cp_esimd.dll` with oneAPI `icx`. See the README for the compiler setup.
+`scripts/package_windows.ps1` recursively bundles the DLL imports and the
+dynamically loaded UR OpenCL adapter, including Intel license files.
+`scripts/validate_windows_package.ps1` removes the toolchain directories from
+PATH, runs CPU proof verification, loads the library with the same DLL search
+mode as the miner, checks ABI 2 and all five exports, and loads the adapter.
+Windows UR also loads `ur_loader.dll` through a proxy, so that DLL is bundled
+explicitly. The miner registers the kernels directory with `SetDllDirectory`
+for these later runtime loads; the initial altered-search-path flag alone is
+insufficient.
+The Windows GPU driver is still required for mining; the package does not
+install or replace it.
 
 Tested runtime: Ubuntu 24.04 container, oneAPI DPC++ 2026.1.1, Intel
 compute-runtime 26.31 (Level Zero 1.17) from `ppa:kobuk-team/intel-graphics`,
@@ -98,5 +112,7 @@ gemmstone: 11.835 / 11.986 ([data](benchmarks/intel-a380-esimd-vs-gemmstone-rt26
   BLAKE3 digests against the CPU reference, for dpas and dpasw.
 - Miner: 30 mock shares built and verified through the Rust proof verifier
   (8 of them without the oneAPI environment); one live pool share accepted.
-- Not established: Xe2/Xe-HPC hardware, Windows (`cp_esimd.dll` is looked up,
-  but the CMake rule builds only the Linux `.so`), long-term acceptance rate.
+- Windows: portable package loading, ABI and CPU proof verification are checked
+  in the local Windows VM. The VM exposes VirtIO graphics, so Intel GPU execution
+  and performance on Windows remain unverified.
+- Not established: Xe2/Xe-HPC hardware, long-term acceptance rate.

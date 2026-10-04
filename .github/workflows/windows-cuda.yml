@@ -34,43 +34,33 @@ jobs:
           rustup default stable-x86_64-pc-windows-msvc
           cargo --version
 
+      - name: Intel ESIMD compiler and runtime
+        shell: pwsh
+        run: |
+          $prefix = Join-Path $env:RUNNER_TEMP 'oneapi-esimd'
+          & .\scripts\setup_windows_oneapi.ps1 -Prefix $prefix
+          "CP_ONEAPI_ROOT=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "$prefix\Library\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
       - name: Build (CPU + CUDA + OpenCL + oneDNN, sm_75/86/89)
         shell: pwsh
         run: |
-          powershell -ExecutionPolicy Bypass -File build.ps1 -Backend Cpu,Cuda,OpenCl,OneDnn -CudaArch "75;86;89" -CudaRoot "$env:CUDA_PATH"
+          powershell -ExecutionPolicy Bypass -File build.ps1 -Backend Cpu,Cuda,OpenCl,OneDnn -EnableEsimd -CudaArch "75;86;89" -CudaRoot "$env:CUDA_PATH"
 
       - name: Smoke test (CPU mock, no GPU on the runner)
         shell: pwsh
         run: |
-          .\cppminer.exe --help | Select-Object -First 3
-          if ($LASTEXITCODE -ne 0) { throw "--help failed ($LASTEXITCODE)" }
-          .\cppminer.exe --mock --simd-test
-          if ($LASTEXITCODE -ne 0) { throw "--simd-test failed ($LASTEXITCODE)" }
-          .\cppminer.exe --mock --prepack-test
-          if ($LASTEXITCODE -ne 0) { throw "--prepack-test failed ($LASTEXITCODE)" }
-          ctest --test-dir build/cmake -C Release --output-on-failure
-          if ($LASTEXITCODE -ne 0) { throw "protocol tests failed ($LASTEXITCODE)" }
+          & .\scripts\smoke_windows.ps1
 
       - name: Package
         shell: pwsh
         run: |
-          $out = "cppminer-win64-cuda"
-          New-Item -ItemType Directory -Force -Path $out | Out-Null
-          Copy-Item cppminer.exe $out
-          if (Test-Path kernels) { Copy-Item kernels $out -Recurse }
-          Copy-Item "$env:CUDA_PATH\bin\cudart64_*.dll" $out
-          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
-          $crt = Get-ChildItem "$vs\VC\Redist\MSVC" -Recurse -Directory -Filter Microsoft.VC143.CRT |
-                 Where-Object { $_.FullName -like '*\x64\*' -and $_.FullName -notmatch 'onecore|debug' } | Select-Object -First 1
-          $omp = Get-ChildItem "$vs\VC\Redist\MSVC" -Recurse -Directory -Filter Microsoft.VC143.OpenMP |
-                 Where-Object { $_.FullName -like '*\x64\*' -and $_.FullName -notmatch 'onecore|debug' } | Select-Object -First 1
-          if (-not $crt -or -not $omp) { throw "MSVC redist dirs not found under $vs\VC\Redist\MSVC" }
-          Write-Host "CRT: $($crt.FullName)"; Write-Host "OpenMP: $($omp.FullName)"
-          Copy-Item "$($crt.FullName)\*.dll" $out
-          Copy-Item "$($omp.FullName)\*.dll" $out
-          $dumpbin = Get-ChildItem "$vs\VC\Tools\MSVC" -Recurse -Filter dumpbin.exe | Where-Object FullName -like "*Hostx64\x64*" | Select-Object -First 1
-          if ($dumpbin) { & $dumpbin.FullName /dependents "$out\cppminer.exe" | Select-String "\.dll" }
-          Get-ChildItem $out | Format-Table Name, Length
+          & .\scripts\package_windows.ps1 -CudaRoot $env:CUDA_PATH -RuntimeRoot $env:CP_ONEAPI_ROOT -SourceCommit $env:GITHUB_SHA
+
+      - name: Validate redistributable package without toolchain paths
+        shell: pwsh
+        run: |
+          & .\scripts\validate_windows_package.ps1 -PackageDir .\cppminer-win64-cuda
 
       - uses: actions/upload-artifact@v4
         with:
