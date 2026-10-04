@@ -64,7 +64,7 @@ Hashrate is in **MAC/s**: multiply-accumulates per second of the int8 matrix pro
 | RTX 4090 | Ada, sm_89 | CUDA, tensor cores | 157–229 | rented card, v0.5-fork.1; varies with clocks |
 | RTX 3090 | Ampere, sm_86 | CUDA, `tensorop80` 128x128 | 95–97 | 350 W; 89 TMAC/s at a locked 1200 MHz and 263 W |
 | CMP 50HX | Turing, sm_75 | CUDA, `tensorop` 256x128 | 61 | 225 W |
-| Arc A380 | Xe-HPG (DG2) | oneDNN, systolic XMX 16x32 | 15.5 | 55 W limit; unreleased fork candidate |
+| Arc A380 | Xe-HPG (DG2) | oneDNN, systolic XMX 16x32 | 15.5 | XMX scan at 2000 MHz, ~53 W; unreleased fork candidate |
 | Radeon 780M (iGPU) | RDNA3, gfx1103 | OpenCL, WMMA | 6.4 | laptop, shared memory |
 | RX 580 4 GB | Polaris, gfx803 | OpenCL, GCN kernel | 1.84 | AMD Windows driver |
 | Adreno 830 | Snapdragon 8 Elite | OpenCL, 4x4 tile | ~0.7 | 8192² |

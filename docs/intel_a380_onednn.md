@@ -78,10 +78,15 @@ the prep change).
 
 - Milestone XOR: skipping the fold (`CASE5_XOR_NOP=1`, diagnostic only) gives
   11.86 vs 11.39 TMAC/s, about 4%.
-- Compute-bound: under load the card holds ~52 W of its 55 W `power1_max` and
-  runs at 2000 MHz instead of 2450. Capping the clock at 1600 MHz lowers the
-  scan rate from 15.79 to 12.55 TMAC/s (65536²), the same 1.25x ratio as the
-  clocks, so DRAM bandwidth is not the limit.
+- Compute-bound: the XMX scan runs at 2000 MHz. Capping the clock at
+  1600 MHz lowers the scan rate from 15.79 to 12.55 TMAC/s (65536²), the
+  same 1.25x ratio as the clocks, so DRAM bandwidth is not the limit.
+- The 2000 MHz is not the power limit. With `power1_max` raised from 55 to
+  65 and 75 W (the card has an 8-pin connector), the XMX scan still ran at
+  2000 MHz and ~53 W with no throttle reason set, while i915 requested
+  2450 MHz; a non-XMX OpenCL load at 75 W reached 2200–2250 MHz and 60 W.
+  The limit was restored to 55 W. At 2000 MHz the XMX peak is 8 Xe-cores ×
+  2048 int8 MAC/clock = 32.8 TMAC/s, so the scan uses about 48% of it.
 - Larger custom tiles (32x32, 16x64 per thread; 8x8 work groups) either do
   not fit DG2's registers/SLM or are slower. Hilbert walk order, other
   B access widths and dropping `sr`/`pab` changed results within ±3%;
@@ -132,5 +137,5 @@ python3 scripts/run_intel_scan_bench.py --binary build/cppminer --output build/i
   --case "dpas=--backend opencl --ocl-dot dpas"
 ```
 
-The remaining large lever is the 55 W power limit: at 2450 MHz the scan rate
-should rise up to ~22%, if the card's power delivery allows it.
+The remaining lever is kernel efficiency (48% of the XMX peak at the clock
+the card holds); hardware counters (unitrace/VTune) would show where it goes.
