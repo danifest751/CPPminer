@@ -1,4 +1,11 @@
-﻿#include "case33_gemm_onednn.hpp"
+﻿#ifdef _WIN32
+/* Before any header: the OpenCL/oneDNN headers may include <windows.h>. */
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#endif
+
+#include "case33_gemm_onednn.hpp"
 
 #include "case5_gemm_launch.hpp"
 #include "case5_xor_tile.hpp"
@@ -19,10 +26,9 @@
 #include <fstream>
 
 #ifdef _WIN32
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
 #include <windows.h>
+#undef min
+#undef max
 #else
 #include <dlfcn.h>
 #endif
