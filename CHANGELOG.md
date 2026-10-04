@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — CUDA improvements for the next fork release
+- Promote the measured sm75 `.cg` operand-load policy and constant-index, predicated jackpot fold into the normal CMake CUDA build.
+- Move the sm75 TensorOp milestone callback before the next K tile's loads, retaining the exact prefix order and final callback.
+- Include opt-in incremental signal-A generation and cached keyed BLAKE3 trees (`CP_CUDA_A_MODE=incremental`, 4096 updates). Dense remains the default; the CMP50 test server runs incremental mode.
+- Verify the integrated build on CMP50HX: exact CUDA oracles, alignment, proof checks and CTest pass; complete-attempt ABBA throughput is 60.46 → 63.18 TMAC/s (+4.50%) against v0.5-fork.4.
+- Build and deploy a private Linux candidate without publishing a release or changing the v0.5-fork.4 artifacts. Details: [integrated CUDA validation](docs/cuda_integrated_improvements.md).
+
 ## v0.5-fork.4
 - Pool session recovery: authorization/first-job deadlines, per-request submit ACK tracking and oldest-share timeout.
 - Bounded latest-job delivery for Pearl and Quantus, complete work identities, preserved early jobs and cancellation across the idle/active transition.

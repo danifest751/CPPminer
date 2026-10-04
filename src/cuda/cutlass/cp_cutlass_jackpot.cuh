@@ -19,8 +19,19 @@ __device__ __forceinline__ void cp_cutlass_jackpot_fold_step(
     uint32_t* jackpot_words, int step, uint32_t partial_xor)
 {
     const int tid = step % CP_CUTLASS_JACKPOT_WORDS;
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 750
+    // Constant indices keep the transcript in registers on Turing. Each
+    // milestone still rotates and folds exactly one of the sixteen words.
+    #pragma unroll
+    for (int word = 0; word < CP_CUTLASS_JACKPOT_WORDS; ++word) {
+        if (word == tid)
+            jackpot_words[word] =
+                cp_cutlass_rotl32(jackpot_words[word], CP_CUTLASS_JACKPOT_LROT) ^ partial_xor;
+    }
+#else
     jackpot_words[tid] =
         cp_cutlass_rotl32(jackpot_words[tid], CP_CUTLASS_JACKPOT_LROT) ^ partial_xor;
+#endif
 }
 
 __device__ __forceinline__ bool cp_cutlass_jackpot_target_ok(

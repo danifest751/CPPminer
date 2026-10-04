@@ -1,0 +1,12 @@
+{
+  "pid": 149103,
+  "candidate_binary": true,
+  "binary_sha256": "63e79a0cdf66aafcf5540a1b328d36024d1bd47daf54fb2974620b9a5d5547d2",
+  "argv_match": true,
+  "environment_match": true,
+  "cwd_match": true,
+  "log_destinations_match": true,
+  "unique_worker": true,
+  "observation_seconds": 12,
+  "fresh_attempts": 11
+}

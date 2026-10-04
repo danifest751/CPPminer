@@ -27,6 +27,11 @@ public:
   using Base = MmaPipelined_;
   static constexpr int kItersPerMs = kMilestoneIters;
   static constexpr bool kSkipResidueTile = kResidueTileIsLast;
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 750
+  static constexpr bool kDelayMilestone = !kResidueTileIsLast;
+#else
+  static constexpr bool kDelayMilestone = false;
+#endif
 
   CUTLASS_DEVICE
   MmaMilestone(typename Base::SharedStorage &shared_storage, int thread_idx,
@@ -91,6 +96,14 @@ public:
       CUTLASS_PRAGMA_UNROLL
       for (int warp_mma_k = 0; warp_mma_k < Base::kWarpGemmIterations;
            ++warp_mma_k) {
+        if constexpr (kDelayMilestone) {
+          // The previous prefix is still live. Fold it before the next tile's
+          // loads and first MMA, without retaining a second accumulator.
+          if (warp_mma_k == 0 && since_ms == kMilestoneIters) {
+            cb(ms_idx++, accum);
+            since_ms = 0;
+          }
+        }
         if (warp_mma_k == Base::kWarpGemmIterations - 1) {
           this->smem_iterator_A_.store(this->transform_A_(tb_frag_A));
           this->smem_iterator_B_.store(this->transform_B_(tb_frag_B));
@@ -127,12 +140,15 @@ public:
 
       ++since_ms;
 
-      if (since_ms == kMilestoneIters) {
-        cb(ms_idx++, accum);
-        since_ms = 0;
+      if constexpr (!kDelayMilestone) {
+        if (since_ms == kMilestoneIters) {
+          cb(ms_idx++, accum);
+          since_ms = 0;
+        }
       }
     }
 
+    // Includes the final complete prefix when its callback was deferred.
     if (since_ms > 0)
       cb(ms_idx, accum);
 

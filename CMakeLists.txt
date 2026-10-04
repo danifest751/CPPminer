@@ -237,6 +237,27 @@ endif()
 
 if(CP_ENABLE_CUDA)
     find_package(CUDAToolkit REQUIRED)
+    # Keep the pinned vendor tree intact. Turing's 16-byte operand loads use
+    # the measured L2-only cache policy; other architectures keep vendor PTX.
+    set(_cp_memory_header "${CMAKE_SOURCE_DIR}/third_party/cutlass/include/cutlass/arch/memory.h")
+    file(READ "${_cp_memory_header}" _cp_memory_source)
+    set(_cp_load_original "        \"  @p ld.global.L2::128B.v4.u32 {%0, %1, %2, %3}, [%4];\\n\"")
+    string(REPLACE "${_cp_load_original}" "" _cp_memory_without_load "${_cp_memory_source}")
+    string(LENGTH "${_cp_memory_source}" _cp_memory_length)
+    string(LENGTH "${_cp_memory_without_load}" _cp_memory_without_length)
+    string(LENGTH "${_cp_load_original}" _cp_load_length)
+    math(EXPR _cp_removed_length "${_cp_memory_length} - ${_cp_memory_without_length}")
+    if(NOT _cp_removed_length EQUAL _cp_load_length)
+        message(FATAL_ERROR "Unexpected CUTLASS memory.h: expected one pinned 16-byte load hook")
+    endif()
+    set(_cp_load_turing "#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 750\n        \"  @p ld.global.cg.L2::128B.v4.u32 {%0, %1, %2, %3}, [%4];\\n\"\n#else\n${_cp_load_original}\n#endif")
+    string(REPLACE "${_cp_load_original}" "${_cp_load_turing}" _cp_memory_source "${_cp_memory_source}")
+    # The generated header uses the vendor's architecture helper headers.
+    string(REPLACE "\"memory_sm75.h\"" "\"cutlass/arch/memory_sm75.h\"" _cp_memory_source "${_cp_memory_source}")
+    string(REPLACE "\"memory_sm80.h\"" "\"cutlass/arch/memory_sm80.h\"" _cp_memory_source "${_cp_memory_source}")
+    set(_cp_cutlass_override "${CMAKE_BINARY_DIR}/cutlass_override")
+    file(MAKE_DIRECTORY "${_cp_cutlass_override}/cutlass/arch")
+    file(CONFIGURE OUTPUT "${_cp_cutlass_override}/cutlass/arch/memory.h" CONTENT "${_cp_memory_source}" @ONLY)
     list(APPEND CP_SOURCES
         src/cuda/cp_gpu.cu
         src/cuda/cp_cutlass_gemm.cu
@@ -244,6 +265,7 @@ if(CP_ENABLE_CUDA)
     )
     list(APPEND CP_INCLUDE_DIRS
         ${CMAKE_SOURCE_DIR}/src/cuda/cutlass
+        ${_cp_cutlass_override}
         ${CMAKE_SOURCE_DIR}/third_party/cutlass_override
         ${CMAKE_SOURCE_DIR}/third_party/cutlass/include
         ${CMAKE_SOURCE_DIR}/third_party/cutlass/examples/35_gemm_softmax

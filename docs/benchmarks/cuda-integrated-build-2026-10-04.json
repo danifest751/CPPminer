@@ -1,0 +1,28 @@
+{
+  "base_commit": "717823f5d6b20953e48738a3c27d85dc1ed01f37",
+  "branch": "perf/cuda-incremental-a",
+  "changed_sources": {
+    "CMakeLists.txt": "1b85571b1a92165ef26a0bd566c7c756297c3b5cc049da14c46f111904645025",
+    "src/cuda/cutlass/mma_milestone.h": "5ef492b9fb32224a16438a7639f0de6ae075d4543950ac749422e367022d311d",
+    "src/cuda/cutlass/cp_cutlass_jackpot.cuh": "cef53f6c168c61dd829437462a6ddd0e19b829a77692f460f384b87550d7beae"
+  },
+  "archive_sha256": "ef3d54be00567746a311790d1e1dfa45811283912e749066e2d989c92cc24d57",
+  "compiled": true,
+  "binary_sha256": "63e79a0cdf66aafcf5540a1b328d36024d1bd47daf54fb2974620b9a5d5547d2",
+  "configure": [
+    "cmake",
+    "-S",
+    "/w/working-three-improvements/src",
+    "-B",
+    "/w/working-three-improvements/build",
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DCP_ENABLE_CUDA=ON",
+    "-DCP_CUDA_ARCH=75;86;89",
+    "-DCP_ENABLE_CPU=ON",
+    "-DCP_ENABLE_OPENCL=OFF",
+    "-DCP_ENABLE_CUBLAS=OFF",
+    "-DCP_ENABLE_WGPU=OFF"
+  ],
+  "vendor_memory_sha256": "3d0792ee416a0ba93f4d5c45a2dd64ed4a92918ec36eac1583d4bf6c69fba473",
+  "generated_memory_sha256": "3b791dc6e163ace2e22aef3ddea640327b3ba16b2952a4be4910c69622fa8709"
+}
