@@ -202,3 +202,10 @@ active GPU use, and 11 newly completed mining attempts in a 12-second observatio
 Private snapshots and wallet-bearing logs remain server-local and are excluded
 from the committed data. No rented GPU, GitHub Actions run or upstream PR is
 required.
+
+## Follow-up research
+
+The ordered whole-miner/cache/traversal/pipeline/minimal-MMA/native-SASS study
+is tracked in [cuda_research_validation.md](cuda_research_validation.md).
+R1 confirms the cg/jackpot combination on the complete miner; the later ledger
+also records the exactness and performance of the remaining adapted candidates.

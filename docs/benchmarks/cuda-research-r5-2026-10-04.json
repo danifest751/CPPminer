@@ -1,0 +1,4039 @@
+{
+  "started_utc": "2026-10-04T08:06:34Z",
+  "reference_sha256": "3e5a589350558afc34c5d15297612ef16aa3273d0999c3b5bc3d1e9737fd300e",
+  "manifest": {
+    "group": "minimal",
+    "nvcc_version": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2024 NVIDIA Corporation\nBuilt on Tue_Oct_29_23:50:19_PDT_2024\nCuda compilation tools, release 12.6, V12.6.85\nBuild cuda_12.6.r12.6/compiler.35059454_0\n",
+    "reused_object_sha256": {
+      "/w/experiment-data-feed/build/feed-profile/0.o": "15a9b5dda8c72b5bef209985c648be704eb4e08d5095f7ac0772f5d1d19a4a4b",
+      "/w/experiment-data-feed/build/feed-profile/1.o": "354c909aae5e4583f183bf0a43f52b63d0bcc4eaad7648991d7e89014d89b631",
+      "/w/experiment-data-feed/build/feed-profile/2.o": "99895e0ac8887ececb85aa13ba4cc4a11e6c7eef11d685adc508cf86e498cd0b",
+      "/w/experiment-data-feed/build/feed-profile/3.o": "27d5b69b346576323486efc577c1e18414cb6e686fb168723a827337bc78e5e2",
+      "/w/experiment-data-feed/build/feed-profile/4.o": "9388e6f6d0e8ec83f14c4bc0e015443d87d1408897f8c8b1b77bf3d0918a732e",
+      "/w/experiment-data-feed/build/feed-profile/5.o": "392fe2296f9f3cd5b9b6dfcd015e4a94aa94db4f53990d788cb17e274ca31066",
+      "/w/experiment-data-feed/build/feed-profile/6.o": "0840b1c7f6c9b9618087430142933341e56d1f9624a1f870aff0e83ccd2da8c9",
+      "/w/experiment-data-feed/build/feed-profile/7.o": "a8014e066aca2cf932fcc6552cd184f9f97ded0276806a4119bed3c6ab3bbdc7",
+      "/w/experiment-data-feed/build/feed-profile/8.o": "b876c12e69ce1189322aab7e450cdcec71e1f2d87d99d7cbe2108c72a71ac5fa",
+      "/w/experiment-data-feed/build/feed-profile/9.o": "30d6f3cc94761e92edc438f59dcb889809071d2edd56ae6dd230033b5fdab109",
+      "/w/experiment-data-feed/build/feed-profile/10.o": "03c1cbf594655b007090c02bb7fc41b709d760605cdb5fca3e1290cfeb5dfb72"
+    },
+    "variants": {
+      "baseline": {
+        "generated_sha256": {
+          "cp_cutlass_layout.h": "8fbd5f592f18bf5ffda2757609d08878fd84aab8597475a609feda466c5a396d",
+          "epilogue_with_visitor_visit_batch.h": "9d67ce95d1820b2b898fcf2608f2df792315d3fada58a0d0ffda2bb7cbb1e391",
+          "cp_cutlass_gemm_types.h": "7415c6e9d98df9d04ef30d1567a007cd20d090e87c03de26bbacf03925c28ebb",
+          "mma_milestone_multistage.h": "2b6a5ebb6975e55aa6d75891be8929caa816f0084fa653fe7bfb341f3c02c242",
+          "cp_cutlass_jackpot.cuh": "bf82ceff64616d8219c164d47caacf97238c947405d5c453ed5a0c6f748fb8fa",
+          "gemm_with_milestone_mainloop.h": "503f4ec98619afc284825bada9beb8623ce6b987899f7cfecd27eb6937824049",
+          "scattered_thread_tile.h": "7594ef85d0b206a03ee4ebf70b3aa8a0c2b81ed6fdaa46b5e9f1e91ce952d401",
+          "epilogue_visitor_tile_xor_reg_per_thread.h": "6160cf9c63b69856aa9e370977766475cf47beb16f2650e94494eb506582337a",
+          "mma_milestone.h": "91aac2fbf0b4466624d606be4eff74c6ed371a58d9d6d9b4dedc0a705fa87671",
+          "mma_lane_tile.h": "d7be7bd59de9bbadc5351eec0ad4a9265d5c5f3d7a7655bd9505635a9e146c4c",
+          "gemm_inline_xor_kernel.h": "d036e51ffb3cd897868cd17e8d4ce23425bc4415bb3a53a99b3c3c56b109327f",
+          "profile.cu": "41a1c9f7832100346c0844435cb54ba0804420c3160f93ffde0ae666a0165f3d",
+          "epilogue_visitor_store_c.h": "a4747a218527bfe44ab144be27e0bc8821ce6353e670350bb15856793d7dd083",
+          "hash_tile_policy.h": "867da228512f6575672ddbb5d228212bd5a840f5724d14927a4341746835e282"
+        },
+        "binaries": {
+          "full": {
+            "sha256": "db0441f31e90deaa0651e292fdd21f847b4127d3ae4847af142790273a7e5c50"
+          },
+          "verify": {
+            "sha256": "e706b6dc3345443c8c7aac35bff62345f273c78a7454c251c6a9955d9d094b88"
+          }
+        },
+        "sass_sha256": "d0bc777cb731bba32a0052c5670d1a1bef225b8ac1c9429fe64dd7a9fb7a79bd",
+        "compiled": true
+      },
+      "direct": {
+        "generated_sha256": {
+          "cp_cutlass_layout.h": "8fbd5f592f18bf5ffda2757609d08878fd84aab8597475a609feda466c5a396d",
+          "epilogue_with_visitor_visit_batch.h": "9d67ce95d1820b2b898fcf2608f2df792315d3fada58a0d0ffda2bb7cbb1e391",
+          "cp_cutlass_gemm_types.h": "7415c6e9d98df9d04ef30d1567a007cd20d090e87c03de26bbacf03925c28ebb",
+          "mma_milestone_multistage.h": "2b6a5ebb6975e55aa6d75891be8929caa816f0084fa653fe7bfb341f3c02c242",
+          "cp_cuda_minimal_mma.cuh": "500bdd392087c5505e198ff05e8a3d57476440a156fc7fcee018086c44fe6184",
+          "cp_cutlass_jackpot.cuh": "bf82ceff64616d8219c164d47caacf97238c947405d5c453ed5a0c6f748fb8fa",
+          "gemm_with_milestone_mainloop.h": "503f4ec98619afc284825bada9beb8623ce6b987899f7cfecd27eb6937824049",
+          "scattered_thread_tile.h": "7594ef85d0b206a03ee4ebf70b3aa8a0c2b81ed6fdaa46b5e9f1e91ce952d401",
+          "epilogue_visitor_tile_xor_reg_per_thread.h": "6160cf9c63b69856aa9e370977766475cf47beb16f2650e94494eb506582337a",
+          "mma_milestone.h": "91aac2fbf0b4466624d606be4eff74c6ed371a58d9d6d9b4dedc0a705fa87671",
+          "mma_lane_tile.h": "d7be7bd59de9bbadc5351eec0ad4a9265d5c5f3d7a7655bd9505635a9e146c4c",
+          "gemm_inline_xor_kernel.h": "d036e51ffb3cd897868cd17e8d4ce23425bc4415bb3a53a99b3c3c56b109327f",
+          "profile.cu": "2a730638f99fed74bf38bd314fdf3bcc3d6f78b21bb066e8e3321b5f79744306",
+          "epilogue_visitor_store_c.h": "a4747a218527bfe44ab144be27e0bc8821ce6353e670350bb15856793d7dd083",
+          "hash_tile_policy.h": "867da228512f6575672ddbb5d228212bd5a840f5724d14927a4341746835e282"
+        },
+        "binaries": {
+          "full": {
+            "sha256": "31ce8c788514287b8a89f5a5435f840b1c467c5d8c31de0a68d6efe1a1c909d7"
+          },
+          "verify": {
+            "sha256": "58be4fd1a6360bb20672c162c41386e5006d01b876375711e02d53b94960215a"
+          }
+        },
+        "sass_sha256": "859244f4168f824c9fd1d6bdb18ea9dc42c62d5ec9d42d0d2d26bfa058a3ef8a",
+        "compiled": true
+      },
+      "lookahead": {
+        "generated_sha256": {
+          "cp_cutlass_layout.h": "8fbd5f592f18bf5ffda2757609d08878fd84aab8597475a609feda466c5a396d",
+          "epilogue_with_visitor_visit_batch.h": "9d67ce95d1820b2b898fcf2608f2df792315d3fada58a0d0ffda2bb7cbb1e391",
+          "cp_cutlass_gemm_types.h": "7415c6e9d98df9d04ef30d1567a007cd20d090e87c03de26bbacf03925c28ebb",
+          "mma_milestone_multistage.h": "2b6a5ebb6975e55aa6d75891be8929caa816f0084fa653fe7bfb341f3c02c242",
+          "cp_cuda_minimal_mma.cuh": "500bdd392087c5505e198ff05e8a3d57476440a156fc7fcee018086c44fe6184",
+          "cp_cutlass_jackpot.cuh": "bf82ceff64616d8219c164d47caacf97238c947405d5c453ed5a0c6f748fb8fa",
+          "gemm_with_milestone_mainloop.h": "503f4ec98619afc284825bada9beb8623ce6b987899f7cfecd27eb6937824049",
+          "scattered_thread_tile.h": "7594ef85d0b206a03ee4ebf70b3aa8a0c2b81ed6fdaa46b5e9f1e91ce952d401",
+          "epilogue_visitor_tile_xor_reg_per_thread.h": "6160cf9c63b69856aa9e370977766475cf47beb16f2650e94494eb506582337a",
+          "mma_milestone.h": "91aac2fbf0b4466624d606be4eff74c6ed371a58d9d6d9b4dedc0a705fa87671",
+          "mma_lane_tile.h": "d7be7bd59de9bbadc5351eec0ad4a9265d5c5f3d7a7655bd9505635a9e146c4c",
+          "gemm_inline_xor_kernel.h": "d036e51ffb3cd897868cd17e8d4ce23425bc4415bb3a53a99b3c3c56b109327f",
+          "profile.cu": "2a730638f99fed74bf38bd314fdf3bcc3d6f78b21bb066e8e3321b5f79744306",
+          "epilogue_visitor_store_c.h": "a4747a218527bfe44ab144be27e0bc8821ce6353e670350bb15856793d7dd083",
+          "hash_tile_policy.h": "867da228512f6575672ddbb5d228212bd5a840f5724d14927a4341746835e282"
+        },
+        "binaries": {
+          "full": {
+            "sha256": "7949a78a814bcc017c1884359f7d21825b7a702f0e21490d2dd226e96579d029"
+          },
+          "verify": {
+            "sha256": "7d3ab64b3f32e0b3ecd4d71c36261f57381f096345b223656ee99b7bc4cc38aa"
+          }
+        },
+        "sass_sha256": "be436b62b10c60880b24c9d4f0fb9a6c05885c798e41648a9600343bfcc98ade",
+        "compiled": true
+      },
+      "lookahead_cg": {
+        "generated_sha256": {
+          "cp_cutlass_layout.h": "8fbd5f592f18bf5ffda2757609d08878fd84aab8597475a609feda466c5a396d",
+          "epilogue_with_visitor_visit_batch.h": "9d67ce95d1820b2b898fcf2608f2df792315d3fada58a0d0ffda2bb7cbb1e391",
+          "cp_cutlass_gemm_types.h": "7415c6e9d98df9d04ef30d1567a007cd20d090e87c03de26bbacf03925c28ebb",
+          "mma_milestone_multistage.h": "2b6a5ebb6975e55aa6d75891be8929caa816f0084fa653fe7bfb341f3c02c242",
+          "cp_cuda_minimal_mma.cuh": "500bdd392087c5505e198ff05e8a3d57476440a156fc7fcee018086c44fe6184",
+          "cp_cutlass_jackpot.cuh": "bf82ceff64616d8219c164d47caacf97238c947405d5c453ed5a0c6f748fb8fa",
+          "gemm_with_milestone_mainloop.h": "503f4ec98619afc284825bada9beb8623ce6b987899f7cfecd27eb6937824049",
+          "scattered_thread_tile.h": "7594ef85d0b206a03ee4ebf70b3aa8a0c2b81ed6fdaa46b5e9f1e91ce952d401",
+          "epilogue_visitor_tile_xor_reg_per_thread.h": "6160cf9c63b69856aa9e370977766475cf47beb16f2650e94494eb506582337a",
+          "mma_milestone.h": "91aac2fbf0b4466624d606be4eff74c6ed371a58d9d6d9b4dedc0a705fa87671",
+          "mma_lane_tile.h": "d7be7bd59de9bbadc5351eec0ad4a9265d5c5f3d7a7655bd9505635a9e146c4c",
+          "gemm_inline_xor_kernel.h": "d036e51ffb3cd897868cd17e8d4ce23425bc4415bb3a53a99b3c3c56b109327f",
+          "profile.cu": "2a730638f99fed74bf38bd314fdf3bcc3d6f78b21bb066e8e3321b5f79744306",
+          "epilogue_visitor_store_c.h": "a4747a218527bfe44ab144be27e0bc8821ce6353e670350bb15856793d7dd083",
+          "hash_tile_policy.h": "867da228512f6575672ddbb5d228212bd5a840f5724d14927a4341746835e282"
+        },
+        "binaries": {
+          "full": {
+            "sha256": "7f3f3ddf132b3024a48e44a357d5c5383b9570d850fd95a558e67e212c5e3130"
+          },
+          "verify": {
+            "sha256": "b4ec97b31292675c797bc81d260269b54b44a641b944ac383c2cd15a7135a36e"
+          }
+        },
+        "sass_sha256": "b1af619cc58a49a7018436080b6ece2e096cc73317213c33eee8b91b44788fa6",
+        "compiled": true
+      }
+    },
+    "commands": [
+      [
+        "/usr/local/cuda/bin/nvcc",
+        "-std=c++17",
+        "-O3",
+        "-arch=sm_75",
+        "-lineinfo",
+        "-Xptxas=-v",
+        "-Xcompiler=-fopenmp",
+        "-Xlinker=--gc-sections",
+        "-DCP_FEED_VARIANT=\"baseline\"",
+        "-DCP_FEED_VERIFY=0",
+        "-DCP_MINIMAL_PREFETCH=0",
+        "-DCP_MINIMAL_CG=0",
+        "-I/w/experiment-research-suite/build/minimal/baseline",
+        "-I/w/experiment-research-suite/include",
+        "-I/w/experiment-research-suite/src/cuda",
+        "-I/w/experiment-research-suite/src/cuda/cutlass",
+        "-I/w/experiment-research-suite/third_party/cutlass_override",
+        "-I/w/experiment-research-suite/third_party/cutlass/include",
+        "-I/w/experiment-research-suite/third_party/cutlass/examples/35_gemm_softmax",
+        "-I/w/experiment-research-suite/third_party/blake3",
+        "/w/experiment-research-suite/build/minimal/baseline/profile.cu",
+        "/w/experiment-data-feed/build/feed-profile/0.o",
+        "/w/experiment-data-feed/build/feed-profile/1.o",
+        "/w/experiment-data-feed/build/feed-profile/2.o",
+        "/w/experiment-data-feed/build/feed-profile/3.o",
+        "/w/experiment-data-feed/build/feed-profile/4.o",
+        "/w/experiment-data-feed/build/feed-profile/5.o",
+        "/w/experiment-data-feed/build/feed-profile/6.o",
+        "/w/experiment-data-feed/build/feed-profile/7.o",
+        "/w/experiment-data-feed/build/feed-profile/8.o",
+        "/w/experiment-data-feed/build/feed-profile/9.o",
+        "/w/experiment-data-feed/build/feed-profile/10.o",
+        "-o",
+        "/w/experiment-research-suite/build/minimal/baseline/full"
+      ],
+      [
+        "/usr/local/cuda/bin/nvcc",
+        "-std=c++17",
+        "-O3",
+        "-arch=sm_75",
+        "-lineinfo",
+        "-Xptxas=-v",
+        "-Xcompiler=-fopenmp",
+        "-Xlinker=--gc-sections",
+        "-DCP_FEED_VARIANT=\"baseline\"",
+        "-DCP_FEED_VERIFY=1",
+        "-DCP_MINIMAL_PREFETCH=0",
+        "-DCP_MINIMAL_CG=0",
+        "-I/w/experiment-research-suite/build/minimal/baseline",
+        "-I/w/experiment-research-suite/include",
+        "-I/w/experiment-research-suite/src/cuda",
+        "-I/w/experiment-research-suite/src/cuda/cutlass",
+        "-I/w/experiment-research-suite/third_party/cutlass_override",
+        "-I/w/experiment-research-suite/third_party/cutlass/include",
+        "-I/w/experiment-research-suite/third_party/cutlass/examples/35_gemm_softmax",
+        "-I/w/experiment-research-suite/third_party/blake3",
+        "/w/experiment-research-suite/build/minimal/baseline/profile.cu",
+        "/w/experiment-data-feed/build/feed-profile/0.o",
+        "/w/experiment-data-feed/build/feed-profile/1.o",
+        "/w/experiment-data-feed/build/feed-profile/2.o",
+        "/w/experiment-data-feed/build/feed-profile/3.o",
+        "/w/experiment-data-feed/build/feed-profile/4.o",
+        "/w/experiment-data-feed/build/feed-profile/5.o",
+        "/w/experiment-data-feed/build/feed-profile/6.o",
+        "/w/experiment-data-feed/build/feed-profile/7.o",
+        "/w/experiment-data-feed/build/feed-profile/8.o",
+        "/w/experiment-data-feed/build/feed-profile/9.o",
+        "/w/experiment-data-feed/build/feed-profile/10.o",
+        "-o",
+        "/w/experiment-research-suite/build/minimal/baseline/verify"
+      ],
+      [
+        "/usr/local/cuda/bin/nvcc",
+        "-std=c++17",
+        "-O3",
+        "-arch=sm_75",
+        "-lineinfo",
+        "-Xptxas=-v",
+        "-Xcompiler=-fopenmp",
+        "-Xlinker=--gc-sections",
+        "-DCP_FEED_VARIANT=\"direct\"",
+        "-DCP_FEED_VERIFY=0",
+        "-DCP_MINIMAL_PREFETCH=0",
+        "-DCP_MINIMAL_CG=0",
+        "-I/w/experiment-research-suite/build/minimal/direct",
+        "-I/w/experiment-research-suite/include",
+        "-I/w/experiment-research-suite/src/cuda",
+        "-I/w/experiment-research-suite/src/cuda/cutlass",
+        "-I/w/experiment-research-suite/third_party/cutlass_override",
+        "-I/w/experiment-research-suite/third_party/cutlass/include",
+        "-I/w/experiment-research-suite/third_party/cutlass/examples/35_gemm_softmax",
+        "-I/w/experiment-research-suite/third_party/blake3",
+        "/w/experiment-research-suite/build/minimal/direct/profile.cu",
+        "/w/experiment-data-feed/build/feed-profile/0.o",
+        "/w/experiment-data-feed/build/feed-profile/1.o",
+        "/w/experiment-data-feed/build/feed-profile/2.o",
+        "/w/experiment-data-feed/build/feed-profile/3.o",
+        "/w/experiment-data-feed/build/feed-profile/4.o",
+        "/w/experiment-data-feed/build/feed-profile/5.o",
+        "/w/experiment-data-feed/build/feed-profile/6.o",
+        "/w/experiment-data-feed/build/feed-profile/7.o",
+        "/w/experiment-data-feed/build/feed-profile/8.o",
+        "/w/experiment-data-feed/build/feed-profile/9.o",
+        "/w/experiment-data-feed/build/feed-profile/10.o",
+        "-o",
+        "/w/experiment-research-suite/build/minimal/direct/full"
+      ],
+      [
+        "/usr/local/cuda/bin/nvcc",
+        "-std=c++17",
+        "-O3",
+        "-arch=sm_75",
+        "-lineinfo",
+        "-Xptxas=-v",
+        "-Xcompiler=-fopenmp",
+        "-Xlinker=--gc-sections",
+        "-DCP_FEED_VARIANT=\"direct\"",
+        "-DCP_FEED_VERIFY=1",
+        "-DCP_MINIMAL_PREFETCH=0",
+        "-DCP_MINIMAL_CG=0",
+        "-I/w/experiment-research-suite/build/minimal/direct",
+        "-I/w/experiment-research-suite/include",
+        "-I/w/experiment-research-suite/src/cuda",
+        "-I/w/experiment-research-suite/src/cuda/cutlass",
+        "-I/w/experiment-research-suite/third_party/cutlass_override",
+        "-I/w/experiment-research-suite/third_party/cutlass/include",
+        "-I/w/experiment-research-suite/third_party/cutlass/examples/35_gemm_softmax",
+        "-I/w/experiment-research-suite/third_party/blake3",
+        "/w/experiment-research-suite/build/minimal/direct/profile.cu",
+        "/w/experiment-data-feed/build/feed-profile/0.o",
+        "/w/experiment-data-feed/build/feed-profile/1.o",
+        "/w/experiment-data-feed/build/feed-profile/2.o",
+        "/w/experiment-data-feed/build/feed-profile/3.o",
+        "/w/experiment-data-feed/build/feed-profile/4.o",
+        "/w/experiment-data-feed/build/feed-profile/5.o",
+        "/w/experiment-data-feed/build/feed-profile/6.o",
+        "/w/experiment-data-feed/build/feed-profile/7.o",
+        "/w/experiment-data-feed/build/feed-profile/8.o",
+        "/w/experiment-data-feed/build/feed-profile/9.o",
+        "/w/experiment-data-feed/build/feed-profile/10.o",
+        "-o",
+        "/w/experiment-research-suite/build/minimal/direct/verify"
+      ],
+      [
+        "/usr/local/cuda/bin/nvcc",
+        "-std=c++17",
+        "-O3",
+        "-arch=sm_75",
+        "-lineinfo",
+        "-Xptxas=-v",
+        "-Xcompiler=-fopenmp",
+        "-Xlinker=--gc-sections",
+        "-DCP_FEED_VARIANT=\"lookahead\"",
+        "-DCP_FEED_VERIFY=0",
+        "-DCP_MINIMAL_PREFETCH=1",
+        "-DCP_MINIMAL_CG=0",
+        "-I/w/experiment-research-suite/build/minimal/lookahead",
+        "-I/w/experiment-research-suite/include",
+        "-I/w/experiment-research-suite/src/cuda",
+        "-I/w/experiment-research-suite/src/cuda/cutlass",
+        "-I/w/experiment-research-suite/third_party/cutlass_override",
+        "-I/w/experiment-research-suite/third_party/cutlass/include",
+        "-I/w/experiment-research-suite/third_party/cutlass/examples/35_gemm_softmax",
+        "-I/w/experiment-research-suite/third_party/blake3",
+        "/w/experiment-research-suite/build/minimal/lookahead/profile.cu",
+        "/w/experiment-data-feed/build/feed-profile/0.o",
+        "/w/experiment-data-feed/build/feed-profile/1.o",
+        "/w/experiment-data-feed/build/feed-profile/2.o",
+        "/w/experiment-data-feed/build/feed-profile/3.o",
+        "/w/experiment-data-feed/build/feed-profile/4.o",
+        "/w/experiment-data-feed/build/feed-profile/5.o",
+        "/w/experiment-data-feed/build/feed-profile/6.o",
+        "/w/experiment-data-feed/build/feed-profile/7.o",
+        "/w/experiment-data-feed/build/feed-profile/8.o",
+        "/w/experiment-data-feed/build/feed-profile/9.o",
+        "/w/experiment-data-feed/build/feed-profile/10.o",
+        "-o",
+        "/w/experiment-research-suite/build/minimal/lookahead/full"
+      ],
+      [
+        "/usr/local/cuda/bin/nvcc",
+        "-std=c++17",
+        "-O3",
+        "-arch=sm_75",
+        "-lineinfo",
+        "-Xptxas=-v",
+        "-Xcompiler=-fopenmp",
+        "-Xlinker=--gc-sections",
+        "-DCP_FEED_VARIANT=\"lookahead\"",
+        "-DCP_FEED_VERIFY=1",
+        "-DCP_MINIMAL_PREFETCH=1",
+        "-DCP_MINIMAL_CG=0",
+        "-I/w/experiment-research-suite/build/minimal/lookahead",
+        "-I/w/experiment-research-suite/include",
+        "-I/w/experiment-research-suite/src/cuda",
+        "-I/w/experiment-research-suite/src/cuda/cutlass",
+        "-I/w/experiment-research-suite/third_party/cutlass_override",
+        "-I/w/experiment-research-suite/third_party/cutlass/include",
+        "-I/w/experiment-research-suite/third_party/cutlass/examples/35_gemm_softmax",
+        "-I/w/experiment-research-suite/third_party/blake3",
+        "/w/experiment-research-suite/build/minimal/lookahead/profile.cu",
+        "/w/experiment-data-feed/build/feed-profile/0.o",
+        "/w/experiment-data-feed/build/feed-profile/1.o",
+        "/w/experiment-data-feed/build/feed-profile/2.o",
+        "/w/experiment-data-feed/build/feed-profile/3.o",
+        "/w/experiment-data-feed/build/feed-profile/4.o",
+        "/w/experiment-data-feed/build/feed-profile/5.o",
+        "/w/experiment-data-feed/build/feed-profile/6.o",
+        "/w/experiment-data-feed/build/feed-profile/7.o",
+        "/w/experiment-data-feed/build/feed-profile/8.o",
+        "/w/experiment-data-feed/build/feed-profile/9.o",
+        "/w/experiment-data-feed/build/feed-profile/10.o",
+        "-o",
+        "/w/experiment-research-suite/build/minimal/lookahead/verify"
+      ],
+      [
+        "/usr/local/cuda/bin/nvcc",
+        "-std=c++17",
+        "-O3",
+        "-arch=sm_75",
+        "-lineinfo",
+        "-Xptxas=-v",
+        "-Xcompiler=-fopenmp",
+        "-Xlinker=--gc-sections",
+        "-DCP_FEED_VARIANT=\"lookahead_cg\"",
+        "-DCP_FEED_VERIFY=0",
+        "-DCP_MINIMAL_PREFETCH=1",
+        "-DCP_MINIMAL_CG=1",
+        "-I/w/experiment-research-suite/build/minimal/lookahead_cg",
+        "-I/w/experiment-research-suite/include",
+        "-I/w/experiment-research-suite/src/cuda",
+        "-I/w/experiment-research-suite/src/cuda/cutlass",
+        "-I/w/experiment-research-suite/third_party/cutlass_override",
+        "-I/w/experiment-research-suite/third_party/cutlass/include",
+        "-I/w/experiment-research-suite/third_party/cutlass/examples/35_gemm_softmax",
+        "-I/w/experiment-research-suite/third_party/blake3",
+        "/w/experiment-research-suite/build/minimal/lookahead_cg/profile.cu",
+        "/w/experiment-data-feed/build/feed-profile/0.o",
+        "/w/experiment-data-feed/build/feed-profile/1.o",
+        "/w/experiment-data-feed/build/feed-profile/2.o",
+        "/w/experiment-data-feed/build/feed-profile/3.o",
+        "/w/experiment-data-feed/build/feed-profile/4.o",
+        "/w/experiment-data-feed/build/feed-profile/5.o",
+        "/w/experiment-data-feed/build/feed-profile/6.o",
+        "/w/experiment-data-feed/build/feed-profile/7.o",
+        "/w/experiment-data-feed/build/feed-profile/8.o",
+        "/w/experiment-data-feed/build/feed-profile/9.o",
+        "/w/experiment-data-feed/build/feed-profile/10.o",
+        "-o",
+        "/w/experiment-research-suite/build/minimal/lookahead_cg/full"
+      ],
+      [
+        "/usr/local/cuda/bin/nvcc",
+        "-std=c++17",
+        "-O3",
+        "-arch=sm_75",
+        "-lineinfo",
+        "-Xptxas=-v",
+        "-Xcompiler=-fopenmp",
+        "-Xlinker=--gc-sections",
+        "-DCP_FEED_VARIANT=\"lookahead_cg\"",
+        "-DCP_FEED_VERIFY=1",
+        "-DCP_MINIMAL_PREFETCH=1",
+        "-DCP_MINIMAL_CG=1",
+        "-I/w/experiment-research-suite/build/minimal/lookahead_cg",
+        "-I/w/experiment-research-suite/include",
+        "-I/w/experiment-research-suite/src/cuda",
+        "-I/w/experiment-research-suite/src/cuda/cutlass",
+        "-I/w/experiment-research-suite/third_party/cutlass_override",
+        "-I/w/experiment-research-suite/third_party/cutlass/include",
+        "-I/w/experiment-research-suite/third_party/cutlass/examples/35_gemm_softmax",
+        "-I/w/experiment-research-suite/third_party/blake3",
+        "/w/experiment-research-suite/build/minimal/lookahead_cg/profile.cu",
+        "/w/experiment-data-feed/build/feed-profile/0.o",
+        "/w/experiment-data-feed/build/feed-profile/1.o",
+        "/w/experiment-data-feed/build/feed-profile/2.o",
+        "/w/experiment-data-feed/build/feed-profile/3.o",
+        "/w/experiment-data-feed/build/feed-profile/4.o",
+        "/w/experiment-data-feed/build/feed-profile/5.o",
+        "/w/experiment-data-feed/build/feed-profile/6.o",
+        "/w/experiment-data-feed/build/feed-profile/7.o",
+        "/w/experiment-data-feed/build/feed-profile/8.o",
+        "/w/experiment-data-feed/build/feed-profile/9.o",
+        "/w/experiment-data-feed/build/feed-profile/10.o",
+        "-o",
+        "/w/experiment-research-suite/build/minimal/lookahead_cg/verify"
+      ]
+    ],
+    "completed": true
+  },
+  "repeats_per_block": 8,
+  "runs": [
+    {
+      "name": "verify-baseline",
+      "variant": "baseline",
+      "binary": "verify",
+      "args": [],
+      "started_seconds": 0.10133715398842469,
+      "ended_seconds": 0.6668671629886376,
+      "records": [
+        {
+          "type": "metadata",
+          "gpu": "NVIDIA CMP 50HX",
+          "variant": "baseline",
+          "verify": true
+        },
+        {
+          "type": "correctness",
+          "variant": "baseline",
+          "tile": "128x128",
+          "pattern": 0,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "baseline",
+          "tile": "256x128",
+          "pattern": 0,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "baseline",
+          "tile": "128x128",
+          "pattern": 1,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "baseline",
+          "tile": "256x128",
+          "pattern": 1,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "baseline",
+          "tile": "128x128",
+          "pattern": 2,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "baseline",
+          "tile": "256x128",
+          "pattern": 2,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "baseline",
+          "tile": "128x128",
+          "pattern": 3,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "baseline",
+          "tile": "256x128",
+          "pattern": 3,
+          "passed": true
+        },
+        {
+          "type": "complete",
+          "passed": true,
+          "checked_values": 327680
+        }
+      ],
+      "passed": true,
+      "phase": "correctness"
+    },
+    {
+      "name": "verify-direct",
+      "variant": "direct",
+      "binary": "verify",
+      "args": [],
+      "started_seconds": 0.6675443329877453,
+      "ended_seconds": 1.2327359759947285,
+      "records": [
+        {
+          "type": "metadata",
+          "gpu": "NVIDIA CMP 50HX",
+          "variant": "direct",
+          "verify": true
+        },
+        {
+          "type": "correctness",
+          "variant": "direct",
+          "tile": "128x128",
+          "pattern": 0,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "direct",
+          "tile": "256x128",
+          "pattern": 0,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "direct",
+          "tile": "128x128",
+          "pattern": 1,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "direct",
+          "tile": "256x128",
+          "pattern": 1,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "direct",
+          "tile": "128x128",
+          "pattern": 2,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "direct",
+          "tile": "256x128",
+          "pattern": 2,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "direct",
+          "tile": "128x128",
+          "pattern": 3,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "direct",
+          "tile": "256x128",
+          "pattern": 3,
+          "passed": true
+        },
+        {
+          "type": "complete",
+          "passed": true,
+          "checked_values": 327680
+        }
+      ],
+      "passed": true,
+      "phase": "correctness"
+    },
+    {
+      "name": "verify-lookahead",
+      "variant": "lookahead",
+      "binary": "verify",
+      "args": [],
+      "started_seconds": 1.2337285979883745,
+      "ended_seconds": 1.7996290909941308,
+      "records": [
+        {
+          "type": "metadata",
+          "gpu": "NVIDIA CMP 50HX",
+          "variant": "lookahead",
+          "verify": true
+        },
+        {
+          "type": "correctness",
+          "variant": "lookahead",
+          "tile": "128x128",
+          "pattern": 0,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "lookahead",
+          "tile": "256x128",
+          "pattern": 0,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "lookahead",
+          "tile": "128x128",
+          "pattern": 1,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "lookahead",
+          "tile": "256x128",
+          "pattern": 1,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "lookahead",
+          "tile": "128x128",
+          "pattern": 2,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "lookahead",
+          "tile": "256x128",
+          "pattern": 2,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "lookahead",
+          "tile": "128x128",
+          "pattern": 3,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "lookahead",
+          "tile": "256x128",
+          "pattern": 3,
+          "passed": true
+        },
+        {
+          "type": "complete",
+          "passed": true,
+          "checked_values": 327680
+        }
+      ],
+      "passed": true,
+      "phase": "correctness"
+    },
+    {
+      "name": "verify-lookahead_cg",
+      "variant": "lookahead_cg",
+      "binary": "verify",
+      "args": [],
+      "started_seconds": 1.8003809529909631,
+      "ended_seconds": 2.365656134992605,
+      "records": [
+        {
+          "type": "metadata",
+          "gpu": "NVIDIA CMP 50HX",
+          "variant": "lookahead_cg",
+          "verify": true
+        },
+        {
+          "type": "correctness",
+          "variant": "lookahead_cg",
+          "tile": "128x128",
+          "pattern": 0,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "lookahead_cg",
+          "tile": "256x128",
+          "pattern": 0,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "lookahead_cg",
+          "tile": "128x128",
+          "pattern": 1,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "lookahead_cg",
+          "tile": "256x128",
+          "pattern": 1,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "lookahead_cg",
+          "tile": "128x128",
+          "pattern": 2,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "lookahead_cg",
+          "tile": "256x128",
+          "pattern": 2,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "lookahead_cg",
+          "tile": "128x128",
+          "pattern": 3,
+          "passed": true
+        },
+        {
+          "type": "correctness",
+          "variant": "lookahead_cg",
+          "tile": "256x128",
+          "pattern": 3,
+          "passed": true
+        },
+        {
+          "type": "complete",
+          "passed": true,
+          "checked_values": 327680
+        }
+      ],
+      "passed": true,
+      "phase": "correctness"
+    },
+    {
+      "name": "conditioning",
+      "variant": "baseline",
+      "binary": "full",
+      "args": [
+        "300",
+        "large"
+      ],
+      "started_seconds": 2.36645047798811,
+      "ended_seconds": 14.852909440000076,
+      "records": [
+        {
+          "type": "metadata",
+          "gpu": "NVIDIA CMP 50HX",
+          "variant": "baseline",
+          "verify": false
+        },
+        {
+          "type": "measurement",
+          "variant": "baseline",
+          "tile": "256x128",
+          "m": 4096,
+          "n": 131072,
+          "k": 4096,
+          "registers": 216,
+          "local_bytes": 128,
+          "shared_bytes": 49152,
+          "active_blocks_per_sm": 1,
+          "gpu_ms": [
+            35.756031,
+            35.484863,
+            35.71616,
+            35.319809,
+            35.891201,
+            35.891167,
+            35.426559,
+            35.919521,
+            35.68531,
+            35.242783,
+            35.975166,
+            35.903679,
+            36.249599,
+            35.506271,
+            35.751743,
+            35.461121,
+            35.293728,
+            36.236416,
+            35.713791,
+            37.525505,
+            37.068577,
+            36.282017,
+            36.343105,
+            36.375679,
+            36.179935,
+            35.504929,
+            35.467262,
+            35.268318,
+            36.108994,
+            35.921505,
+            35.800926,
+            35.758209,
+            35.393089,
+            35.28944,
+            36.255234,
+            36.136703,
+            35.717056,
+            35.962879,
+            35.280895,
+            35.129345,
+            35.77248,
+            36.411488,
+            35.794945,
+            35.56723,
+            35.364609,
+            35.492702,
+            35.424446,
+            35.81728,
+            36.197922,
+            35.697601,
+            36.118786,
+            36.830814,
+            36.466686,
+            36.423679,
+            35.53075,
+            35.478081,
+            35.456478,
+            35.771873,
+            35.829346,
+            35.905537,
+            35.548447,
+            35.462433,
+            35.575294,
+            35.335201,
+            35.911678,
+            35.833218,
+            36.046623,
+            35.760674,
+            36.370911,
+            35.782658,
+            35.414017,
+            35.695744,
+            35.833408,
+            36.171776,
+            35.72467,
+            35.395584,
+            35.75584,
+            35.728256,
+            35.756031,
+            35.370975,
+            35.250977,
+            35.672161,
+            36.306946,
+            36.765598,
+            35.933792,
+            36.103394,
+            36.116482,
+            36.057087,
+            35.661503,
+            35.601025,
+            35.561184,
+            35.238785,
+            35.897823,
+            35.984512,
+            35.409473,
+            35.68,
+            36.259838,
+            35.67136,
+            35.287041,
+            35.770176,
+            35.750656,
+            36.626049,
+            35.718529,
+            35.407871,
+            35.611359,
+            35.636673,
+            35.765568,
+            35.591553,
+            36.212608,
+            35.569248,
+            35.944447,
+            35.835743,
+            36.321281,
+            35.523808,
+            35.270657,
+            36.083359,
+            36.545376,
+            36.718594,
+            35.542496,
+            35.628513,
+            35.788799,
+            34.998657,
+            36.036255,
+            36.067329,
+            35.654881,
+            35.802593,
+            35.551231,
+            35.225601,
+            35.438145,
+            36.556736,
+            35.823391,
+            35.607136,
+            35.462048,
+            35.65136,
+            35.381279,
+            36.550209,
+            35.993599,
+            35.90749,
+            35.790562,
+            35.872578,
+            35.45248,
+            35.89325,
+            35.878914,
+            36.099361,
+            35.670017,
+            35.299999,
+            35.312897,
+            35.686081,
+            36.153889,
+            35.796864,
+            35.729408,
+            36.147583,
+            35.078144,
+            35.373249,
+            35.874817,
+            35.909824,
+            35.854336,
+            35.23859,
+            35.451103,
+            36.470913,
+            36.560898,
+            35.846146,
+            35.672607,
+            35.395649,
+            36.055775,
+            35.270657,
+            35.821472,
+            36.288383,
+            36.048641,
+            35.513058,
+            35.997696,
+            35.711742,
+            35.280415,
+            35.774464,
+            35.778561,
+            35.346016,
+            35.721214,
+            35.390591,
+            35.167679,
+            35.80928,
+            35.791714,
+            35.532833,
+            35.471359,
+            35.829887,
+            35.708031,
+            35.389408,
+            36.354721,
+            36.236641,
+            36.503551,
+            35.548927,
+            35.652962,
+            35.63501,
+            35.256226,
+            36.213249,
+            35.861694,
+            35.601921,
+            35.622913,
+            35.653889,
+            35.161022,
+            35.381248,
+            35.621056,
+            36.071362,
+            35.416065,
+            35.673344,
+            35.230976,
+            35.686722,
+            36.313728,
+            36.493057,
+            36.102272,
+            35.754303,
+            35.562527,
+            35.561214,
+            35.385345,
+            35.835552,
+            35.663841,
+            35.653664,
+            35.321663,
+            35.278561,
+            35.539616,
+            35.992672,
+            36.420834,
+            36.403198,
+            36.05357,
+            35.550655,
+            35.532799,
+            36.239361,
+            35.431553,
+            36.077568,
+            35.869728,
+            35.773918,
+            35.868191,
+            35.637054,
+            35.294018,
+            36.118752,
+            35.827713,
+            35.645374,
+            35.53075,
+            35.704449,
+            35.173153,
+            35.977215,
+            35.858047,
+            36.217281,
+            35.414143,
+            35.505505,
+            35.262463,
+            35.800671,
+            35.649536,
+            35.854721,
+            35.780769,
+            35.722527,
+            35.764256,
+            36.028416,
+            35.743458,
+            36.168705,
+            36.334785,
+            36.261856,
+            35.525185,
+            35.490593,
+            35.729408,
+            35.330784,
+            36.535873,
+            36.675362,
+            36.401154,
+            35.492126,
+            35.590145,
+            35.284225,
+            35.676064,
+            36.294369,
+            36.201378,
+            36.267647,
+            36.023617,
+            35.287041,
+            35.907841,
+            35.876865,
+            35.549473,
+            35.262463,
+            36.743809,
+            35.783199,
+            35.551167,
+            35.664639,
+            34.985985,
+            36.499489,
+            36.003426,
+            36.054081,
+            35.825665,
+            35.604481,
+            35.252064,
+            35.800671,
+            36.005054,
+            36.121792,
+            35.36816,
+            35.725311,
+            35.237022,
+            35.560577,
+            36.683105,
+            36.380672,
+            35.639137,
+            35.782658,
+            35.623936,
+            35.919872
+          ],
+          "wall_ms": [
+            35.778621,
+            35.49487,
+            35.726161,
+            35.332862,
+            35.917004,
+            35.90899,
+            35.438032,
+            35.933747,
+            35.698318,
+            35.255274,
+            35.989052,
+            35.91445,
+            36.261861,
+            35.520339,
+            35.764283,
+            35.482025,
+            35.304508,
+            36.245721,
+            35.726862,
+            37.536581,
+            37.078708,
+            36.291398,
+            36.351663,
+            36.383373,
+            36.188252,
+            35.51574,
+            35.476385,
+            35.276364,
+            36.118008,
+            35.929508,
+            35.811173,
+            35.770165,
+            35.404919,
+            35.298517,
+            36.262793,
+            36.144158,
+            35.729678,
+            35.970847,
+            35.288447,
+            35.137549,
+            35.779864,
+            36.41878,
+            35.801846,
+            35.574572,
+            35.372537,
+            35.501353,
+            35.43193,
+            35.824639,
+            36.204733,
+            35.705732,
+            36.126113,
+            36.83841,
+            36.474487,
+            36.431645,
+            35.538273,
+            35.485222,
+            35.464052,
+            35.778891,
+            35.83592,
+            35.912616,
+            35.555876,
+            35.469542,
+            35.581656,
+            35.342379,
+            35.919219,
+            35.84166,
+            36.053163,
+            35.768632,
+            36.378725,
+            35.790183,
+            35.422121,
+            35.704179,
+            35.839837,
+            36.178884,
+            35.732182,
+            35.403426,
+            35.762651,
+            35.73628,
+            35.764153,
+            35.378188,
+            35.25855,
+            35.679502,
+            36.314081,
+            36.773577,
+            35.941081,
+            36.110242,
+            36.12433,
+            36.064666,
+            35.668841,
+            35.608486,
+            35.567599,
+            35.246497,
+            35.905883,
+            35.991717,
+            35.416501,
+            35.686365,
+            36.266401,
+            35.67878,
+            35.294659,
+            35.777599,
+            35.758853,
+            36.63337,
+            35.724998,
+            35.414678,
+            35.619357,
+            35.643914,
+            35.772108,
+            35.598297,
+            36.219221,
+            35.575373,
+            35.951611,
+            35.843093,
+            36.32899,
+            35.530298,
+            35.278718,
+            36.090165,
+            36.553898,
+            36.726436,
+            35.549805,
+            35.635789,
+            35.797176,
+            35.00641,
+            36.043615,
+            36.075006,
+            35.661728,
+            35.809379,
+            35.558722,
+            35.233613,
+            35.447129,
+            36.56544,
+            35.830019,
+            35.614418,
+            35.470253,
+            35.658722,
+            35.388728,
+            36.557445,
+            36.001816,
+            35.91466,
+            35.797327,
+            35.879332,
+            35.462098,
+            35.900653,
+            35.887228,
+            36.106496,
+            35.676867,
+            35.308164,
+            35.320077,
+            35.693018,
+            36.1614,
+            35.80427,
+            35.737883,
+            36.157352,
+            35.084699,
+            35.380522,
+            35.881717,
+            35.917466,
+            35.86228,
+            35.246517,
+            35.45839,
+            36.478104,
+            36.568225,
+            35.853724,
+            35.680544,
+            35.403165,
+            36.063263,
+            35.277866,
+            35.828045,
+            36.295836,
+            36.056089,
+            35.524807,
+            36.009411,
+            35.723926,
+            35.289318,
+            35.781717,
+            35.786526,
+            35.35322,
+            35.728796,
+            35.397614,
+            35.178107,
+            35.82028,
+            35.801755,
+            35.541249,
+            35.478649,
+            35.837202,
+            35.714368,
+            35.396393,
+            36.362804,
+            36.243887,
+            36.510615,
+            35.556488,
+            35.659404,
+            35.641689,
+            35.262818,
+            36.221415,
+            35.869313,
+            35.608327,
+            35.629717,
+            35.661186,
+            35.169249,
+            35.388888,
+            35.628305,
+            36.0777,
+            35.423214,
+            35.680343,
+            35.238111,
+            35.69449,
+            36.322718,
+            36.502239,
+            36.112467,
+            35.764504,
+            35.569823,
+            35.56827,
+            35.393136,
+            35.843955,
+            35.670715,
+            35.661658,
+            35.328984,
+            35.28509,
+            35.548082,
+            35.999932,
+            36.427828,
+            36.410014,
+            36.06215,
+            35.557559,
+            35.539896,
+            36.247905,
+            35.439154,
+            36.085275,
+            35.876407,
+            35.780945,
+            35.874763,
+            35.643584,
+            35.303184,
+            36.128397,
+            35.839857,
+            35.668701,
+            35.555415,
+            35.724718,
+            35.187755,
+            36.000494,
+            35.870165,
+            36.236413,
+            35.44226,
+            35.524467,
+            35.269931,
+            35.807876,
+            35.656318,
+            35.862601,
+            35.78915,
+            35.729648,
+            35.772218,
+            36.035891,
+            35.750607,
+            36.175467,
+            36.341884,
+            36.268263,
+            35.536179,
+            35.507604,
+            35.73664,
+            35.338562,
+            36.543347,
+            36.681912,
+            36.407609,
+            35.500631,
+            35.600481,
+            35.296472,
+            35.685994,
+            36.302399,
+            36.209431,
+            36.275508,
+            36.031492,
+            35.293667,
+            35.91501,
+            35.884072,
+            35.557509,
+            35.270573,
+            36.752786,
+            35.791265,
+            35.560545,
+            35.672719,
+            34.993755,
+            36.50784,
+            36.010513,
+            36.060507,
+            35.833546,
+            35.611692,
+            35.259441,
+            35.807446,
+            36.011484,
+            36.129229,
+            35.376594,
+            35.733094,
+            35.244012,
+            35.569853,
+            36.695167,
+            36.390556,
+            35.646579,
+            35.789892,
+            35.63119,
+            35.927735
+          ]
+        },
+        {
+          "type": "complete",
+          "passed": true,
+          "checked_values": 96
+        }
+      ],
+      "passed": true,
+      "phase": "conditioning"
+    },
+    {
+      "name": "r0-p0-baseline",
+      "variant": "baseline",
+      "binary": "full",
+      "args": [
+        "8",
+        "large"
+      ],
+      "started_seconds": 14.854958994998015,
+      "ended_seconds": 16.87285143599729,
+      "records": [
+        {
+          "type": "metadata",
+          "gpu": "NVIDIA CMP 50HX",
+          "variant": "baseline",
+          "verify": false
+        },
+        {
+          "type": "measurement",
+          "variant": "baseline",
+          "tile": "256x128",
+          "m": 4096,
+          "n": 131072,
+          "k": 4096,
+          "registers": 216,
+          "local_bytes": 128,
+          "shared_bytes": 49152,
+          "active_blocks_per_sm": 1,
+          "gpu_ms": [
+            35.566113,
+            35.104511,
+            35.592224,
+            34.915329,
+            35.672642,
+            36.576481,
+            35.629055,
+            36.061985
+          ],
+          "wall_ms": [
+            35.582968,
+            35.112952,
+            35.602345,
+            34.929994,
+            35.683689,
+            36.584946,
+            35.635839,
+            36.069685
+          ]
+        },
+        {
+          "type": "complete",
+          "passed": true,
+          "checked_values": 96
+        }
+      ],
+      "passed": true,
+      "phase": "measurement",
+      "round": 0,
+      "position": 0,
+      "tile": "256x128"
+    },
+    {
+      "name": "r0-p1-direct",
+      "variant": "direct",
+      "binary": "full",
+      "args": [
+        "8",
+        "large"
+      ],
+      "started_seconds": 16.874037976987893,
+      "ended_seconds": 27.305643146988587,
+      "records": [
+        {
+          "type": "metadata",
+          "gpu": "NVIDIA CMP 50HX",
+          "variant": "direct",
+          "verify": false
+        },
+        {
+          "type": "measurement",
+          "variant": "direct",
+          "tile": "256x128",
+          "m": 4096,
+          "n": 131072,
+          "k": 4096,
+          "registers": 44,
+          "local_bytes": 64,
+          "shared_bytes": 0,
+          "active_blocks_per_sm": 4,
+          "gpu_ms": [
+            680.104675,
+            679.416382,
+            680.665039,
+            679.976013,
+            679.307251,
+            680.843262,
+            680.737122,
+            679.433777
+          ],
+          "wall_ms": [
+            680.123973,
+            679.431683,
+            680.691363,
+            679.993762,
+            679.319758,
+            680.862657,
+            680.747427,
+            679.446107
+          ]
+        },
+        {
+          "type": "complete",
+          "passed": true,
+          "checked_values": 96
+        }
+      ],
+      "passed": true,
+      "phase": "measurement",
+      "round": 0,
+      "position": 1,
+      "tile": "256x128"
+    },
+    {
+      "name": "r0-p2-lookahead",
+      "variant": "lookahead",
+      "binary": "full",
+      "args": [
+        "8",
+        "large"
+      ],
+      "started_seconds": 27.30705653000041,
+      "ended_seconds": 37.78850164699543,
+      "records": [
+        {
+          "type": "metadata",
+          "gpu": "NVIDIA CMP 50HX",
+          "variant": "lookahead",
+          "verify": false
+        },
+        {
+          "type": "measurement",
+          "variant": "lookahead",
+          "tile": "256x128",
+          "m": 4096,
+          "n": 131072,
+          "k": 4096,
+          "registers": 45,
+          "local_bytes": 64,
+          "shared_bytes": 0,
+          "active_blocks_per_sm": 4,
+          "gpu_ms": [
+            686.533752,
+            683.228638,
+            685.007324,
+            686.180664,
+            684.290039,
+            684.859375,
+            686.413818,
+            684.67395
+          ],
+          "wall_ms": [
+            686.554396,
+            683.242014,
+            685.031102,
+            686.198346,
+            684.303505,
+            684.881145,
+            686.431669,
+            684.686903
+          ]
+        },
+        {
+          "type": "complete",
+          "passed": true,
+          "checked_values": 96
+        }
+      ],
+      "passed": true,
+      "phase": "measurement",
+      "round": 0,
+      "position": 2,
+      "tile": "256x128"
+    },
+    {
+      "name": "r0-p3-lookahead_cg",
+      "variant": "lookahead_cg",
+      "binary": "full",
+      "args": [
+        "8",
+        "large"
+      ],
+      "started_seconds": 37.789873440997326,
+      "ended_seconds": 49.27284475498891,
+      "records": [
+        {
+          "type": "metadata",
+          "gpu": "NVIDIA CMP 50HX",
+          "variant": "lookahead_cg",
+          "verify": false
+        },
+        {
+          "type": "measurement",
+          "variant": "lookahead_cg",
+          "tile": "256x128",
+          "m": 4096,
+          "n": 131072,
+          "k": 4096,
+          "registers": 45,
+          "local_bytes": 64,
+          "shared_bytes": 0,
+          "active_blocks_per_sm": 4,
+          "gpu_ms": [
+            761.377991,
+            763.229797,
+            761.872131,
+            761.163757,
+            761.608215,
+            763.107178,
+            761.911133,
+            762.06897
+          ],
+          "wall_ms": [
+            761.399831,
+            763.252149,
+            761.892287,
+            761.172716,
+            761.617693,
+            763.115856,
+            761.919206,
+            762.076675
+          ]
+        },
+        {
+          "type": "complete",
+          "passed": true,
+          "checked_values": 96
+        }
+      ],
+      "passed": true,
+      "phase": "measurement",
+      "round": 0,
+      "position": 3,
+      "tile": "256x128"
+    },
+    {
+      "name": "r1-p0-lookahead_cg",
+      "variant": "lookahead_cg",
+      "binary": "full",
+      "args": [
+        "8",
+        "large"
+      ],
+      "started_seconds": 49.274326618993655,
+      "ended_seconds": 60.75342400898808,
+      "records": [
+        {
+          "type": "metadata",
+          "gpu": "NVIDIA CMP 50HX",
+          "variant": "lookahead_cg",
+          "verify": false
+        },
+        {
+          "type": "measurement",
+          "variant": "lookahead_cg",
+          "tile": "256x128",
+          "m": 4096,
+          "n": 131072,
+          "k": 4096,
+          "registers": 45,
+          "local_bytes": 64,
+          "shared_bytes": 0,
+          "active_blocks_per_sm": 4,
+          "gpu_ms": [
+            761.010193,
+            761.42926,
+            762.089111,
+            760.226562,
+            761.352051,
+            762.550293,
+            762.399597,
+            761.34198
+          ],
+          "wall_ms": [
+            761.032351,
+            761.450967,
+            762.112206,
+            760.24629,
+            761.367265,
+            762.570657,
+            762.422905,
+            761.363917
+          ]
+        },
+        {
+          "type": "complete",
+          "passed": true,
+          "checked_values": 96
+        }
+      ],
+      "passed": true,
+      "phase": "measurement",
+      "round": 1,
+      "position": 0,
+      "tile": "256x128"
+    },
+    {
+      "name": "r1-p1-lookahead",
+      "variant": "lookahead",
+      "binary": "full",
+      "args": [
+        "8",
+        "large"
+      ],
+      "started_seconds": 60.75500940899656,
+      "ended_seconds": 71.23483138399024,
+      "records": [
+        {
+          "type": "metadata",
+          "gpu": "NVIDIA CMP 50HX",
+          "variant": "lookahead",
+          "verify": false
+        },
+        {
+          "type": "measurement",
+          "variant": "lookahead",
+          "tile": "256x128",
+          "m": 4096,
+          "n": 131072,
+          "k": 4096,
+          "registers": 45,
+          "local_bytes": 64,
+          "shared_bytes": 0,
+          "active_blocks_per_sm": 4,
+          "gpu_ms": [
+            687.152527,
+            684.353638,
+            685.849487,
+            686.549072,
+            685.524719,
+            685.456909,
+            686.611877,
+            686.598145
+          ],
+          "wall_ms": [
+            687.175252,
+            684.372411,
+            685.864192,
+            686.569827,
+            685.545685,
+            685.467856,
+            686.62485,
+            686.610692
+          ]
+        },
+        {
+          "type": "complete",
+          "passed": true,
+          "checked_values": 96
+        }
+      ],
+      "passed": true,
+      "phase": "measurement",
+      "round": 1,
+      "position": 1,
+      "tile": "256x128"
+    },
+    {
+      "name": "r1-p2-direct",
+      "variant": "direct",
+      "binary": "full",
+      "args": [
+        "8",
+        "large"
+      ],
+      "started_seconds": 71.23779725498753,
+      "ended_seconds": 81.66770109999925,
+      "records": [
+        {
+          "type": "metadata",
+          "gpu": "NVIDIA CMP 50HX",
+          "variant": "direct",
+          "verify": false
+        },
+        {
+          "type": "measurement",
+          "variant": "direct",
+          "tile": "256x128",
+          "m": 4096,
+          "n": 131072,
+          "k": 4096,
+          "registers": 44,
+          "local_bytes": 64,
+          "shared_bytes": 0,
+          "active_blocks_per_sm": 4,
+          "gpu_ms": [
+            679.908142,
+            679.147339,
+            681.758728,
+            679.922302,
+            679.281372,
+            680.570862,
+            680.136902,
+            679.571411
+          ],
+          "wall_ms": [
+            679.929158,
+            679.160303,
+            681.776637,
+            679.932342,
+            679.297433,
+            680.587741,
+            680.14727,
+            679.582815
+          ]
+        },
+        {
+          "type": "complete",
+          "passed": true,
+          "checked_values": 96
+        }
+      ],
+      "passed": true,
+      "phase": "measurement",
+      "round": 1,
+      "position": 2,
+      "tile": "256x128"
+    },
+    {
+      "name": "r1-p3-baseline",
+      "variant": "baseline",
+      "binary": "full",
+      "args": [
+        "8",
+        "large"
+      ],
+      "started_seconds": 81.66949396599375,
+      "ended_seconds": 83.68743797499337,
+      "records": [
+        {
+          "type": "metadata",
+          "gpu": "NVIDIA CMP 50HX",
+          "variant": "baseline",
+          "verify": false
+        },
+        {
+          "type": "measurement",
+          "variant": "baseline",
+          "tile": "256x128",
+          "m": 4096,
+          "n": 131072,
+          "k": 4096,
+          "registers": 216,
+          "local_bytes": 128,
+          "shared_bytes": 49152,
+          "active_blocks_per_sm": 1,
+          "gpu_ms": [
+            35.54211,
+            35.83149,
+            35.968033,
+            35.207169,
+            34.97747,
+            35.956833,
+            35.72736,
+            35.883007
+          ],
+          "wall_ms": [
+            35.558278,
+            35.840866,
+            35.976104,
+            35.214553,
+            34.984675,
+            35.964441,
+            35.735085,
+            35.890631
+          ]
+        },
+        {
+          "type": "complete",
+          "passed": true,
+          "checked_values": 96
+        }
+      ],
+      "passed": true,
+      "phase": "measurement",
+      "round": 1,
+      "position": 3,
+      "tile": "256x128"
+    },
+    {
+      "name": "r2-p0-lookahead",
+      "variant": "lookahead",
+      "binary": "full",
+      "args": [
+        "8",
+        "large"
+      ],
+      "started_seconds": 83.68935272398812,
+      "ended_seconds": 94.17048560499097,
+      "records": [
+        {
+          "type": "metadata",
+          "gpu": "NVIDIA CMP 50HX",
+          "variant": "lookahead",
+          "verify": false
+        },
+        {
+          "type": "measurement",
+          "variant": "lookahead",
+          "tile": "256x128",
+          "m": 4096,
+          "n": 131072,
+          "k": 4096,
+          "registers": 45,
+          "local_bytes": 64,
+          "shared_bytes": 0,
+          "active_blocks_per_sm": 4,
+          "gpu_ms": [
+            685.752319,
+            683.996582,
+            685.455933,
+            686.24408,
+            685.262878,
+            685.369934,
+            686.536133,
+            685.937683
+          ],
+          "wall_ms": [
+            685.77129,
+            684.008,
+            685.466277,
+            686.253116,
+            685.272818,
+            685.380403,
+            686.544299,
+            685.949707
+          ]
+        },
+        {
+          "type": "complete",
+          "passed": true,
+          "checked_values": 96
+        }
+      ],
+      "passed": true,
+      "phase": "measurement",
+      "round": 2,
+      "position": 0,
+      "tile": "256x128"
+    },
+    {
+      "name": "r2-p1-lookahead_cg",
+      "variant": "lookahead_cg",
+      "binary": "full",
+      "args": [
+        "8",
+        "large"
+      ],
+      "started_seconds": 94.17237892199773,
+      "ended_seconds": 105.65357416898769,
+      "records": [
+        {
+          "type": "metadata",
+          "gpu": "NVIDIA CMP 50HX",
+          "variant": "lookahead_cg",
+          "verify": false
+        },
+        {
+          "type": "measurement",
+          "variant": "lookahead_cg",
+          "tile": "256x128",
+          "m": 4096,
+          "n": 131072,
+          "k": 4096,
+          "registers": 45,
+          "local_bytes": 64,
+          "shared_bytes": 0,
+          "active_blocks_per_sm": 4,
+          "gpu_ms": [
+            762.565796,
+            761.242615,
+            761.368347,
+            761.864868,
+            762.144775,
+            762.642456,
+            761.743347,
+            760.391663
+          ],
+          "wall_ms": [
+            762.585671,
+            761.251489,
+            761.379793,
+            761.886869,
+            762.16092,
+            762.658567,
+            761.754936,
+            760.413789
+          ]
+        },
+        {
+          "type": "complete",
+          "passed": true,
+          "checked_values": 96
+        }
+      ],
+      "passed": true,
+      "phase": "measurement",
+      "round": 2,
+      "position": 1,
+      "tile": "256x128"
+    },
+    {
+      "name": "r2-p2-baseline",
+      "variant": "baseline",
+      "binary": "full",
+      "args": [
+        "8",
+        "large"
+      ],
+      "started_seconds": 105.6555420079967,
+      "ended_seconds": 107.67336173199874,
+      "records": [
+        {
+          "type": "metadata",
+          "gpu": "NVIDIA CMP 50HX",
+          "variant": "baseline",
+          "verify": false
+        },
+        {
+          "type": "measurement",
+          "variant": "baseline",
+          "tile": "256x128",
+          "m": 4096,
+          "n": 131072,
+          "k": 4096,
+          "registers": 216,
+          "local_bytes": 128,
+          "shared_bytes": 49152,
+          "active_blocks_per_sm": 1,
+          "gpu_ms": [
+            35.540993,
+            35.455776,
+            34.838718,
+            35.978817,
+            35.543678,
+            35.844894,
+            35.551617,
+            35.070625
+          ],
+          "wall_ms": [
+            35.558257,
+            35.465571,
+            34.847422,
+            35.987024,
+            35.551114,
+            35.852397,
+            35.559289,
+            35.078723
+          ]
+        },
+        {
+          "type": "complete",
+          "passed": true,
+          "checked_values": 96
+        }
+      ],
+      "passed": true,
+      "phase": "measurement",
+      "round": 2,
+      "position": 2,
+      "tile": "256x128"
+    },
+    {
+      "name": "r2-p3-direct",
+      "variant": "direct",
+      "binary": "full",
+      "args": [
+        "8",
+        "large"
+      ],
+      "started_seconds": 107.67544099299994,
+      "ended_seconds": 118.1071011749882,
+      "records": [
+        {
+          "type": "metadata",
+          "gpu": "NVIDIA CMP 50HX",
+          "variant": "direct",
+          "verify": false
+        },
+        {
+          "type": "measurement",
+          "variant": "direct",
+          "tile": "256x128",
+          "m": 4096,
+          "n": 131072,
+          "k": 4096,
+          "registers": 44,
+          "local_bytes": 64,
+          "shared_bytes": 0,
+          "active_blocks_per_sm": 4,
+          "gpu_ms": [
+            679.812683,
+            678.730835,
+            680.308838,
+            680.027832,
+            679.442078,
+            680.202271,
+            679.279846,
+            680.123108
+          ],
+          "wall_ms": [
+            679.831545,
+            678.74767,
+            680.331087,
+            680.047426,
+            679.45181,
+            680.2127,
+            679.288438,
+            680.133087
+          ]
+        },
+        {
+          "type": "complete",
+          "passed": true,
+          "checked_values": 96
+        }
+      ],
+      "passed": true,
+      "phase": "measurement",
+      "round": 2,
+      "position": 3,
+      "tile": "256x128"
+    },
+    {
+      "name": "r3-p0-direct",
+      "variant": "direct",
+      "binary": "full",
+      "args": [
+        "8",
+        "large"
+      ],
+      "started_seconds": 118.10924596199766,
+      "ended_seconds": 128.54015586899186,
+      "records": [
+        {
+          "type": "metadata",
+          "gpu": "NVIDIA CMP 50HX",
+          "variant": "direct",
+          "verify": false
+        },
+        {
+          "type": "measurement",
+          "variant": "direct",
+          "tile": "256x128",
+          "m": 4096,
+          "n": 131072,
+          "k": 4096,
+          "registers": 44,
+          "local_bytes": 64,
+          "shared_bytes": 0,
+          "active_blocks_per_sm": 4,
+          "gpu_ms": [
+            679.554138,
+            679.415894,
+            680.364014,
+            680.220886,
+            679.768066,
+            680.173584,
+            680.288208,
+            679.935974
+          ],
+          "wall_ms": [
+            679.574869,
+            679.425754,
+            680.37314,
+            680.230528,
+            679.778886,
+            680.182876,
+            680.296131,
+            679.943338
+          ]
+        },
+        {
+          "type": "complete",
+          "passed": true,
+          "checked_values": 96
+        }
+      ],
+      "passed": true,
+      "phase": "measurement",
+      "round": 3,
+      "position": 0,
+      "tile": "256x128"
+    },
+    {
+      "name": "r3-p1-baseline",
+      "variant": "baseline",
+      "binary": "full",
+      "args": [
+        "8",
+        "large"
+      ],
+      "started_seconds": 128.54236331398715,
+      "ended_seconds": 130.55972872299026,
+      "records": [
+        {
+          "type": "metadata",
+          "gpu": "NVIDIA CMP 50HX",
+          "variant": "baseline",
+          "verify": false
+        },
+        {
+          "type": "measurement",
+          "variant": "baseline",
+          "tile": "256x128",
+          "m": 4096,
+          "n": 131072,
+          "k": 4096,
+          "registers": 216,
+          "local_bytes": 128,
+          "shared_bytes": 49152,
+          "active_blocks_per_sm": 1,
+          "gpu_ms": [
+            35.511169,
+            35.49424,
+            35.158241,
+            35.182465,
+            35.096577,
+            35.430401,
+            36.134014,
+            35.715874
+          ],
+          "wall_ms": [
+            35.528259,
+            35.504484,
+            35.167752,
+            35.190155,
+            35.105574,
+            35.441373,
+            36.144403,
+            35.723371
+          ]
+        },
+        {
+          "type": "complete",
+          "passed": true,
+          "checked_values": 96
+        }
+      ],
+      "passed": true,
+      "phase": "measurement",
+      "round": 3,
+      "position": 1,
+      "tile": "256x128"
+    },
+    {
+      "name": "r3-p2-lookahead_cg",
+      "variant": "lookahead_cg",
+      "binary": "full",
+      "args": [
+        "8",
+        "large"
+      ],
+      "started_seconds": 130.56200965899916,
+      "ended_seconds": 141.9912281750003,
+      "records": [
+        {
+          "type": "metadata",
+          "gpu": "NVIDIA CMP 50HX",
+          "variant": "lookahead_cg",
+          "verify": false
+        },
+        {
+          "type": "measurement",
+          "variant": "lookahead_cg",
+          "tile": "256x128",
+          "m": 4096,
+          "n": 131072,
+          "k": 4096,
+          "registers": 45,
+          "local_bytes": 64,
+          "shared_bytes": 0,
+          "active_blocks_per_sm": 4,
+          "gpu_ms": [
+            760.21228,
+            761.735168,
+            759.758667,
+            760.123535,
+            760.455139,
+            761.955139,
+            760.172363,
+            760.258179
+          ],
+          "wall_ms": [
+            760.233752,
+            761.758326,
+            759.769026,
+            760.133379,
+            760.468557,
+            761.97628,
+            760.182121,
+            760.273604
+          ]
+        },
+        {
+          "type": "complete",
+          "passed": true,
+          "checked_values": 96
+        }
+      ],
+      "passed": true,
+      "phase": "measurement",
+      "round": 3,
+      "position": 2,
+      "tile": "256x128"
+    },
+    {
+      "name": "r3-p3-lookahead",
+      "variant": "lookahead",
+      "binary": "full",
+      "args": [
+        "8",
+        "large"
+      ],
+      "started_seconds": 141.99372576399765,
+      "ended_seconds": 152.47502370999428,
+      "records": [
+        {
+          "type": "metadata",
+          "gpu": "NVIDIA CMP 50HX",
+          "variant": "lookahead",
+          "verify": false
+        },
+        {
+          "type": "measurement",
+          "variant": "lookahead",
+          "tile": "256x128",
+          "m": 4096,
+          "n": 131072,
+          "k": 4096,
+          "registers": 45,
+          "local_bytes": 64,
+          "shared_bytes": 0,
+          "active_blocks_per_sm": 4,
+          "gpu_ms": [
+            684.111877,
+            683.392029,
+            684.887024,
+            685.590515,
+            683.497498,
+            684.314636,
+            686.125854,
+            684.421448
+          ],
+          "wall_ms": [
+            684.13455,
+            683.411452,
+            684.898726,
+            685.602165,
+            683.511492,
+            684.335571,
+            686.138356,
+            684.438626
+          ]
+        },
+        {
+          "type": "complete",
+          "passed": true,
+          "checked_values": 96
+        }
+      ],
+      "passed": true,
+      "phase": "measurement",
+      "round": 3,
+      "position": 3,
+      "tile": "256x128"
+    }
+  ],
+  "gpu_samples": [
+    {
+      "seconds": 0.07942564399854746,
+      "values": [
+        64.0,
+        1620.0,
+        7000.0,
+        223.57,
+        135.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 1.1110758799914038,
+      "values": [
+        59.0,
+        1950.0,
+        7000.0,
+        96.94,
+        273.0,
+        74.0
+      ]
+    },
+    {
+      "seconds": 2.1408503799902974,
+      "values": [
+        59.0,
+        1950.0,
+        7000.0,
+        96.12,
+        273.0,
+        2.0
+      ]
+    },
+    {
+      "seconds": 3.1693154529930325,
+      "values": [
+        58.0,
+        1950.0,
+        7000.0,
+        94.9,
+        795.0,
+        1.0
+      ]
+    },
+    {
+      "seconds": 4.2004533279978205,
+      "values": [
+        62.0,
+        1485.0,
+        7000.0,
+        225.14,
+        1823.0,
+        1.0
+      ]
+    },
+    {
+      "seconds": 5.231826067989459,
+      "values": [
+        63.0,
+        1485.0,
+        7000.0,
+        224.85,
+        1823.0,
+        63.0
+      ]
+    },
+    {
+      "seconds": 6.264567945996532,
+      "values": [
+        64.0,
+        1500.0,
+        7000.0,
+        223.23,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 7.302069962999667,
+      "values": [
+        64.0,
+        1485.0,
+        7000.0,
+        228.27,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 8.332212144989171,
+      "values": [
+        64.0,
+        1500.0,
+        7000.0,
+        223.44,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 9.362493351000012,
+      "values": [
+        64.0,
+        1500.0,
+        7000.0,
+        224.74,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 10.397561485995539,
+      "values": [
+        64.0,
+        1485.0,
+        7000.0,
+        223.7,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 11.428332140989369,
+      "values": [
+        64.0,
+        1485.0,
+        7000.0,
+        220.37,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 12.458698193993769,
+      "values": [
+        64.0,
+        1500.0,
+        7000.0,
+        222.01,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 13.49113871899317,
+      "values": [
+        64.0,
+        1500.0,
+        7000.0,
+        221.83,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 14.524749581993092,
+      "values": [
+        64.0,
+        1470.0,
+        7000.0,
+        226.18,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 15.55270977699547,
+      "values": [
+        59.0,
+        1950.0,
+        7000.0,
+        96.88,
+        795.0,
+        34.0
+      ]
+    },
+    {
+      "seconds": 16.583323977989494,
+      "values": [
+        62.0,
+        1500.0,
+        7000.0,
+        226.46,
+        1823.0,
+        23.0
+      ]
+    },
+    {
+      "seconds": 17.611229535992607,
+      "values": [
+        58.0,
+        1950.0,
+        7000.0,
+        95.83,
+        795.0,
+        36.0
+      ]
+    },
+    {
+      "seconds": 18.641401932996814,
+      "values": [
+        62.0,
+        1950.0,
+        7000.0,
+        228.02,
+        1823.0,
+        19.0
+      ]
+    },
+    {
+      "seconds": 19.67090892000124,
+      "values": [
+        64.0,
+        1950.0,
+        7000.0,
+        229.96,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 20.70000249799341,
+      "values": [
+        64.0,
+        1950.0,
+        7000.0,
+        228.81,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 21.72958468599245,
+      "values": [
+        64.0,
+        1950.0,
+        7000.0,
+        226.5,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 22.758443834987702,
+      "values": [
+        64.0,
+        1950.0,
+        7000.0,
+        226.41,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 23.792387479988975,
+      "values": [
+        64.0,
+        1950.0,
+        7000.0,
+        225.66,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 24.821840978998807,
+      "values": [
+        65.0,
+        1935.0,
+        7000.0,
+        225.99,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 25.851871665989165,
+      "values": [
+        65.0,
+        1950.0,
+        7000.0,
+        224.47,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 26.881013026999426,
+      "values": [
+        65.0,
+        1950.0,
+        7000.0,
+        226.43,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 27.909169790989836,
+      "values": [
+        59.0,
+        1950.0,
+        7000.0,
+        96.11,
+        795.0,
+        73.0
+      ]
+    },
+    {
+      "seconds": 28.94113860699872,
+      "values": [
+        62.0,
+        1935.0,
+        7000.0,
+        229.69,
+        1823.0,
+        0.0
+      ]
+    },
+    {
+      "seconds": 29.97060602599231,
+      "values": [
+        64.0,
+        1950.0,
+        7000.0,
+        222.91,
+        1823.0,
+        82.0
+      ]
+    },
+    {
+      "seconds": 31.00073712799349,
+      "values": [
+        64.0,
+        1950.0,
+        7000.0,
+        223.46,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 32.029935901999124,
+      "values": [
+        64.0,
+        1935.0,
+        7000.0,
+        225.29,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 33.058667214994784,
+      "values": [
+        65.0,
+        1950.0,
+        7000.0,
+        230.04,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 34.088077328997315,
+      "values": [
+        65.0,
+        1935.0,
+        7000.0,
+        228.85,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 35.1168706669996,
+      "values": [
+        65.0,
+        1935.0,
+        7000.0,
+        224.76,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 36.147034725989215,
+      "values": [
+        65.0,
+        1950.0,
+        7000.0,
+        220.44,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 37.17729617799341,
+      "values": [
+        65.0,
+        1935.0,
+        7000.0,
+        227.39,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 38.20530992699787,
+      "values": [
+        59.0,
+        1950.0,
+        7000.0,
+        96.03,
+        795.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 39.23795896599768,
+      "values": [
+        58.0,
+        1950.0,
+        7000.0,
+        95.22,
+        795.0,
+        15.0
+      ]
+    },
+    {
+      "seconds": 40.26792582399503,
+      "values": [
+        63.0,
+        1755.0,
+        7000.0,
+        214.52,
+        1823.0,
+        40.0
+      ]
+    },
+    {
+      "seconds": 41.30008236199501,
+      "values": [
+        64.0,
+        1755.0,
+        7000.0,
+        222.84,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 42.331360465992475,
+      "values": [
+        64.0,
+        1755.0,
+        7000.0,
+        220.9,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 43.36066693099565,
+      "values": [
+        64.0,
+        1740.0,
+        7000.0,
+        223.9,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 44.39138429399463,
+      "values": [
+        64.0,
+        1755.0,
+        7000.0,
+        224.23,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 45.42089162999764,
+      "values": [
+        64.0,
+        1755.0,
+        7000.0,
+        223.59,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 46.450156942999456,
+      "values": [
+        64.0,
+        1755.0,
+        7000.0,
+        223.02,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 47.479495874998975,
+      "values": [
+        64.0,
+        1755.0,
+        7000.0,
+        223.32,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 48.50894450600026,
+      "values": [
+        64.0,
+        1740.0,
+        7000.0,
+        224.43,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 49.53802590499981,
+      "values": [
+        60.0,
+        1950.0,
+        7000.0,
+        98.06,
+        795.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 50.568351122987224,
+      "values": [
+        58.0,
+        1950.0,
+        7000.0,
+        94.74,
+        795.0,
+        56.0
+      ]
+    },
+    {
+      "seconds": 51.602468204000616,
+      "values": [
+        64.0,
+        1695.0,
+        7000.0,
+        223.94,
+        1823.0,
+        0.0
+      ]
+    },
+    {
+      "seconds": 52.63278843999433,
+      "values": [
+        64.0,
+        1740.0,
+        7000.0,
+        221.38,
+        1823.0,
+        98.0
+      ]
+    },
+    {
+      "seconds": 53.66240210899559,
+      "values": [
+        64.0,
+        1740.0,
+        7000.0,
+        221.18,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 54.692441306993715,
+      "values": [
+        64.0,
+        1755.0,
+        7000.0,
+        222.25,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 55.723056379996706,
+      "values": [
+        64.0,
+        1740.0,
+        7000.0,
+        221.74,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 56.75525239499984,
+      "values": [
+        64.0,
+        1740.0,
+        7000.0,
+        224.68,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 57.784810963989,
+      "values": [
+        64.0,
+        1740.0,
+        7000.0,
+        223.01,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 58.81483771299827,
+      "values": [
+        64.0,
+        1755.0,
+        7000.0,
+        222.58,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 59.8447503339994,
+      "values": [
+        64.0,
+        1770.0,
+        7000.0,
+        223.57,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 60.874787710999954,
+      "values": [
+        61.0,
+        1950.0,
+        7000.0,
+        101.24,
+        795.0,
+        96.0
+      ]
+    },
+    {
+      "seconds": 61.90521723499114,
+      "values": [
+        58.0,
+        1950.0,
+        7000.0,
+        95.38,
+        795.0,
+        1.0
+      ]
+    },
+    {
+      "seconds": 62.934815792992595,
+      "values": [
+        64.0,
+        1935.0,
+        7000.0,
+        227.06,
+        1823.0,
+        57.0
+      ]
+    },
+    {
+      "seconds": 63.96458692899614,
+      "values": [
+        64.0,
+        1920.0,
+        7000.0,
+        227.66,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 64.99399083499156,
+      "values": [
+        64.0,
+        1920.0,
+        7000.0,
+        222.9,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 66.02349037099339,
+      "values": [
+        64.0,
+        1920.0,
+        7000.0,
+        222.13,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 67.0533541499899,
+      "values": [
+        64.0,
+        1920.0,
+        7000.0,
+        223.62,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 68.08274957598769,
+      "values": [
+        64.0,
+        1905.0,
+        7000.0,
+        220.85,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 69.11270982699352,
+      "values": [
+        64.0,
+        1905.0,
+        7000.0,
+        220.85,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 70.14401940698735,
+      "values": [
+        64.0,
+        1905.0,
+        7000.0,
+        219.68,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 71.17829086899292,
+      "values": [
+        63.0,
+        1950.0,
+        7000.0,
+        215.72,
+        797.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 72.20635295000102,
+      "values": [
+        58.0,
+        1950.0,
+        7000.0,
+        95.36,
+        795.0,
+        41.0
+      ]
+    },
+    {
+      "seconds": 73.23562578599376,
+      "values": [
+        63.0,
+        1950.0,
+        7000.0,
+        229.51,
+        1823.0,
+        16.0
+      ]
+    },
+    {
+      "seconds": 74.26558440699591,
+      "values": [
+        64.0,
+        1950.0,
+        7000.0,
+        230.49,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 75.29900106599962,
+      "values": [
+        64.0,
+        1950.0,
+        7000.0,
+        230.77,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 76.32794571398699,
+      "values": [
+        65.0,
+        1950.0,
+        7000.0,
+        231.62,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 77.35727354999108,
+      "values": [
+        64.0,
+        1935.0,
+        7000.0,
+        227.13,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 78.38619882799685,
+      "values": [
+        64.0,
+        1950.0,
+        7000.0,
+        227.25,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 79.41769502298848,
+      "values": [
+        65.0,
+        1935.0,
+        7000.0,
+        226.58,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 80.44731465198856,
+      "values": [
+        65.0,
+        1950.0,
+        7000.0,
+        221.21,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 81.47728784299397,
+      "values": [
+        65.0,
+        1950.0,
+        7000.0,
+        224.77,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 82.5054173499957,
+      "values": [
+        58.0,
+        1950.0,
+        7000.0,
+        95.49,
+        795.0,
+        76.0
+      ]
+    },
+    {
+      "seconds": 83.53631837699504,
+      "values": [
+        62.0,
+        1515.0,
+        7000.0,
+        227.47,
+        1823.0,
+        0.0
+      ]
+    },
+    {
+      "seconds": 84.56449921899184,
+      "values": [
+        57.0,
+        1950.0,
+        7000.0,
+        94.84,
+        795.0,
+        58.0
+      ]
+    },
+    {
+      "seconds": 85.59714383499522,
+      "values": [
+        62.0,
+        1935.0,
+        7000.0,
+        227.01,
+        1823.0,
+        0.0
+      ]
+    },
+    {
+      "seconds": 86.62745436398836,
+      "values": [
+        63.0,
+        1935.0,
+        7000.0,
+        227.26,
+        1823.0,
+        78.0
+      ]
+    },
+    {
+      "seconds": 87.65675138999359,
+      "values": [
+        64.0,
+        1935.0,
+        7000.0,
+        226.12,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 88.6859688830009,
+      "values": [
+        64.0,
+        1935.0,
+        7000.0,
+        228.41,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 89.71506165699975,
+      "values": [
+        64.0,
+        1935.0,
+        7000.0,
+        229.91,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 90.7439270469913,
+      "values": [
+        64.0,
+        1950.0,
+        7000.0,
+        226.47,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 91.77312969899504,
+      "values": [
+        64.0,
+        1935.0,
+        7000.0,
+        225.9,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 92.80339082599676,
+      "values": [
+        64.0,
+        1935.0,
+        7000.0,
+        221.87,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 93.83410614699824,
+      "values": [
+        64.0,
+        1920.0,
+        7000.0,
+        222.91,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 94.86239383199427,
+      "values": [
+        58.0,
+        1950.0,
+        7000.0,
+        95.41,
+        795.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 95.89352613598749,
+      "values": [
+        62.0,
+        1755.0,
+        7000.0,
+        224.57,
+        1823.0,
+        19.0
+      ]
+    },
+    {
+      "seconds": 96.92337714698806,
+      "values": [
+        63.0,
+        1755.0,
+        7000.0,
+        227.24,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 97.95327932399232,
+      "values": [
+        64.0,
+        1755.0,
+        7000.0,
+        228.04,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 98.98305617200094,
+      "values": [
+        64.0,
+        1755.0,
+        7000.0,
+        224.73,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 100.01306648299214,
+      "values": [
+        64.0,
+        1755.0,
+        7000.0,
+        226.46,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 101.04305185598787,
+      "values": [
+        64.0,
+        1755.0,
+        7000.0,
+        226.99,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 102.07311744999606,
+      "values": [
+        64.0,
+        1755.0,
+        7000.0,
+        226.48,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 103.10244643999613,
+      "values": [
+        64.0,
+        1755.0,
+        7000.0,
+        227.29,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 104.13165197298804,
+      "values": [
+        64.0,
+        1755.0,
+        7000.0,
+        226.8,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 105.16152807298931,
+      "values": [
+        64.0,
+        1755.0,
+        7000.0,
+        227.66,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 106.19007428799523,
+      "values": [
+        58.0,
+        1950.0,
+        7000.0,
+        95.63,
+        795.0,
+        59.0
+      ]
+    },
+    {
+      "seconds": 107.22135735698976,
+      "values": [
+        60.0,
+        1500.0,
+        7000.0,
+        211.63,
+        1823.0,
+        0.0
+      ]
+    },
+    {
+      "seconds": 108.24976034699648,
+      "values": [
+        57.0,
+        1950.0,
+        7000.0,
+        94.71,
+        795.0,
+        58.0
+      ]
+    },
+    {
+      "seconds": 109.27921316599532,
+      "values": [
+        60.0,
+        1950.0,
+        7000.0,
+        223.15,
+        1823.0,
+        0.0
+      ]
+    },
+    {
+      "seconds": 110.34780873999989,
+      "values": [
+        63.0,
+        1950.0,
+        7000.0,
+        224.12,
+        1823.0,
+        95.0
+      ]
+    },
+    {
+      "seconds": 111.37731567998708,
+      "values": [
+        63.0,
+        1950.0,
+        7000.0,
+        223.93,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 112.4060199589876,
+      "values": [
+        64.0,
+        1950.0,
+        7000.0,
+        222.24,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 113.43533499199839,
+      "values": [
+        64.0,
+        1950.0,
+        7000.0,
+        223.69,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 114.4646479489893,
+      "values": [
+        64.0,
+        1950.0,
+        7000.0,
+        221.97,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 115.49516764399596,
+      "values": [
+        64.0,
+        1950.0,
+        7000.0,
+        222.47,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 116.5250715239963,
+      "values": [
+        64.0,
+        1950.0,
+        7000.0,
+        222.84,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 117.55429216199263,
+      "values": [
+        64.0,
+        1935.0,
+        7000.0,
+        224.88,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 118.5827476609993,
+      "values": [
+        58.0,
+        1950.0,
+        7000.0,
+        96.02,
+        795.0,
+        95.0
+      ]
+    },
+    {
+      "seconds": 119.61199739199947,
+      "values": [
+        59.0,
+        1950.0,
+        7000.0,
+        127.9,
+        1823.0,
+        1.0
+      ]
+    },
+    {
+      "seconds": 120.64120384000125,
+      "values": [
+        63.0,
+        1935.0,
+        7000.0,
+        212.59,
+        1823.0,
+        58.0
+      ]
+    },
+    {
+      "seconds": 121.67030241098837,
+      "values": [
+        63.0,
+        1920.0,
+        7000.0,
+        219.81,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 122.70152027899167,
+      "values": [
+        63.0,
+        1920.0,
+        7000.0,
+        222.08,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 123.7308924789977,
+      "values": [
+        64.0,
+        1935.0,
+        7000.0,
+        221.55,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 124.76035245599633,
+      "values": [
+        64.0,
+        1935.0,
+        7000.0,
+        222.01,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 125.78954322799109,
+      "values": [
+        64.0,
+        1950.0,
+        7000.0,
+        220.54,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 126.81838028600032,
+      "values": [
+        64.0,
+        1950.0,
+        7000.0,
+        221.37,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 127.84721189198899,
+      "values": [
+        64.0,
+        1950.0,
+        7000.0,
+        227.53,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 128.875751028987,
+      "values": [
+        59.0,
+        1950.0,
+        7000.0,
+        96.0,
+        795.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 129.90954594899085,
+      "values": [
+        57.0,
+        1950.0,
+        7000.0,
+        94.03,
+        795.0,
+        34.0
+      ]
+    },
+    {
+      "seconds": 130.9379719189892,
+      "values": [
+        57.0,
+        1950.0,
+        7000.0,
+        95.63,
+        795.0,
+        22.0
+      ]
+    },
+    {
+      "seconds": 131.97046528699866,
+      "values": [
+        56.0,
+        1950.0,
+        7000.0,
+        95.81,
+        795.0,
+        36.0
+      ]
+    },
+    {
+      "seconds": 133.00016892999702,
+      "values": [
+        62.0,
+        1755.0,
+        7000.0,
+        218.4,
+        1823.0,
+        20.0
+      ]
+    },
+    {
+      "seconds": 134.02998415299226,
+      "values": [
+        63.0,
+        1740.0,
+        7000.0,
+        221.85,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 135.05996776699612,
+      "values": [
+        63.0,
+        1755.0,
+        7000.0,
+        223.08,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 136.0922862879961,
+      "values": [
+        63.0,
+        1755.0,
+        7000.0,
+        219.44,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 137.1219782929984,
+      "values": [
+        63.0,
+        1755.0,
+        7000.0,
+        221.13,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 138.15127552599006,
+      "values": [
+        63.0,
+        1755.0,
+        7000.0,
+        222.83,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 139.1808419709996,
+      "values": [
+        64.0,
+        1740.0,
+        7000.0,
+        222.92,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 140.21019938599784,
+      "values": [
+        64.0,
+        1755.0,
+        7000.0,
+        221.16,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 141.24024260698934,
+      "values": [
+        64.0,
+        1740.0,
+        7000.0,
+        223.94,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 142.26925097499043,
+      "values": [
+        59.0,
+        1950.0,
+        7000.0,
+        96.17,
+        795.0,
+        75.0
+      ]
+    },
+    {
+      "seconds": 143.3005987689976,
+      "values": [
+        57.0,
+        1950.0,
+        7000.0,
+        93.94,
+        795.0,
+        0.0
+      ]
+    },
+    {
+      "seconds": 144.33387647899508,
+      "values": [
+        63.0,
+        1905.0,
+        7000.0,
+        226.06,
+        1823.0,
+        84.0
+      ]
+    },
+    {
+      "seconds": 145.3629324450012,
+      "values": [
+        63.0,
+        1905.0,
+        7000.0,
+        216.04,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 146.39218163699843,
+      "values": [
+        64.0,
+        1920.0,
+        7000.0,
+        219.75,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 147.42145009599335,
+      "values": [
+        64.0,
+        1920.0,
+        7000.0,
+        220.07,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 148.45084463398962,
+      "values": [
+        64.0,
+        1935.0,
+        7000.0,
+        220.3,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 149.4804334599903,
+      "values": [
+        64.0,
+        1935.0,
+        7000.0,
+        224.43,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 150.51018478599144,
+      "values": [
+        64.0,
+        1935.0,
+        7000.0,
+        224.3,
+        1823.0,
+        100.0
+      ]
+    },
+    {
+      "seconds": 151.53960533998907,
+      "values": [
+        64.0,
+        1935.0,
+        7000.0,
+        223.25,
+        1823.0,
+        100.0
+      ]
+    }
+  ],
+  "gpu_columns": [
+    "temperature_c",
+    "sm_clock_mhz",
+    "memory_clock_mhz",
+    "power_w",
+    "memory_mib",
+    "utilization_percent"
+  ],
+  "orders": [
+    [
+      "baseline",
+      "direct",
+      "lookahead",
+      "lookahead_cg"
+    ],
+    [
+      "lookahead_cg",
+      "lookahead",
+      "direct",
+      "baseline"
+    ],
+    [
+      "lookahead",
+      "lookahead_cg",
+      "baseline",
+      "direct"
+    ],
+    [
+      "direct",
+      "baseline",
+      "lookahead_cg",
+      "lookahead"
+    ]
+  ],
+  "completed": true,
+  "restoration": {
+    "pid": 120956,
+    "arguments_match": true,
+    "environment_match": true,
+    "cwd_match": true,
+    "original_executable": true
+  },
+  "elapsed_seconds": 155.47919186999206
+}

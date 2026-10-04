@@ -282,3 +282,9 @@ mainloop load placement and PTX cache/prefetch policy. Source reorderings compil
 to identical SASS, while `.cg` operand loads confirm a 1.016% full-kernel gain
 on the CMP50 256x128 configuration. This remains a candidate pending complete
 miner/proof validation and interaction tests with constant-index jackpot state.
+
+The [ordered CUDA research validation](cuda_research_validation.md) follows up
+with complete-miner interaction checks, selective operand cache policies,
+block traversal, hardware-compatible pipelines, an independent exact MMA
+prototype and native instruction scheduling. It records accepted and rejected
+prototypes and keeps the installed release unchanged during the investigation.
