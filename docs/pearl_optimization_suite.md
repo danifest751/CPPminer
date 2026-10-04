@@ -276,3 +276,9 @@ plus classical and pairwise Winograd controls. All checked prefixes and hashes
 agree, but none beats the current fused CUDA path. On a 4096x131072x4096 panel,
 the production kernel takes 35.69 ms versus 1639.23 ms for depth-1 Strassen;
 the release multiplier remains unchanged.
+
+The later [CUDA data-feed experiment](cuda_data_feed_experiment.md) tests
+mainloop load placement and PTX cache/prefetch policy. Source reorderings compile
+to identical SASS, while `.cg` operand loads confirm a 1.016% full-kernel gain
+on the CMP50 256x128 configuration. This remains a candidate pending complete
+miner/proof validation and interaction tests with constant-index jackpot state.

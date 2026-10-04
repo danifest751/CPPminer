@@ -209,3 +209,8 @@ restores them in `finally`, including the intentional interruption. Final
 independent verification checks the running release SHA-256, exact process
 state, worker uniqueness, active GPU use and continuing scan-log output.
 Credentials and wallet-bearing logs are excluded from committed artifacts.
+
+The subsequent [data-feed/PTX load experiment](cuda_data_feed_experiment.md)
+retains this multiplication algorithm and changes how operands are fetched.
+The `.cg` candidate gives a confirmed 1.016% full-kernel gain on CMP50; source
+reorderings alone produce identical machine code. No production default changes.
