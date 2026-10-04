@@ -93,6 +93,28 @@ the prep change).
   removing boustrophedon walk order cost 27%. The fused in-kernel jackpot
   (`--fused-jackpot`) is 7% slower than the separate jackpot pass.
 
+**Hardware counters** while mining at 131072² (Level Zero `ComputeBasic`
+time-based stream, 2512 busy reports of ~5 ms, `scripts/l0_metric_sample.cpp`,
+`dev.i915.perf_stream_paranoid=0`). Device time per scan: `case5_igemm` 89%,
+the separate `cp_onednn_jackpot_scan` 6.3%, prep kernels the rest (unitrace).
+
+| Counter | Value |
+|---|---:|
+| Average GPU core clock (OA) | 1676 MHz |
+| XMX pipeline active | 36.6% |
+| XVE active / stalled | 34.7% / 46.5% |
+| XVE thread occupancy | 45.6% |
+| EM (integer) pipe active | 16.4% |
+| Send pipe active | 6.4% |
+| Memory read throughput (GTI) | ~34 GB/s |
+| Barriers per 5 ms report | 1.9 M |
+
+The OA clock (1676 MHz) is lower than the 2000 MHz `rps_act_freq_mhz`
+reports. At 1676 MHz the XMX peak is 27.5 TMAC/s and the 15.8 TMAC/s scan is
+about 57% of it. Memory traffic is a fifth of the 186 GB/s bandwidth. The
+kernel is stall-bound: `grf256` caps occupancy at half the hardware threads,
+so SLM loads and the per-stage barriers are poorly hidden.
+
 Raw data: [final](benchmarks/intel-a380-onednn-final-2026-10-04.json),
 [kernels](benchmarks/intel-a380-onednn-kernels-b-2026-10-04.json),
 [panels](benchmarks/intel-a380-onednn-panels-2026-10-04.json),
