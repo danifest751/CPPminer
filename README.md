@@ -44,12 +44,13 @@ Changes are developed in this fork. Selected changes are offered upstream as [pu
 | **All CUDA** | Threadblock swizzle that stops re-reading A from DRAM; lighter milestone code; the next attempt's matrix is prepared while the current one is scanned |
 | **AMD RDNA3** (RX 7000, Radeon 780M/760M) | WMMA matrix cores (`v_wmma_i32_16x16x16_iu8`): 780M 3.65 → 6.4 TMAC/s. Before that, `v_dot4` and work-group swizzle |
 | **AMD Polaris and older GCN** (RX 470/480/570/580, Fiji, Tonga) | Dedicated 24-bit multiply-add kernel: RX 580 1.38 → 1.84 TMAC/s |
+| **Intel Arc** (Xe-HPG) | `--backend onednn`: an ESIMD XMX kernel does the GEMM, milestone XOR and the whole jackpot in one pass, on operands the prep writes in DPAS layout (A380 3.2 → 18.8 TMAC/s); gemmstone systolic kernels as the fallback (16.7) |
 | **Qualcomm Adreno** | The prep program compiles now, and a 4x4 register tile is used: ~15 → ~700 GMAC/s |
 | **x86 CPU** | Work is spread over all threads (small matrices used to run on one), pinned threads, `--threads` / `--smt` / `--no-smt`. Kernels: AVX-512 VNNI, base AVX-512 (F+BW), AVX2 without register spills |
 | **ARM CPU** | DotProd rewrite (+50%), new I8MM (`smmla`) kernel, faster NEON fallback (+79%) |
 | **Pools** | Kryptex gzip stratum v2 (also used by HeroMiners), `--pool-pass d=N` custom difficulty, `WALLET.worker` on Kryptex, TCP keepalive and a submit-reply watchdog |
 | **Robustness** | One miner per GPU, clean exit when no GPU works, fixed share-target scaling for non-8x16 hash tiles, MinGW static runtime, stdout buffering on MinGW |
-| **Releases** | Windows CI build (CUDA + OpenCL + CPU) and a Linux build, with start scripts for Kryptex and HeroMiners |
+| **Releases** | Windows CI build (CUDA + OpenCL + oneDNN + CPU) and a Linux build (also the ESIMD scan with a bundled SYCL runtime), with start scripts for Kryptex and HeroMiners |
 
 ---
 
@@ -64,7 +65,7 @@ Hashrate is in **MAC/s**: multiply-accumulates per second of the int8 matrix pro
 | RTX 4090 | Ada, sm_89 | CUDA, tensor cores | 157–229 | rented card, v0.5-fork.1; varies with clocks |
 | RTX 3090 | Ampere, sm_86 | CUDA, `tensorop80` 128x128 | 95–97 | 350 W; 89 TMAC/s at a locked 1200 MHz and 263 W |
 | CMP 50HX | Turing, sm_75 | CUDA, `tensorop` 256x128 | 61 | 225 W |
-| Arc A380 | Xe-HPG (DG2) | oneDNN + ESIMD XMX scan | 18.8 | `-DCP_ENABLE_ESIMD=ON`, compute-runtime 26.31; 16.7 with gemmstone; unreleased fork candidate |
+| Arc A380 | Xe-HPG (DG2) | oneDNN, ESIMD XMX scan | 18.8 | Linux; 16.7 with gemmstone, 3.2 with OpenCL DPAS |
 | Radeon 780M (iGPU) | RDNA3, gfx1103 | OpenCL, WMMA | 6.4 | laptop, shared memory |
 | RX 580 4 GB | Polaris, gfx803 | OpenCL, GCN kernel | 1.84 | AMD Windows driver |
 | Adreno 830 | Snapdragon 8 Elite | OpenCL, 4x4 tile | ~0.7 | 8192² |
@@ -120,7 +121,7 @@ Measured by the upstream author on upstream builds; the fork's kernels for these
 2. Open `start-herominers.bat` or `start-kryptex.bat` in Notepad and set `WALLET`:
    - HeroMiners: your Pearl address `prl1...`;
    - Kryptex: your Kryptex account (`krx...`) or a Pearl address.
-3. AMD or Intel GPU: change `--backend cuda` to `--backend opencl`. CPU only: `--backend cpu`.
+3. Intel Arc: use `start-herominers-intel.bat` (`--backend onednn`). AMD GPU: change `--backend cuda` to `--backend opencl`. CPU only: `--backend cpu`.
 4. Double-click the script. It restarts the miner if it exits.
 
 Requirements:
@@ -132,13 +133,14 @@ Requirements:
 ```sh
 tar xzf cppminer-linux-x64-cuda.tar.gz
 cd cppminer-linux-x64-cuda
-nano start-herominers.sh            # set WALLET (and --backend for AMD/Intel/CPU)
+nano start-herominers.sh            # set WALLET (and --backend for AMD/CPU)
+# Intel Arc: start-herominers-intel.sh (--backend onednn)
 ./start-herominers.sh
 ```
 
 The Linux build is made on Ubuntu 24.04 (glibc 2.39), and `libcudart` is bundled. OpenCL needs an ICD loader (`ocl-icd-libopencl1`) plus the vendor driver:
 - AMD: ROCm, or Mesa rusticl;
-- Intel: `intel-opencl-icd`.
+- Intel: `intel-opencl-icd`. `--backend onednn` runs the ESIMD scan through `kernels/libcp_esimd.so` and the SYCL runtime bundled next to it (tested with compute-runtime 23.43 from Ubuntu 24.04 and 26.31); without it the backend uses gemmstone.
 
 ### Check before mining
 
@@ -189,7 +191,10 @@ The pool's hashrate graph is therefore noisy over short windows; compare it with
 # NVIDIA GPU on HeroMiners
 cppminer --backend cuda --devices 0 --pool stratum+tcp://ru.pearl.herominers.com:1200 --wallet prl1... --worker rig1
 
-# AMD / Intel GPU on Kryptex
+# Intel Arc on HeroMiners (ESIMD XMX scan, gemmstone fallback)
+cppminer --backend onednn --devices 0 --pool stratum+tcp://ru.pearl.herominers.com:1200 --wallet prl1... --worker arc
+
+# AMD GPU on Kryptex
 cppminer --backend opencl --devices 0 --pool stratum+tcp://prl.kryptex.network:7048 --wallet krx... --worker rig1
 
 # CPU, physical cores only, on LuckyPool
@@ -204,12 +209,12 @@ cppminer --algo quantus --backend cpu --threads 8 --pool stratum+tcp://HOST:PORT
 
 OpenCL uses one device per process. For several AMD/Intel GPUs, start one miner per GPU with different `--devices` and `--worker`.
 
-The unreleased fork candidate fixes CUDA duplicate work and fetches proof data from
+Several NVIDIA GPUs in one process scan independent A matrices and fetch proof data from
 the winning device. See [multi-GPU behavior and validation](docs/cuda_multi_gpu.md).
-For Intel Arc, `--backend onednn` runs an ESIMD XMX scan (18.8 TMAC/s on an A380, see
-[ESIMD](docs/intel_esimd.md)) or gemmstone's systolic XMX kernels: 16.7 TMAC/s
-on an A380, 5.2x the opt-in `--backend opencl --ocl-dot dpas` path. See
-[oneDNN on A380](docs/intel_a380_onednn.md) and [DPAS validation](docs/intel_a380_dpas.md).
+For Intel Arc, `--backend onednn` runs an ESIMD XMX scan (18.8 TMAC/s on an A380, Linux;
+see [ESIMD](docs/intel_esimd.md)) or gemmstone's systolic XMX kernels (16.7 TMAC/s),
+versus 3.2 for `--backend opencl --ocl-dot dpas`. `CP_INTEL_GEMM=esimd|gemmstone` forces
+one of them. See [oneDNN on A380](docs/intel_a380_onednn.md) and [DPAS validation](docs/intel_a380_dpas.md).
 Run Intel and NVIDIA in separate processes with distinct workers.
 
 ---
@@ -280,7 +285,7 @@ Run Intel and NVIDIA in separate processes with distinct workers.
 
 ### wgpu and oneDNN
 
-These backends come from upstream and are not in the release builds; build them yourself (see [Building](#building-from-source)).
+oneDNN (Intel GPU) is in the release builds; wgpu is not, build it yourself (see [Building](#building-from-source)).
 
 | Option | Description |
 |---|---|
@@ -336,10 +341,10 @@ The release builds use these exact steps. You need:
 ### Windows (MSVC, all release backends)
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File build.ps1 -Backend Cpu,Cuda,OpenCl -CudaArch "75;86;89"
+powershell -ExecutionPolicy Bypass -File build.ps1 -Backend Cpu,Cuda,OpenCl,OneDnn -CudaArch "75;86;89"
 ```
 
-`cppminer.exe` ends up in the repo root. Use `-CudaArch 61` for Pascal, `-Backend Cpu,OpenCl` without the CUDA Toolkit, and add `Wgpu` or `OneDnn` for those backends.
+`cppminer.exe` ends up in the repo root. Use `-CudaArch 61` for Pascal, `-Backend Cpu,OpenCl` without the CUDA Toolkit, and add `Wgpu` for that backend.
 
 ### Windows (MSYS2 UCRT64, CPU + OpenCL)
 
@@ -353,8 +358,17 @@ The binary is `build/cmake/cppminer.exe`. It is linked statically, so it does no
 ### Linux
 
 ```sh
-./build.sh --backend cpu,cuda,opencl --cuda-arch "75;86;89"
+./build.sh --backend cpu,cuda,opencl,onednn --cuda-arch "75;86;89"
 ./build.sh --backend cpu,opencl          # without the CUDA Toolkit
+```
+
+The ESIMD scan library needs oneAPI's `icpx`; build it with CMake, then bundle its runtime:
+
+```sh
+source /opt/intel/oneapi/setvars.sh
+cmake -S . -B build -DCP_ENABLE_OPENCL=ON -DCP_ENABLE_ONEDNN=ON -DCP_ENABLE_ESIMD=ON
+cmake --build build -j4
+scripts/package_esimd_runtime.sh build/kernels
 ```
 
 ### Android (Termux / NDK)
@@ -369,6 +383,7 @@ Cross-building with the NDK works with `-DCP_PROOF_FFI=OFF`. That build can benc
 | `CP_ENABLE_CUDA` | OFF | CUDA / CUTLASS backend |
 | `CP_ENABLE_OPENCL` | OFF | OpenCL backend |
 | `CP_ENABLE_ONEDNN` | OFF | Intel GPU oneDNN backend |
+| `CP_ENABLE_ESIMD` | OFF | Intel XMX ESIMD scan library (needs oneAPI `icpx`/`icx`) |
 | `CP_ENABLE_WGPU` | OFF | wgpu backends (Pearl and Quantus) |
 | `CP_ENABLE_CUBLAS` | OFF | cuBLAS debug path |
 | `CP_CUDA_ARCH` | native | e.g. `61`, or `"75;86;89"` |

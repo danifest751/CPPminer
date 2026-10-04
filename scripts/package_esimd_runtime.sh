@@ -16,12 +16,12 @@ LIB="$KDIR/libcp_esimd.so"
 ADAPTER=$(ls "$ONEAPI"/compiler/latest/lib/libur_adapter_opencl.so.0 2>/dev/null || true)
 [ -n "$ADAPTER" ] || { echo "UR OpenCL adapter not found under $ONEAPI" >&2; exit 1; }
 
-copied=""
 for obj in "$LIB" "$ADAPTER"; do
     # Resolve with the oneAPI tree on the path: libumf/libhwloc/libsvml etc.
     LD_LIBRARY_PATH="$ONEAPI/compiler/latest/lib:$ONEAPI/umf/latest/lib:$ONEAPI/tcm/latest/lib" \
         ldd "$obj" | awk '/=> \// {print $3}' | while read -r dep; do
         case "$dep" in
+            */libOpenCL.so*) ;; # the miner ships/uses the system ICD loader
             "$ONEAPI"/*|/opt/intel/oneapi/*)
                 name=$(basename "$dep")
                 [ -f "$KDIR/$name" ] || cp -L "$dep" "$KDIR/$name"

@@ -1,13 +1,21 @@
 # Changelog
 
-## Unreleased — GPU improvements for the next fork release
+## v0.5-fork.5
+- Intel Arc support in the release builds: the `onednn` backend now ships in the Linux and Windows packages.
+- ESIMD XMX scan for Intel GPUs (`kernels/libcp_esimd.so`): one kernel per panel does the int8 GEMM (`dpasw`), milestone tile XOR, fold, keyed BLAKE3 and target compare; the GPU prep writes the operands in DPAS block layouts. Arc A380 at 131072²: 18.79 TMAC/s per full attempt, vs 3.20 for OpenCL DPAS. The Linux package bundles the SYCL runtime, so only the Intel GPU driver is needed; without the library the backend falls back to gemmstone. Details: [ESIMD](docs/intel_esimd.md).
+- oneDNN/gemmstone: XeHPG systolic (XMX) kernels enabled (milestone XOR inside larger K unrolls, fallback crash fixed), measured-best kernel preferred, 1024x1024 panels, register-resident jackpot kernel and a pipelined panel scan. Arc A380: 16.66 TMAC/s. Details: [oneDNN on A380](docs/intel_a380_onednn.md).
+- OpenCL prep: work-group noise kernels and 16-wide signal generation (A prep 200 → 96 ms on A380, per-job B ~200 → ~80 ms); also used by the OpenCL backends.
+- Linux `build.sh` vendors the oneDNN deps itself (`src/onednn/prepare_onednn_deps.sh`); new `-DCP_ENABLE_ESIMD=ON`; Windows CI builds the oneDNN backend.
+- Tools: register-only DPAS ceiling benchmark, device-wide Level Zero metric sampler, Intel scan benchmark script.
+- Pool agent `cppminer/0.5-fork.5`.
 - Fix duplicated CUDA multi-GPU work with device-local A matrices, keys, commitments and incremental caches; fetch proof inputs from the winning GPU, widen aggregate tile totals and check cancellation between column batches. Single-GPU throughput regression check: 63.171 → 63.132 TMAC/s (-0.062%). Physical two-NVIDIA-GPU scaling remains unvalidated; [details](docs/cuda_multi_gpu.md).
-- Integrate the opt-in Intel XMX/DPAS OpenCL backend with automatic lane-layout self-tests, exact milestone/proof validation and checked environment bounds. Arc A380 full-attempt testing at 32768²: KHR 0.886 → DPAS 2.773 TMAC/s; [details](docs/intel_a380_dpas.md).
+- Integrate the opt-in Intel XMX/DPAS OpenCL backend (`--backend opencl --ocl-dot dpas`) with automatic lane-layout self-tests, exact milestone/proof validation and checked environment bounds. Arc A380 full-attempt testing at 32768²: KHR 0.886 → DPAS 2.773 TMAC/s; [details](docs/intel_a380_dpas.md).
 - Promote the measured sm75 `.cg` operand-load policy and constant-index, predicated jackpot fold into the normal CMake CUDA build.
 - Move the sm75 TensorOp milestone callback before the next K tile's loads, retaining the exact prefix order and final callback.
 - Include opt-in incremental signal-A generation and cached keyed BLAKE3 trees (`CP_CUDA_A_MODE=incremental`, 4096 updates). Dense remains the default; the CMP50 test server runs incremental mode.
 - Verify the integrated build on CMP50HX: exact CUDA oracles, alignment, proof checks and CTest pass; complete-attempt ABBA throughput is 60.46 → 63.18 TMAC/s (+4.50%) against v0.5-fork.4.
-- Build and deploy a private Linux candidate without publishing a release or changing the v0.5-fork.4 artifacts. Details: [integrated CUDA validation](docs/cuda_integrated_improvements.md).
+- CUDA validation details: [integrated CUDA validation](docs/cuda_integrated_improvements.md).
+- Detailed release notes: [v0.5-fork.5](docs/releases/v0.5-fork.5.md).
 
 ## v0.5-fork.4
 - Pool session recovery: authorization/first-job deadlines, per-request submit ACK tracking and oldest-share timeout.
