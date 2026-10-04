@@ -1,0 +1,17 @@
+{
+  "completed": true,
+  "binary_sha256": "4793fb4d665b9f5fb5b6565575c4053dee5816ec5adbaf301f129d01e6455937",
+  "configure": [
+    "cmake",
+    "-S",
+    "/w/intel-a380-validation/src",
+    "-B",
+    "/w/intel-a380-validation/build",
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DCP_ENABLE_CPU=ON",
+    "-DCP_ENABLE_CUDA=OFF",
+    "-DCP_ENABLE_OPENCL=ON",
+    "-DCP_ENABLE_ONEDNN=OFF",
+    "-DCP_ENABLE_WGPU=OFF"
+  ]
+}

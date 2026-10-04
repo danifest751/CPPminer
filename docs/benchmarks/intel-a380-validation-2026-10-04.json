@@ -1,0 +1,28 @@
+{
+  "cases": [
+    {
+      "name": "list",
+      "exit_code": 0,
+      "seconds": 0.0640473089997613
+    },
+    {
+      "name": "align-khr",
+      "exit_code": 0,
+      "seconds": 0.5149272880003082
+    },
+    {
+      "name": "align-dpas",
+      "exit_code": 0,
+      "seconds": 0.41469807399971614
+    },
+    {
+      "name": "mock-dpas",
+      "exit_code": 0,
+      "seconds": 0.3146427599999697
+    }
+  ],
+  "khr_alignment_passed": true,
+  "dpas_alignment_passed": true,
+  "dpas_mock_passed": true,
+  "completed": true
+}

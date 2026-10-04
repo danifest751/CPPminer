@@ -1,0 +1,81 @@
+{
+  "cases": [
+    {
+      "name": "ctest",
+      "exit_code": 0
+    },
+    {
+      "name": "contexts-dense",
+      "exit_code": 0
+    },
+    {
+      "name": "contexts-sparse",
+      "exit_code": 0
+    },
+    {
+      "name": "contexts-incremental",
+      "exit_code": 0
+    },
+    {
+      "name": "align-prod",
+      "exit_code": 0
+    },
+    {
+      "name": "mock-dense-overlap0",
+      "exit_code": 0
+    },
+    {
+      "name": "mock-dense-overlap1",
+      "exit_code": 0
+    },
+    {
+      "name": "mock-incremental-overlap0",
+      "exit_code": 0
+    },
+    {
+      "name": "mock-incremental-overlap1",
+      "exit_code": 0
+    },
+    {
+      "name": "all-paths-fused-dense",
+      "exit_code": 0
+    },
+    {
+      "name": "all-paths-fused-sparse",
+      "exit_code": 0
+    },
+    {
+      "name": "all-paths-fused-incremental",
+      "exit_code": 0
+    },
+    {
+      "name": "all-paths-period-dense",
+      "exit_code": 0
+    },
+    {
+      "name": "all-paths-period-sparse",
+      "exit_code": 0
+    },
+    {
+      "name": "all-paths-period-incremental",
+      "exit_code": 0
+    },
+    {
+      "name": "all-paths-scalar-dense",
+      "exit_code": 0
+    },
+    {
+      "name": "all-paths-scalar-sparse",
+      "exit_code": 0
+    },
+    {
+      "name": "all-paths-scalar-incremental",
+      "exit_code": 0
+    }
+  ],
+  "one_physical_cuda_gpu": true,
+  "started_utc": "2026-10-04T12:10:30Z",
+  "completed": true,
+  "restored_pid": 4489,
+  "autostart": false
+}

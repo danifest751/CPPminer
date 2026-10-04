@@ -1,0 +1,26 @@
+{
+  "cases": [
+    {
+      "name": "huge-tile",
+      "exit_code": 1,
+      "refused": true
+    },
+    {
+      "name": "junk-tile",
+      "exit_code": 1,
+      "refused": true
+    },
+    {
+      "name": "wrong-minimum-sg",
+      "exit_code": 1,
+      "refused": true
+    },
+    {
+      "name": "incompatible-tile",
+      "exit_code": 1,
+      "refused": true
+    }
+  ],
+  "ctest_passed": true,
+  "completed": true
+}

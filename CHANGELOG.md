@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased — CUDA improvements for the next fork release
+## Unreleased — GPU improvements for the next fork release
+- Fix duplicated CUDA multi-GPU work with device-local A matrices, keys, commitments and incremental caches; fetch proof inputs from the winning GPU, widen aggregate tile totals and check cancellation between column batches. Single-GPU throughput regression check: 63.171 → 63.132 TMAC/s (-0.062%). Physical two-NVIDIA-GPU scaling remains unvalidated; [details](docs/cuda_multi_gpu.md).
+- Integrate the opt-in Intel XMX/DPAS OpenCL backend with automatic lane-layout self-tests, exact milestone/proof validation and checked environment bounds. Arc A380 full-attempt testing at 32768²: KHR 0.886 → DPAS 2.773 TMAC/s; [details](docs/intel_a380_dpas.md).
 - Promote the measured sm75 `.cg` operand-load policy and constant-index, predicated jackpot fold into the normal CMake CUDA build.
 - Move the sm75 TensorOp milestone callback before the next K tile's loads, retaining the exact prefix order and final callback.
 - Include opt-in incremental signal-A generation and cached keyed BLAKE3 trees (`CP_CUDA_A_MODE=incremental`, 4096 updates). Dense remains the default; the CMP50 test server runs incremental mode.

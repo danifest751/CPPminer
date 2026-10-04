@@ -23,6 +23,10 @@ class PoolProbe:
         self.binary_dir = tempfile.TemporaryDirectory(prefix="cppminer-pool-test-")
         test_binary = pathlib.Path(self.binary_dir.name) / binary.name
         shutil.copy2(binary, test_binary)
+        # OpenCL miners resolve their kernels relative to the copied executable.
+        kernels = binary.parent / "kernels"
+        if kernels.is_dir():
+            shutil.copytree(kernels, test_binary.parent / "kernels")
         self.listener = socket.socket()
         self.listener.bind(("127.0.0.1", 0))
         self.listener.listen(2)

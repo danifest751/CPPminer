@@ -1,0 +1,32 @@
+{
+  "cases": [
+    {
+      "label": "dpas-4x1",
+      "policy": "dpas",
+      "environment": {},
+      "timings_seconds": [
+        [
+          1.141,
+          20.929
+        ],
+        [
+          1.12,
+          20.913
+        ],
+        [
+          1.119,
+          20.894
+        ]
+      ],
+      "full_attempt_tmac_s": 3.1952388038715887,
+      "scan_tmac_s": 3.3663618139385267,
+      "spill_bytes_per_work_item": [
+        "512"
+      ],
+      "alignment_and_proof_passed": true
+    }
+  ],
+  "dimensions": 131072,
+  "attempts_per_case": 3,
+  "completed": true
+}

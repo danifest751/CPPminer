@@ -193,7 +193,7 @@ cppminer --backend opencl --devices 0 --pool stratum+tcp://prl.kryptex.network:7
 # CPU, physical cores only, on LuckyPool
 cppminer --backend cpu --no-smt --pool stratum+tcp://pearl-cpu-eu1.luckypool.io:3370 --wallet prl1... --worker cpu1
 
-# Several NVIDIA GPUs in one process
+# Several NVIDIA GPUs in one process (independent A attempts per device)
 cppminer --backend cuda --devices 0,1,2 --pool ... --wallet ... --worker rig1
 
 # Quantus on CPU
@@ -201,6 +201,12 @@ cppminer --algo quantus --backend cpu --threads 8 --pool stratum+tcp://HOST:PORT
 ```
 
 OpenCL uses one device per process. For several AMD/Intel GPUs, start one miner per GPU with different `--devices` and `--worker`.
+
+The unreleased fork candidate fixes CUDA duplicate work and fetches proof data from
+the winning device. See [multi-GPU behavior and validation](docs/cuda_multi_gpu.md).
+For Intel Arc, the opt-in `--backend opencl --ocl-dot dpas` path uses XMX with an
+automatic layout self-test. See [A380 validation and timings](docs/intel_a380_dpas.md).
+Run Intel and NVIDIA in separate processes with distinct workers.
 
 ---
 

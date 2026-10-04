@@ -1,0 +1,143 @@
+{
+  "cases": [
+    {
+      "label": "khr",
+      "policy": "khr",
+      "environment": {},
+      "timings_seconds": [
+        [
+          0.243,
+          4.722
+        ],
+        [
+          0.236,
+          4.726
+        ],
+        [
+          0.237,
+          4.728
+        ],
+        [
+          0.236,
+          4.725
+        ],
+        [
+          0.237,
+          4.727
+        ]
+      ],
+      "full_attempt_tmac_s": 0.8861669375587347,
+      "scan_tmac_s": 0.9305080950183011,
+      "spill_bytes_per_work_item": [],
+      "alignment_and_proof_passed": true
+    },
+    {
+      "label": "dpas-4x1",
+      "policy": "dpas",
+      "environment": {},
+      "timings_seconds": [
+        [
+          0.289,
+          1.306
+        ],
+        [
+          0.282,
+          1.305
+        ],
+        [
+          0.281,
+          1.305
+        ],
+        [
+          0.281,
+          1.304
+        ],
+        [
+          0.281,
+          1.304
+        ]
+      ],
+      "full_attempt_tmac_s": 2.773480379066057,
+      "scan_tmac_s": 3.3714423235753164,
+      "spill_bytes_per_work_item": [
+        "512"
+      ],
+      "alignment_and_proof_passed": true
+    },
+    {
+      "label": "dpas-2x1",
+      "policy": "dpas",
+      "environment": {
+        "CP_OCL_DPAS_TM": "2",
+        "CP_OCL_DPAS_TN": "1"
+      },
+      "timings_seconds": [
+        [
+          0.289,
+          1.44
+        ],
+        [
+          0.281,
+          1.439
+        ],
+        [
+          0.281,
+          1.439
+        ],
+        [
+          0.282,
+          1.439
+        ],
+        [
+          0.282,
+          1.439
+        ]
+      ],
+      "full_attempt_tmac_s": 2.556260686488811,
+      "scan_tmac_s": 3.0563214114690758,
+      "spill_bytes_per_work_item": [
+        "0"
+      ],
+      "alignment_and_proof_passed": true
+    },
+    {
+      "label": "dpas-1x1",
+      "policy": "dpas",
+      "environment": {
+        "CP_OCL_DPAS_TM": "1",
+        "CP_OCL_DPAS_TN": "1"
+      },
+      "timings_seconds": [
+        [
+          0.288,
+          1.775
+        ],
+        [
+          0.239,
+          1.774
+        ],
+        [
+          0.281,
+          1.774
+        ],
+        [
+          0.281,
+          1.773
+        ],
+        [
+          0.281,
+          1.773
+        ]
+      ],
+      "full_attempt_tmac_s": 2.151686160031311,
+      "scan_tmac_s": 2.479868345702848,
+      "spill_bytes_per_work_item": [
+        "0"
+      ],
+      "alignment_and_proof_passed": true
+    }
+  ],
+  "dimensions": 32768,
+  "attempts_per_case": 5,
+  "completed": true
+}
