@@ -54,9 +54,13 @@ cmake --build build -j4                     # also builds build/kernels/libcp_es
 `cppminer` itself is still built with the regular compiler; only the library
 uses `icpx`. The library records an RPATH into the oneAPI tree and links
 `libumf`/`libhwloc` directly (the SYCL runtime's adapters need them), so the
-miner runs without `setvars.sh` on the machine where oneAPI is installed. A
-machine without oneAPI needs the SYCL runtime libraries to be shipped too; that
-packaging is not done yet.
+miner runs without `setvars.sh` on the machine where oneAPI is installed. For
+machines without oneAPI, `scripts/package_esimd_runtime.sh build/kernels` copies
+the SYCL runtime it needs (libsycl, the Unified Runtime loader and OpenCL
+adapter, libumf, libhwloc and the Intel math/runtime libraries, ~70 MB) and
+Intel's license files next to it; the v0.5-fork.5 Linux package ships that.
+It was tested in containers with only the Intel compute-runtime installed
+(23.43 from Ubuntu 24.04 and 26.31).
 
 Tested runtime: Ubuntu 24.04 container, oneAPI DPC++ 2026.1.1, Intel
 compute-runtime 26.31 (Level Zero 1.17) from `ppa:kobuk-team/intel-graphics`,
