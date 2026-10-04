@@ -1,0 +1,35 @@
+{
+  "pid": 5821,
+  "binary_sha256": "4793fb4d665b9f5fb5b6565575c4053dee5816ec5adbaf301f129d01e6455937",
+  "sample_seconds": 40,
+  "fresh_attempts": 2,
+  "timings_seconds_and_scan_tmac_s": [
+    [
+      1.139,
+      20.926,
+      3.36
+    ],
+    [
+      0.95,
+      10.504,
+      3.36
+    ]
+  ],
+  "verified_shares": 0,
+  "accepted_shares": 0,
+  "rejected_shares": 0,
+  "errors": {
+    "verify FAIL": 0,
+    "verify failed": 0,
+    "proof build failed": 0,
+    "MISMATCH": 0,
+    "[CUDA]": 0,
+    "CL_OUT_OF_RESOURCES": 0,
+    "GPU noise build failed": 0,
+    "mine_attempt failed": 0
+  },
+  "arguments_and_environment_match": true,
+  "managed_by": "manual",
+  "autostart": false,
+  "utc": "2026-10-04T12:30:41Z"
+}

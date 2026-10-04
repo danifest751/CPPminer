@@ -81,3 +81,25 @@ For Intel plus NVIDIA, run separate OpenCL and CUDA processes with distinct work
 names. A single miner process selects one backend; CUDA `--devices` cannot include
 an Intel adapter. Their independently generated A matrices give independent work
 on the same pool job.
+
+## Manual pool deployment
+
+On 2026-10-04 the tested Intel binary was started manually on the local server
+with `--ocl-dot dpas --verify`, full 131072² matrices and worker `arc-a380`, using
+the same pool and wallet as the simultaneously running CMP50HX worker `cmp50hx`.
+Its code comes from `6365a7040920f724a95efb6a6ad20ae8f7a5b0af`. The Intel process
+uses its isolated OpenCL container; both mining containers have restart policy
+`no`, with no miner startup service. ComfyUI remained active and its system-stats
+endpoint, Ollama, Open WebUI, Speaches, DubPipe and the generation applications
+responded to read-only health requests after deployment.
+
+The short simultaneous mining audit confirms fresh completed attempts, executable
+identity and launch settings, with no computation/proof error markers. Offline
+alignment and real Rust mock-proof checks establish correctness independently;
+the live sample does not establish long-term pool acceptance or sustained rates.
+The final 40-second sample recorded two completed Intel attempts, with no recorded
+errors and no submitted shares. During the same sample, CMP completed 37 attempts
+and its locally verified share was accepted by the pool.
+
+Evidence: [deployment](benchmarks/intel-a380-deployment-2026-10-04.json),
+[simultaneous mining audit](benchmarks/intel-a380-combined-audit-2026-10-04.json).

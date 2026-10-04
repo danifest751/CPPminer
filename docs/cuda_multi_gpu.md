@@ -50,6 +50,27 @@ Evidence: [checks](benchmarks/cuda-multigpu-validation-2026-10-04.json),
 [build](benchmarks/cuda-multigpu-build-2026-10-04.json),
 [regression timings](benchmarks/cuda-multigpu-regression-2026-10-04.json).
 
+## Manual deployment on the local server
+
+The CUDA candidate built from `6365a7040920f724a95efb6a6ad20ae8f7a5b0af`
+replaced the preceding candidate on CMP50HX on 2026-10-04. It retains the existing
+pool, wallet, `cmp50hx` worker and incremental-A/single-GPU overlap configuration.
+The previous binary remains available for rollback. An independent Intel OpenCL
+process runs alongside it under worker `arc-a380`; see the
+[Intel validation](intel_a380_dpas.md).
+
+Both processes were started manually. Both containers have restart policy `no`,
+and no miner startup service was installed. The fork branch holds the candidate;
+no new release, tag or upstream PR was published and no GitHub workflow was run.
+The simultaneous mining audit checks fresh completed attempts, executable identity,
+launch settings and computation/proof error markers. Its short sample does not
+establish long-term pool acceptance or physical multi-NVIDIA scaling.
+The final 40-second sample recorded 37 completed CMP attempts and one locally
+verified share accepted by the pool, with no rejected shares or recorded errors.
+
+Evidence: [deployment](benchmarks/cuda-multigpu-deployment-2026-10-04.json),
+[simultaneous mining audit](benchmarks/cuda-multigpu-combined-audit-2026-10-04.json).
+
 ## Reproducing the ownership test
 
 Build a CUDA miner with real Rust proof FFI using CMake's Unix Makefiles generator,

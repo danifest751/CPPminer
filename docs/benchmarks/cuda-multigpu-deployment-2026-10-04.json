@@ -1,0 +1,12 @@
+{
+  "deployed": true,
+  "pid": 4766,
+  "binary_sha256": "63084048b4650629bf49ef791057ce9df6000660a2304f7237bdaef2cac79688",
+  "fresh_attempts_15s": 11,
+  "same_pool_wallet_worker": true,
+  "managed_by": "manual",
+  "autostart": false,
+  "release_published": false,
+  "source_commit": "6365a7040920f724a95efb6a6ad20ae8f7a5b0af",
+  "utc": "2026-10-04T12:23:58Z"
+}
