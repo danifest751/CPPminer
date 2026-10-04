@@ -1,0 +1,251 @@
+{
+  "dimensions": 32768,
+  "attempts_per_case": 5,
+  "cases": [
+    {
+      "label": "k353",
+      "args": [
+        "--backend",
+        "onednn"
+      ],
+      "environment": {
+        "CASE5_KERNEL": "catalog-353"
+      },
+      "timings_seconds": [
+        [
+          0.065,
+          0.453
+        ],
+        [
+          0.052,
+          0.452
+        ],
+        [
+          0.052,
+          0.451
+        ],
+        [
+          0.053,
+          0.454
+        ],
+        [
+          0.053,
+          0.454
+        ]
+      ],
+      "full_attempt_tmac_s": 8.704693737959428,
+      "scan_tmac_s": 9.71407291243291,
+      "mock_proof_passed": true
+    },
+    {
+      "label": "k337",
+      "args": [
+        "--backend",
+        "onednn"
+      ],
+      "environment": {
+        "CASE5_KERNEL": "catalog-337"
+      },
+      "timings_seconds": [
+        [
+          0.066,
+          1.151
+        ],
+        [
+          0.052,
+          1.152
+        ],
+        [
+          0.053,
+          1.156
+        ],
+        [
+          0.053,
+          1.149
+        ],
+        [
+          0.053,
+          1.151
+        ]
+      ],
+      "full_attempt_tmac_s": 3.650588513055821,
+      "scan_tmac_s": 3.817748707555556,
+      "mock_proof_passed": true
+    },
+    {
+      "label": "k343",
+      "args": [
+        "--backend",
+        "onednn"
+      ],
+      "environment": {
+        "CASE5_KERNEL": "catalog-343"
+      },
+      "timings_seconds": [
+        [
+          0.066,
+          0.437
+        ],
+        [
+          0.052,
+          0.438
+        ],
+        [
+          0.053,
+          0.436
+        ],
+        [
+          0.053,
+          0.437
+        ],
+        [
+          0.052,
+          0.437
+        ]
+      ],
+      "full_attempt_tmac_s": 8.984773260682328,
+      "scan_tmac_s": 10.064179659276888,
+      "mock_proof_passed": true
+    },
+    {
+      "label": "k333",
+      "args": [
+        "--backend",
+        "onednn"
+      ],
+      "environment": {
+        "CASE5_KERNEL": "catalog-333"
+      },
+      "timings_seconds": [
+        [
+          0.066,
+          0.337
+        ],
+        [
+          0.052,
+          0.333
+        ],
+        [
+          0.053,
+          0.332
+        ],
+        [
+          0.052,
+          0.335
+        ],
+        [
+          0.053,
+          0.335
+        ]
+      ],
+      "full_attempt_tmac_s": 11.386528184088027,
+      "scan_tmac_s": 13.17766744900075,
+      "mock_proof_passed": true
+    },
+    {
+      "label": "k352",
+      "args": [
+        "--backend",
+        "onednn"
+      ],
+      "environment": {
+        "CASE5_KERNEL": "catalog-352"
+      },
+      "timings_seconds": [
+        [
+          0.065,
+          0.337
+        ],
+        [
+          0.053,
+          0.333
+        ],
+        [
+          0.053,
+          0.331
+        ],
+        [
+          0.052,
+          0.334
+        ],
+        [
+          0.052,
+          0.337
+        ]
+      ],
+      "full_attempt_tmac_s": 11.386528184088027,
+      "scan_tmac_s": 13.17766744900075,
+      "mock_proof_passed": true
+    },
+    {
+      "label": "k339",
+      "args": [
+        "--backend",
+        "onednn"
+      ],
+      "environment": {
+        "CASE5_KERNEL": "catalog-339"
+      },
+      "timings_seconds": [
+        [
+          0.066,
+          1.161
+        ],
+        [
+          0.053,
+          1.171
+        ],
+        [
+          0.052,
+          1.177
+        ],
+        [
+          0.052,
+          1.167
+        ],
+        [
+          0.053,
+          1.159
+        ]
+      ],
+      "full_attempt_tmac_s": 3.60200369459787,
+      "scan_tmac_s": 3.763839547371844,
+      "mock_proof_passed": true
+    },
+    {
+      "label": "k335",
+      "args": [
+        "--backend",
+        "onednn"
+      ],
+      "environment": {
+        "CASE5_KERNEL": "catalog-335"
+      },
+      "timings_seconds": [
+        [
+          0.065,
+          0.679
+        ],
+        [
+          0.053,
+          0.676
+        ],
+        [
+          0.053,
+          0.681
+        ],
+        [
+          0.052,
+          0.683
+        ],
+        [
+          0.053,
+          0.689
+        ]
+      ],
+      "full_attempt_tmac_s": 5.983736749801359,
+      "scan_tmac_s": 6.446385505465738,
+      "mock_proof_passed": true
+    }
+  ]
+}

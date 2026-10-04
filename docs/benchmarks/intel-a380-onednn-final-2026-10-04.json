@@ -1,0 +1,83 @@
+{
+  "dimensions": 131072,
+  "attempts_per_case": 6,
+  "cases": [
+    {
+      "label": "onednn",
+      "args": [
+        "--backend",
+        "onednn"
+      ],
+      "environment": {},
+      "timings_seconds": [
+        [
+          0.133,
+          4.462
+        ],
+        [
+          0.091,
+          4.452
+        ],
+        [
+          0.09,
+          4.451
+        ],
+        [
+          0.091,
+          4.475
+        ],
+        [
+          0.091,
+          4.458
+        ],
+        [
+          0.091,
+          4.457
+        ]
+      ],
+      "full_attempt_tmac_s": 15.467697757432626,
+      "scan_tmac_s": 15.782699541933344,
+      "mock_proof_passed": true
+    },
+    {
+      "label": "dpas",
+      "args": [
+        "--backend",
+        "opencl",
+        "--ocl-dot",
+        "dpas"
+      ],
+      "environment": {},
+      "timings_seconds": [
+        [
+          1.133,
+          20.927
+        ],
+        [
+          0.94,
+          20.93
+        ],
+        [
+          1.111,
+          20.939
+        ],
+        [
+          1.111,
+          20.939
+        ],
+        [
+          1.111,
+          20.966
+        ],
+        [
+          1.111,
+          20.929
+        ]
+      ],
+      "full_attempt_tmac_s": 3.1960514946207996,
+      "scan_tmac_s": 3.360397704825268,
+      "mock_proof_passed": true
+    }
+  ],
+  "completed": true
+}

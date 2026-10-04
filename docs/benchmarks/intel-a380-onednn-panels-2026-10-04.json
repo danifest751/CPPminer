@@ -1,0 +1,155 @@
+{
+  "dimensions": 131072,
+  "attempts_per_case": 4,
+  "cases": [
+    {
+      "label": "c2048r512",
+      "args": [
+        "--backend",
+        "onednn",
+        "--batch-size",
+        "2048",
+        "--row-period-batch",
+        "512"
+      ],
+      "environment": {
+        "CASE5_KERNEL": "custom",
+        "CASE5_STRATEGY": "sB64_sB32_aB_wg_8x4_cab4_ks64_af_dw_vav_bo_bk0_sm_sn_grf256_sys_pab_l4_sr",
+        "CASE5_UNROLL": "16x32"
+      },
+      "timings_seconds": [
+        [
+          0.242,
+          4.556
+        ],
+        [
+          0.201,
+          4.555
+        ],
+        [
+          0.2,
+          4.552
+        ],
+        [
+          0.201,
+          4.547
+        ]
+      ],
+      "full_attempt_tmac_s": 14.80823741112458,
+      "scan_tmac_s": 15.4611273277422,
+      "mock_proof_passed": true
+    },
+    {
+      "label": "c4096r512",
+      "args": [
+        "--backend",
+        "onednn",
+        "--batch-size",
+        "4096",
+        "--row-period-batch",
+        "512"
+      ],
+      "environment": {
+        "CASE5_KERNEL": "custom",
+        "CASE5_STRATEGY": "sB64_sB32_aB_wg_8x4_cab4_ks64_af_dw_vav_bo_bk0_sm_sn_grf256_sys_pab_l4_sr",
+        "CASE5_UNROLL": "16x32"
+      },
+      "timings_seconds": [
+        [
+          0.243,
+          4.56
+        ],
+        [
+          0.2,
+          4.555
+        ],
+        [
+          0.198,
+          4.551
+        ],
+        [
+          0.199,
+          4.547
+        ]
+      ],
+      "full_attempt_tmac_s": 14.814472458455578,
+      "scan_tmac_s": 15.462259762176224,
+      "mock_proof_passed": true
+    },
+    {
+      "label": "c8192r256",
+      "args": [
+        "--backend",
+        "onednn",
+        "--batch-size",
+        "8192",
+        "--row-period-batch",
+        "256"
+      ],
+      "environment": {
+        "CASE5_KERNEL": "custom",
+        "CASE5_STRATEGY": "sB64_sB32_aB_wg_8x4_cab4_ks64_af_dw_vav_bo_bk0_sm_sn_grf256_sys_pab_l4_sr",
+        "CASE5_UNROLL": "16x32"
+      },
+      "timings_seconds": [
+        [
+          0.242,
+          4.76
+        ],
+        [
+          0.201,
+          4.756
+        ],
+        [
+          0.202,
+          4.7
+        ],
+        [
+          0.201,
+          4.706
+        ]
+      ],
+      "full_attempt_tmac_s": 14.296778581402684,
+      "scan_tmac_s": 14.906526799392173,
+      "mock_proof_passed": true
+    },
+    {
+      "label": "c4096r1024",
+      "args": [
+        "--backend",
+        "onednn",
+        "--batch-size",
+        "4096",
+        "--row-period-batch",
+        "1024"
+      ],
+      "environment": {
+        "CASE5_KERNEL": "custom",
+        "CASE5_STRATEGY": "sB64_sB32_aB_wg_8x4_cab4_ks64_af_dw_vav_bo_bk0_sm_sn_grf256_sys_pab_l4_sr",
+        "CASE5_UNROLL": "16x32"
+      },
+      "timings_seconds": [
+        [
+          0.241,
+          4.455
+        ],
+        [
+          0.2,
+          4.444
+        ],
+        [
+          0.2,
+          4.444
+        ],
+        [
+          0.2,
+          4.449
+        ]
+      ],
+      "full_attempt_tmac_s": 15.147178914615195,
+      "scan_tmac_s": 15.828614570967384,
+      "mock_proof_passed": true
+    }
+  ],
+  "completed": true
+}

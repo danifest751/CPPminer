@@ -1,0 +1,43 @@
+{
+  "dimensions": 32768,
+  "attempts_per_case": 5,
+  "cases": [
+    {
+      "label": "nop333",
+      "args": [
+        "--backend",
+        "onednn"
+      ],
+      "environment": {
+        "CASE5_KERNEL": "catalog-333",
+        "CASE5_XOR_NOP": "1"
+      },
+      "timings_seconds": [
+        [
+          0.066,
+          0.319
+        ],
+        [
+          0.053,
+          0.317
+        ],
+        [
+          0.052,
+          0.317
+        ],
+        [
+          0.052,
+          0.318
+        ],
+        [
+          0.052,
+          0.322
+        ]
+      ],
+      "full_attempt_tmac_s": 11.862566449370195,
+      "scan_tmac_s": 13.80862326877237,
+      "mock_proof_passed": false
+    }
+  ],
+  "completed": true
+}

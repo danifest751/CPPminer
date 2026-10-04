@@ -1,0 +1,36 @@
+{
+  "dimensions": 65536,
+  "attempts_per_case": 4,
+  "cases": [
+    {
+      "label": "f1600",
+      "args": [
+        "--backend",
+        "onednn"
+      ],
+      "environment": {},
+      "timings_seconds": [
+        [
+          0.188,
+          1.411
+        ],
+        [
+          0.157,
+          1.403
+        ],
+        [
+          0.156,
+          1.402
+        ],
+        [
+          0.157,
+          1.402
+        ]
+      ],
+      "full_attempt_tmac_s": 11.284275846322002,
+      "scan_tmac_s": 12.544938943011173,
+      "mock_proof_passed": false
+    }
+  ],
+  "completed": true
+}
