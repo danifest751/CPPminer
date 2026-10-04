@@ -262,3 +262,10 @@ and GEMM/operand traffic with exact proof checks before pursuing more cache work
 The simple factorization offers no MAC-count shortcut. Warm reserve connections
 are an availability feature whose production implementation needs explicit
 failure detection and session-aware submission routing.
+
+The later [standalone CPU multiplication experiment](cpu_matmul_experiment.md)
+compares classical SIMD, pairwise Winograd, Strassen and Strassen–Winograd
+against the unchanged Case33 backend, including all 32 Pearl prefixes.
+No new implementation beats Case33 on the tested zero-B panels. It also records
+the existing AVX2 fast path's full-range INT8 saturation limit; the generated
+zero-B inputs pass.
