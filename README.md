@@ -15,6 +15,21 @@ Changes are developed in this fork. Selected changes are offered upstream as [pu
 
 **Download:** [latest release](https://github.com/danifest751/CPPminer/releases/latest) — Windows x64 zip, Linux x64 tar.gz.
 
+### Hashrate at a glance
+
+Pearl, full pool size, default settings, stock power limit (1 TMAC/s = 1 TH/s on the pool):
+
+| GPU | Power | TMAC/s |
+|---|---:|---:|
+| RTX 5070 | 250 W | 115–117 |
+| RTX 3090 | 350 W | 108–113 |
+| CMP 50HX | 225 W | 68–69 |
+| Arc A380 | stock | 18.8 |
+| Radeon 780M (iGPU) | laptop | 6.4 |
+| RX 580 4 GB | stock | 1.84 |
+
+More cards and CPUs: [Supported hardware and speed](#supported-hardware-and-speed).
+
 ---
 
 ## Contents
@@ -39,9 +54,9 @@ Changes are developed in this fork. Selected changes are offered upstream as [pu
 
 | Area | Change |
 |---|---|
-| **NVIDIA Turing** (RTX 20xx, CMP 40HX/50HX) | INT8 tensor-core kernel (`mma.m8n8k16`) instead of dp4a: CMP 50HX 21 → 61 TMAC/s. 256x128 threadblocks by default |
-| **NVIDIA Ampere / Ada** (RTX 30xx, 40xx, A-series) | Multistage `mma.m16n8k32` tensor-core kernel with `cp.async`: RTX 3090 31 → 97 TMAC/s. It also runs on cards where upstream did not start |
-| **All CUDA** | Threadblock swizzle that stops re-reading A from DRAM; lighter milestone code; the next attempt's matrix is prepared while the current one is scanned |
+| **NVIDIA Turing** (RTX 20xx, CMP 40HX/50HX) | Own INT8 tensor-core kernel (`mma.m8n8k16`) on packed operands instead of dp4a: CMP 50HX 21 → 69 TMAC/s |
+| **NVIDIA Ampere / Ada / Blackwell** (RTX 30xx, 40xx, 50xx, A-series) | Own `mma.m16n8k32` kernel with a 4-stage `cp.async` ring on packed operands: RTX 3090 31 → 113 TMAC/s, RTX 5070 107 → 115. It also runs on cards where upstream did not start |
+| **All CUDA** | Noisy matrices stored in a packed layout, so every k-tile of a threadblock is one contiguous read (less L2/DRAM traffic, higher power-limited clocks); lighter milestone code; the next attempt's matrix is prepared while the current one is scanned |
 | **AMD RDNA3** (RX 7000, Radeon 780M/760M) | WMMA matrix cores (`v_wmma_i32_16x16x16_iu8`): 780M 3.65 → 6.4 TMAC/s. Before that, `v_dot4` and work-group swizzle |
 | **AMD Polaris and older GCN** (RX 470/480/570/580, Fiji, Tonga) | Dedicated 24-bit multiply-add kernel: RX 580 1.38 → 1.84 TMAC/s |
 | **Intel Arc** (Xe-HPG) | `--backend onednn`: an ESIMD XMX kernel does the GEMM, milestone XOR and the whole jackpot in one pass, on operands the prep writes in DPAS layout (A380 3.2 → 18.8 TMAC/s); gemmstone systolic kernels as the fallback (16.7) |
@@ -63,8 +78,9 @@ Hashrate is in **MAC/s**: multiply-accumulates per second of the int8 matrix pro
 | GPU | Architecture | Backend / kernel | TMAC/s | Notes |
 |---|---|---|---|---|
 | RTX 4090 | Ada, sm_89 | CUDA, tensor cores | 157–229 | rented card, v0.5-fork.1; varies with clocks |
-| RTX 3090 | Ampere, sm_86 | CUDA, `tensorop80` 128x128 | 95–97 | 350 W; 89 TMAC/s at a locked 1200 MHz and 263 W |
-| CMP 50HX | Turing, sm_75 | CUDA, `tensorop` 256x128 | 61 | 225 W |
+| RTX 5070 | Blackwell, sm_120 | CUDA, packed `m16n8k32` kernel | 115–117 | 250 W; 107 with v0.5-fork.5 |
+| RTX 3090 | Ampere, sm_86 | CUDA, packed `m16n8k32` kernel | 108–113 | 350 W; 99 with v0.5-fork.5 |
+| CMP 50HX | Turing, sm_75 | CUDA, packed `m8n8k16` kernel | 68–69 | 225 W; 62.5 with v0.5-fork.5 |
 | Arc A380 | Xe-HPG (DG2) | oneDNN, ESIMD XMX scan | 18.8 | Linux; 16.7 with gemmstone, 3.2 with OpenCL DPAS |
 | Radeon 780M (iGPU) | RDNA3, gfx1103 | OpenCL, WMMA | 6.4 | laptop, shared memory |
 | RX 580 4 GB | Polaris, gfx803 | OpenCL, GCN kernel | 1.84 | AMD Windows driver |

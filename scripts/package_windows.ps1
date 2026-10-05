@@ -4,7 +4,7 @@ param(
     [string]$Root = (Join-Path $PSScriptRoot '..'),
     [string]$OutputDir,
     [string]$SourceCommit = '',
-    [string]$Version = 'v0.5-fork.5'
+    [string]$Version = 'v0.5-fork.6'
 )
 $ErrorActionPreference='Stop'
 $Root=(Resolve-Path -LiteralPath $Root).Path
