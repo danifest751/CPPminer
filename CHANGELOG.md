@@ -2,7 +2,7 @@
 
 ## v0.5-fork.6
 - New CUDA scan kernels on packed noisy operands for Turing (`mma.m8n8k16`), Ampere/Ada and Blackwell GeForce (`mma.m16n8k32`, 4-stage `cp.async`), replacing the CUTLASS kernels there. The prep writes every 256/128-row block and 32-wide k-tile as one contiguous record. Same hash tiles, words and hit coordinates as CUTLASS.
-- RTX 3090 (350 W): 99.0 → 112.4–113.5 TMAC/s kernel, 108–110 live. CMP 50HX (225 W): 62.5 → 68.4–69.5. RTX 5070 (250 W): 106.6 → 115.3, 116.8 live.
+- RTX 4090 (450 W): 243.8 → 271–275 TMAC/s, 271 live. RTX 3090 (350 W): 99.0 → 112.4–113.5 TMAC/s kernel, 108–110 live. CMP 50HX (225 W): 62.5 → 68.4–69.5. RTX 5070 (250 W): 106.6 → 115.3, 116.8 live.
 - `--align-test` checks the packed kernel against the CUTLASS reference. `CP_CUDA_PACKED=0` returns to CUTLASS; `CP_CUDA_PACKED=1` enables the packed kernel on Hopper and datacenter Blackwell (not measured yet).
 - Builds use CUDA 12.9: native code for sm_75/86/89, sm_120 as PTX that the driver compiles (its compiler gives faster RTX 50 code than CUDA 12.9 ptxas).
 - Pool agent `cppminer/0.5-fork.6`.

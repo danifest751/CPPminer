@@ -21,6 +21,7 @@ Pearl, full pool size, default settings, stock power limit (1 TMAC/s = 1 TH/s on
 
 | GPU | Power | TMAC/s |
 |---|---:|---:|
+| RTX 4090 | 450 W | 271–275 |
 | RTX 5070 | 250 W | 115–117 |
 | RTX 3090 | 350 W | 108–113 |
 | CMP 50HX | 225 W | 68–69 |
@@ -55,7 +56,7 @@ More cards and CPUs: [Supported hardware and speed](#supported-hardware-and-spee
 | Area | Change |
 |---|---|
 | **NVIDIA Turing** (RTX 20xx, CMP 40HX/50HX) | Own INT8 tensor-core kernel (`mma.m8n8k16`) on packed operands instead of dp4a: CMP 50HX 21 → 69 TMAC/s |
-| **NVIDIA Ampere / Ada / Blackwell** (RTX 30xx, 40xx, 50xx, A-series) | Own `mma.m16n8k32` kernel with a 4-stage `cp.async` ring on packed operands: RTX 3090 31 → 113 TMAC/s, RTX 5070 107 → 115. It also runs on cards where upstream did not start |
+| **NVIDIA Ampere / Ada / Blackwell** (RTX 30xx, 40xx, 50xx, A-series) | Own `mma.m16n8k32` kernel with a 4-stage `cp.async` ring on packed operands: RTX 3090 31 → 113 TMAC/s, RTX 4090 244 → 273, RTX 5070 107 → 115. It also runs on cards where upstream did not start |
 | **All CUDA** | Noisy matrices stored in a packed layout, so every k-tile of a threadblock is one contiguous read (less L2/DRAM traffic, higher power-limited clocks); lighter milestone code; the next attempt's matrix is prepared while the current one is scanned |
 | **AMD RDNA3** (RX 7000, Radeon 780M/760M) | WMMA matrix cores (`v_wmma_i32_16x16x16_iu8`): 780M 3.65 → 6.4 TMAC/s. Before that, `v_dot4` and work-group swizzle |
 | **AMD Polaris and older GCN** (RX 470/480/570/580, Fiji, Tonga) | Dedicated 24-bit multiply-add kernel: RX 580 1.38 → 1.84 TMAC/s |
@@ -77,7 +78,7 @@ Hashrate is in **MAC/s**: multiply-accumulates per second of the int8 matrix pro
 
 | GPU | Architecture | Backend / kernel | TMAC/s | Notes |
 |---|---|---|---|---|
-| RTX 4090 | Ada, sm_89 | CUDA, tensor cores | 157–229 | rented card, v0.5-fork.1; varies with clocks |
+| RTX 4090 | Ada, sm_89 | CUDA, packed `m16n8k32` kernel | 271–275 | 450 W; 244 with v0.5-fork.5 |
 | RTX 5070 | Blackwell, sm_120 | CUDA, packed `m16n8k32` kernel | 115–117 | 250 W; 107 with v0.5-fork.5 |
 | RTX 3090 | Ampere, sm_86 | CUDA, packed `m16n8k32` kernel | 108–113 | 350 W; 99 with v0.5-fork.5 |
 | CMP 50HX | Turing, sm_75 | CUDA, packed `m8n8k16` kernel | 68–69 | 225 W; 62.5 with v0.5-fork.5 |
