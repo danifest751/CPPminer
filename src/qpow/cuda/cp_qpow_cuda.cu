@@ -103,33 +103,8 @@ DEV void sqr128(u64 a, u32& r0, u32& r1, u32& r2, u32& r3)
     r0 = p0;
 }
 
-/* a*b + c as 128 bits: c is the 64-bit addend of a0*b0 (carry k joins the r2 column). */
-DEV void fma128(u64 a, u64 b, u64 c, u32& r0, u32& r1, u32& r2, u32& r3)
-{
-    u32 a0, a1, b0, b1, c0, c1; sp64(a, a0, a1); sp64(b, b0, b1); sp64(c, c0, c1);
-    u64 T, Q;
-    asm("mul.wide.u32 %0, %1, %2;" : "=l"(T) : "r"(a0), "r"(b1));
-    asm("mul.wide.u32 %0, %1, %2;" : "=l"(Q) : "r"(a1), "r"(b1));
-    u32 t0, t1, q0, q1; sp64(T, t0, t1); sp64(Q, q0, q1);
-    asm("{.reg .u32 k, m0, m1, mc;\n\t"
-        "mad.lo.cc.u32  %0, %4, %6, %8;\n\t"
-        "madc.hi.cc.u32 %1, %4, %6, %9;\n\t"
-        "addc.u32       k, 0, 0;\n\t"
-        "mad.lo.cc.u32  m0, %5, %6, %10;\n\t"
-        "madc.hi.cc.u32 m1, %5, %6, %11;\n\t"
-        "addc.u32       mc, 0, 0;\n\t"
-        "add.cc.u32     %1, %1, m0;\n\t"
-        "addc.cc.u32    %2, %12, m1;\n\t"
-        "addc.u32       %3, %13, mc;\n\t"
-        "add.cc.u32     %2, %2, k;\n\t"
-        "addc.u32       %3, %3, 0;}"
-        : "=r"(r0), "=r"(r1), "=r"(r2), "=r"(r3)
-        : "r"(a0), "r"(a1), "r"(b0), "r"(b1), "r"(c0), "r"(c1), "r"(t0), "r"(t1), "r"(q0), "r"(q1));
-}
-
 DEV u64 gmul(u64 a, u64 b) { u32 r0, r1, r2, r3; mul128(a, b, r0, r1, r2, r3); return red128(r0, r1, r2, r3); }
 DEV u64 gsqr(u64 a) { u32 r0, r1, r2, r3; sqr128(a, r0, r1, r2, r3); return red128(r0, r1, r2, r3); }
-DEV u64 gfma(u64 a, u64 b, u64 c) { u32 r0, r1, r2, r3; fma128(a, b, c, r0, r1, r2, r3); return red128(r0, r1, r2, r3); }
 
 /* Lazy sum for the linear layers: value = (hi:lo) + t*2^64. */
 struct W { u32 lo, hi, t; };
@@ -230,20 +205,43 @@ DEV void ext_add(u64 s[12], const u64* add)
     }
 }
 
-/* 22 internal rounds; s[0] arrives with RC_INTERNAL[0] added, leaves with RC_TERMINAL[0]. */
+/* a*b + w for a lazy 96-bit sum w: w enters the product's carry chain unreduced.
+ * a*b + w < 2^128 - 2^96 for b below 0xF3FB... (the internal diagonal), so red128's
+ * r3 <= 2^32 - 2 precondition holds. */
+DEV u64 gfma_w(u64 a, u64 b, W w)
+{
+    u32 a0, a1, b0, b1; sp64(a, a0, a1); sp64(b, b0, b1);
+    u32 r0, r1, r2, r3;
+    asm("mad.lo.cc.u32  %0, %4, %6, %8;\n\t"
+        "madc.hi.cc.u32 %1, %4, %6, %9;\n\t"
+        "madc.lo.cc.u32 %2, %5, %7, %10;\n\t"
+        "madc.hi.u32    %3, %5, %7, 0;\n\t"
+        "mad.lo.cc.u32  %1, %4, %7, %1;\n\t"
+        "madc.hi.cc.u32 %2, %4, %7, %2;\n\t"
+        "addc.u32       %3, %3, 0;\n\t"
+        "mad.lo.cc.u32  %1, %5, %6, %1;\n\t"
+        "madc.hi.cc.u32 %2, %5, %6, %2;\n\t"
+        "addc.u32       %3, %3, 0;"
+        : "=r"(r0), "=r"(r1), "=r"(r2), "=r"(r3)
+        : "r"(a0), "r"(a1), "r"(b0), "r"(b1), "r"(w.lo), "r"(w.hi), "r"(w.t));
+    return red128(r0, r1, r2, r3);
+}
+
+/* 22 internal rounds; s[0] arrives with RC_INTERNAL[0] added, leaves with RC_TERMINAL[0].
+ * The row sum stays a lazy 96-bit value and goes straight into each diagonal product; lanes
+ * 1..11 are summed before the S-box so that work overlaps its multiply chain. */
 DEV void internal22(u64 s[12])
 {
 #pragma unroll 1
     for (int r = 0; r < 22; r++) {
+        W rest = w2(s[1], s[2]);
+#pragma unroll
+        for (int i = 3; i < 12; i++) rest = wadd64(rest, s[i]);
         s[0] = sbox(s[0]);
-        W acc = w2(s[0], s[1]);
+        const W sg = wadd64(rest, s[0]);
+        s[0] = gfma_w(s[0], c_diag[0], wadd64(sg, c_rci[r]));
 #pragma unroll
-        for (int i = 2; i < 12; i++) acc = wadd64(acc, s[i]);
-        u64 sg = wred(acc);
-        u64 sg0 = gadd(sg, c_rci[r]);
-        s[0] = gfma(s[0], c_diag[0], sg0);
-#pragma unroll
-        for (int i = 1; i < 12; i++) s[i] = gfma(s[i], c_diag[i], sg);
+        for (int i = 1; i < 12; i++) s[i] = gfma_w(s[i], c_diag[i], sg);
     }
 #pragma unroll
     for (int i = 0; i < 12; i++) s[i] = gadd(s[i], c_rct0[i]);
