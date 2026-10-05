@@ -42,10 +42,10 @@ jobs:
           "CP_ONEAPI_ROOT=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "$prefix\Library\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
-      - name: Build (CPU + CUDA + OpenCL + oneDNN, sm_75/86/89/120)
+      - name: Build (CPU + CUDA + OpenCL + oneDNN, sm_75/86/89, PTX for sm_120)
         shell: pwsh
         run: |
-          powershell -ExecutionPolicy Bypass -File build.ps1 -Backend Cpu,Cuda,OpenCl,OneDnn -EnableEsimd -CudaArch "75;86;89;120" -CudaRoot "$env:CUDA_PATH"
+          powershell -ExecutionPolicy Bypass -File build.ps1 -Backend Cpu,Cuda,OpenCl,OneDnn -EnableEsimd -CudaArch "75;86;89;120-virtual" -CudaRoot "$env:CUDA_PATH"
 
       - name: Smoke test (CPU mock, no GPU on the runner)
         shell: pwsh
