@@ -31,6 +31,7 @@
 #if defined(CP_ENABLE_CUDA) && CP_ENABLE_CUDA
 #include "cp_gpu.h"
 #include "cp_cutlass.h"
+#include "cp_qpow_cuda_worker.h"
 #endif
 
 #if defined(CP_ENABLE_OPENCL) && CP_ENABLE_OPENCL
@@ -1156,15 +1157,18 @@ int main(int argc, char** argv)
     if(algo_sel == CP_ALGO_QUANTUS){
         printf("[mode] algo=%s\n", cp_algo_name(algo_sel));
         fflush(stdout);
-        /* Quantus launch batch: --batch-size, else 1e6 nonces. */
+        /* Quantus launch batch: --batch-size, else 1e6 nonces (CUDA: automatic). */
         {
-            uint32_t qbatch = 1000000u;
+            uint32_t qbatch = cp_worker_backend_id() == CP_BACKEND_CUDA ? 0u : 1000000u;
             if(batch_size_set){
                 if(batch_size < 1) batch_size = 1;
                 qbatch = (uint32_t)batch_size;
             }
             cp_worker_set_period_batch((int)qbatch);
-            printf("[mode] batch-size: %u nonces/launch\n", qbatch);
+            if(qbatch)
+                printf("[mode] batch-size: %u nonces/launch\n", qbatch);
+            else
+                printf("[mode] batch-size: auto\n");
             fflush(stdout);
         }
         if(cp_worker_backend_id() == CP_BACKEND_WGPU){
@@ -1183,6 +1187,15 @@ int main(int argc, char** argv)
             if(!ndev){ devs[0] = 0; ndev = 1; }
             if(cp_qpow_opencl_worker_init(devs, ndev) != 0){
                 fprintf(stderr, "quantus opencl backend init failed\n");
+                return 1;
+            }
+        }
+#endif
+#if defined(CP_ENABLE_CUDA) && CP_ENABLE_CUDA
+        else if(cp_worker_backend_id() == CP_BACKEND_CUDA){
+            if(!ndev){ devs[0] = 0; ndev = 1; }
+            if(cp_qpow_cuda_worker_init(devs, ndev) != 0){
+                fprintf(stderr, "quantus cuda backend init failed\n");
                 return 1;
             }
         }
@@ -1211,6 +1224,10 @@ int main(int argc, char** argv)
 #if defined(CP_ENABLE_OPENCL) && CP_ENABLE_OPENCL
         else if(cp_worker_backend_id() == CP_BACKEND_OPENCL)
             cp_qpow_opencl_worker_shutdown();
+#endif
+#if defined(CP_ENABLE_CUDA) && CP_ENABLE_CUDA
+        else if(cp_worker_backend_id() == CP_BACKEND_CUDA)
+            cp_qpow_cuda_worker_shutdown();
 #endif
         return qrc;
     }
