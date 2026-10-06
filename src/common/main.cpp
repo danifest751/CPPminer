@@ -1157,9 +1157,10 @@ int main(int argc, char** argv)
     if(algo_sel == CP_ALGO_QUANTUS){
         printf("[mode] algo=%s\n", cp_algo_name(algo_sel));
         fflush(stdout);
-        /* Quantus launch batch: --batch-size, else 1e6 nonces (CUDA: automatic). */
+        /* Quantus launch batch: --batch-size, else automatic (CUDA, OpenCL) or 1e6 nonces. */
         {
-            uint32_t qbatch = cp_worker_backend_id() == CP_BACKEND_CUDA ? 0u : 1000000u;
+            uint32_t qbatch = (cp_worker_backend_id() == CP_BACKEND_CUDA ||
+                              cp_worker_backend_id() == CP_BACKEND_OPENCL) ? 0u : 1000000u;
             if(batch_size_set){
                 if(batch_size < 1) batch_size = 1;
                 qbatch = (uint32_t)batch_size;
