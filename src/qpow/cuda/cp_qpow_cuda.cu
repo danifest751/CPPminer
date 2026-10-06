@@ -1,11 +1,11 @@
 /* Quantus QPoW (Poseidon2 over Goldilocks, width 12) mining kernel and CUDA worker.
  *
- * One thread hashes one nonce. Only the last big-endian word of the 64-byte nonce varies inside
- * a launch, so the host folds the midstate, the other nonce words, the first linear layer and
- * the first round constants into Params::pre; the kernel adds counter * (column 7 of the
- * linear layer) and runs the rest of both permutations. Only the first output element is
- * computed after the last S-box layer: it holds the first 8 hash bytes, which decide nearly
- * every comparison. A nonce whose first 8 bytes are <= the target's becomes a candidate and is
+ * One thread hashes one nonce. Inside a launch the nonces form the line B + t*v (see the nonce
+ * mapping below), along which only lanes 0 and 4 change after the first linear layer: the host
+ * folds the midstate, B, the first linear layer and the other ten S-boxes of the first round
+ * into Params, and the kernel runs two S-boxes before the rest of both permutations. Only the
+ * first output element is computed after the last S-box layer: it holds the first 8 hash bytes,
+ * which decide nearly every comparison. A nonce whose first 8 bytes are <= the target's becomes a candidate and is
  * re-hashed on the host with the reference code before it is reported.
  *
  * Field elements are any 64-bit value (not necessarily < p); the arithmetic is mod p.
@@ -84,7 +84,8 @@ DEV void mul128(u64 a, u64 b, u32& r0, u32& r1, u32& r2, u32& r3)
     r0 = p0;
 }
 
-/* a^2 from three wide products: a0^2 + 2*a0*a1*2^32 + a1^2*2^64. */
+/* a^2 from three wide products: a0^2 + 2*a0*a1*2^32 + a1^2*2^64. The middle product is doubled
+ * by a one-bit funnel shift (65 bits d2:d1:d0), which leaves a single 3-word add. */
 DEV void sqr128(u64 a, u32& r0, u32& r1, u32& r2, u32& r3)
 {
     u32 a0, a1; sp64(a, a0, a1);
@@ -93,13 +94,14 @@ DEV void sqr128(u64 a, u32& r0, u32& r1, u32& r2, u32& r3)
     asm("mul.wide.u32 %0, %1, %1;" : "=l"(Q) : "r"(a1));
     asm("mul.wide.u32 %0, %1, %2;" : "=l"(T) : "r"(a0), "r"(a1));
     u32 p0, p1, q0, q1, t0, t1; sp64(P, p0, p1); sp64(Q, q0, q1); sp64(T, t0, t1);
+    u32 d0, d1, d2;
+    asm("shl.b32 %0, %1, 1;" : "=r"(d0) : "r"(t0));
+    asm("shf.l.wrap.b32 %0, %1, %2, 1;" : "=r"(d1) : "r"(t0), "r"(t1));
+    asm("shr.b32 %0, %1, 31;" : "=r"(d2) : "r"(t1));
     asm("add.cc.u32  %0, %3, %6;\n\t"
         "addc.cc.u32 %1, %4, %7;\n\t"
-        "addc.u32    %2, %5, 0;\n\t"
-        "add.cc.u32  %0, %0, %6;\n\t"
-        "addc.cc.u32 %1, %1, %7;\n\t"
-        "addc.u32    %2, %2, 0;"
-        : "=r"(r1), "=r"(r2), "=r"(r3) : "r"(p1), "r"(q0), "r"(q1), "r"(t0), "r"(t1));
+        "addc.u32    %2, %5, %8;"
+        : "=r"(r1), "=r"(r2), "=r"(r3) : "r"(p1), "r"(q0), "r"(q1), "r"(d0), "r"(d1), "r"(d2));
     r0 = p0;
 }
 
@@ -170,11 +172,12 @@ __constant__ u64 c_rct0[12];  /* RC_TERMINAL[0] */
 __constant__ u64 c_diag[12];
 
 struct Params {
-    u64 pre[12];  /* ext(midstate + nonce words with the counter word zero) + RC_INITIAL[0] */
-    u64 t0;       /* first 8 target bytes, big-endian */
-    u64* dump;    /* self-test only: canonical first output element per nonce */
-    u32* out;     /* [0] = candidate count, [1..15] = nonce index */
-    u32 w0;       /* big-endian counter word (nonce bytes 60..63) at index 0 */
+    u64 pre0, pre4; /* lanes 0 and 4 of ext(midstate + B) + RC_INITIAL[0] (t = 0) */
+    u64 K[12];      /* state after the first full round with lanes 0 and 4 left out */
+    u64 t0;         /* first 8 target bytes, big-endian */
+    u64* dump;      /* self-test only: canonical first output element per nonce */
+    u32* out;       /* [0] = candidate count, [1..15] = nonce index */
+    u32 tb;         /* t of nonce index 0 */
     u32 count;
 };
 
@@ -207,23 +210,28 @@ DEV void ext_add(u64 s[12], const u64* add)
 
 /* a*b + w for a lazy 96-bit sum w: w enters the product's carry chain unreduced.
  * a*b + w < 2^128 - 2^96 for b below 0xF3FB... (the internal diagonal), so red128's
- * r3 <= 2^32 - 2 precondition holds. */
+ * r3 <= 2^32 - 2 precondition holds. The cross products a0*b1 + a1*b0 form their own chain on
+ * a natural register pair and join the even chain (a0*b0 + w, a1*b1) at word 1: ptxas would
+ * otherwise assemble unaligned addend pairs with MOVs for every lane. */
 DEV u64 gfma_w(u64 a, u64 b, W w)
 {
     u32 a0, a1, b0, b1; sp64(a, a0, a1); sp64(b, b0, b1);
-    u32 r0, r1, r2, r3;
+    u32 r0, r1, r2, r3, x0, x1, x2;
+    asm("mul.lo.u32     %0, %3, %5;\n\t"
+        "mul.hi.u32     %1, %3, %5;\n\t"
+        "mad.lo.cc.u32  %0, %4, %6, %0;\n\t"
+        "madc.hi.cc.u32 %1, %4, %6, %1;\n\t"
+        "addc.u32       %2, 0, 0;"
+        : "=r"(x0), "=r"(x1), "=r"(x2) : "r"(a0), "r"(a1), "r"(b1), "r"(b0));
     asm("mad.lo.cc.u32  %0, %4, %6, %8;\n\t"
         "madc.hi.cc.u32 %1, %4, %6, %9;\n\t"
         "madc.lo.cc.u32 %2, %5, %7, %10;\n\t"
         "madc.hi.u32    %3, %5, %7, 0;\n\t"
-        "mad.lo.cc.u32  %1, %4, %7, %1;\n\t"
-        "madc.hi.cc.u32 %2, %4, %7, %2;\n\t"
-        "addc.u32       %3, %3, 0;\n\t"
-        "mad.lo.cc.u32  %1, %5, %6, %1;\n\t"
-        "madc.hi.cc.u32 %2, %5, %6, %2;\n\t"
-        "addc.u32       %3, %3, 0;"
+        "add.cc.u32     %1, %1, %11;\n\t"
+        "addc.cc.u32    %2, %2, %12;\n\t"
+        "addc.u32       %3, %3, %13;"
         : "=r"(r0), "=r"(r1), "=r"(r2), "=r"(r3)
-        : "r"(a0), "r"(a1), "r"(b0), "r"(b1), "r"(w.lo), "r"(w.hi), "r"(w.t));
+        : "r"(a0), "r"(a1), "r"(b0), "r"(b1), "r"(w.lo), "r"(w.hi), "r"(w.t), "r"(x0), "r"(x1), "r"(x2));
     return red128(r0, r1, r2, r3);
 }
 
@@ -247,21 +255,33 @@ DEV void internal22(u64 s[12])
     for (int i = 0; i < 12; i++) s[i] = gadd(s[i], c_rct0[i]);
 }
 
-/* Canonical first element of the second squeeze-permutation output for counter value x
- * (x = the nonce's last 4 bytes read little-endian). */
-DEV u64 hash_out0(const Params& p, u32 x)
+/* Canonical first element of the second squeeze-permutation output for the nonce B + t*v.
+ * After the absorb and the first linear layer only lane 0 (-35t) and lane 4 (+35t) depend on t,
+ * so the first full round runs two S-boxes; the other ten are folded into K by the host.
+ * Columns 0 and 4 of M_ext are m0 * (2,1,1) and m0 * (1,2,1) over the three blocks, with
+ * m0 = M4 column 0 = (2,1,1,3). */
+DEV u64 hash_out0(const Params& p, u32 t)
 {
-    /* ext(mid + x*e7) = ext(mid) + x * (column 7 of M_ext) */
-    const u32 col[12] = {1, 1, 3, 2, 2, 2, 6, 4, 1, 1, 3, 2};
     u64 s[12];
+    {
+        const u64 d = 35ull * t;
+        const u64 f = sbox(gadd(p.pre0, 0xFFFFFFFF00000001ull - d));
+        const u64 g = sbox(gadd(p.pre4, d));
+        const W c2 = w2(f, g);
+        const W c[3] = {wadd64(c2, f), wadd64(c2, g), c2};
+        const int m0[4] = {2, 1, 1, 3};
 #pragma unroll
-    for (int i = 0; i < 12; i++) {
-        u64 t;
-        asm("mul.wide.u32 %0, %1, %2;" : "=l"(t) : "r"(x), "r"(col[i]));
-        s[i] = gadd(p.pre[i], t);
+        for (int k = 0; k < 3; k++)
+#pragma unroll
+            for (int j = 0; j < 4; j++) {
+                W v = c[k];
+                if (m0[j] >= 2) v = wadd(v, c[k]);
+                if (m0[j] == 3) v = wadd(v, c[k]);
+                s[4 * k + j] = wred(wadd64(v, p.K[4 * k + j]));
+            }
     }
 #pragma unroll 1
-    for (int g = 0;; g++) {
+    for (int g = 1;; g++) {
 #pragma unroll
         for (int i = 0; i < 12; i++) s[i] = sbox(s[i]);
         if (g == 15) break;
@@ -288,8 +308,7 @@ __global__ void __launch_bounds__(k_tpb) qpow_cuda_scan(const Params p)
 {
     const u32 stride = gridDim.x * blockDim.x;
     for (u32 idx = blockIdx.x * blockDim.x + threadIdx.x; idx < p.count; idx += stride) {
-        const u32 x = __byte_perm(p.w0 + idx, 0, 0x0123);
-        const u64 o = hash_out0(p, x);
+        const u64 o = hash_out0(p, p.tb + idx);
         u32 l, h; sp64(o, l, h);
         const u64 key = mk64(__byte_perm(h, 0, 0x0123), __byte_perm(l, 0, 0x0123));
         if (p.dump) p.dump[idx] = o;
@@ -319,6 +338,8 @@ struct Dev {
 std::vector<Dev> g_devs;
 uint32_t g_batch_req = 0;
 int g_ready = 0;
+uint8_t g_found_nonce[64]; /* last reported nonce and the search counter it came from */
+uint8_t g_found_ctr[64];
 
 bool ck(cudaError_t e, const char* what, int ordinal)
 {
@@ -357,19 +378,64 @@ bool upload_constants()
            cudaMemcpyToSymbol(c_eps, &eps, sizeof(eps)) == cudaSuccess;
 }
 
-/* Kernel parameters for nonces nonce .. nonce + count - 1 (no wrap of the last word). */
-void make_params(const u64 mid[12], const uint8_t nonce[64], Params& p)
+/* ------------------------------------------------------------------ nonce mapping
+ * The search interface counts 64-byte big-endian values. Bytes 0..31 pass through unchanged (they
+ * feed the midstate). Bytes 32..63 are read as a 256-bit counter C = k * 2^26 + t and become eight
+ * little-endian words w = B(k) + t * v with B_i = 2^31 + bits [29i, 29i + 29) of k and
+ * v = (u, -u), u = (4, -17, 11, -3) = column 0 of adj(M4): M_ext * v is zero except lanes 0 and 4.
+ * |17 t| < 2^30.1 keeps every word inside [0, 2^32). Counters of one job differ in k only in their
+ * low words, never by a multiple of v, so distinct counters give distinct nonces. */
+constexpr int k_tbits = 26;
+constexpr uint64_t k_tspan = 1ull << k_tbits;
+const int k_v[8] = {4, -17, 11, -3, -4, 17, -11, 3};
+
+/* bits [pos, pos + len) of the 256-bit big-endian number b[0..31] */
+u32 bits256(const uint8_t b[32], int pos, int len)
 {
+    u32 r = 0;
+    for (int i = len - 1; i >= 0; i--) {
+        const int bit = pos + i;
+        r = (r << 1) | (bit < 256 ? (u32)(b[31 - bit / 8] >> (bit % 8)) & 1u : 0u);
+    }
+    return r;
+}
+
+void base_words(const uint8_t ctr[64], u32 b[8])
+{
+    for (int i = 0; i < 8; i++) b[i] = 0x80000000u | bits256(ctr + 32, k_tbits + 29 * i, 29);
+}
+
+/* The nonce that search counter `ctr` stands for. */
+void map_nonce(const uint8_t ctr[64], uint8_t out[64])
+{
+    u32 b[8];
+    base_words(ctr, b);
+    const u32 t = bits256(ctr + 32, 0, k_tbits);
+    memcpy(out, ctr, 32);
+    for (int i = 0; i < 8; i++) {
+        const u32 w = b[i] + (u32)((int64_t)k_v[i] * t);
+        memcpy(out + 32 + 4 * i, &w, 4);
+    }
+}
+
+/* Kernel parameters for counters ctr .. ctr + count - 1 (count <= k_tspan - t, k fixed). */
+void make_params(const u64 mid[12], const uint8_t ctr[64], Params& p)
+{
+    u32 b[8];
+    base_words(ctr, b);
     u64 s[12];
     memcpy(s, mid, sizeof(s));
-    for (int i = 0; i < 7; i++) {
-        u32 w;
-        memcpy(&w, nonce + 32 + 4 * i, 4);
-        s[i] = qpow::gf_add(s[i], (u64)w);
-    }
+    for (int i = 0; i < 8; i++) s[i] = qpow::gf_add(s[i], (u64)b[i]);
     qpow::ext_layer(s);
-    for (int i = 0; i < 12; i++) p.pre[i] = qpow::gf_canon(qpow::gf_add(s[i], qpow::RC_INITIAL[0][i]));
-    p.w0 = ((u32)nonce[60] << 24) | ((u32)nonce[61] << 16) | ((u32)nonce[62] << 8) | nonce[63];
+    for (int i = 0; i < 12; i++) s[i] = qpow::gf_canon(qpow::gf_add(s[i], qpow::RC_INITIAL[0][i]));
+    p.pre0 = s[0];
+    p.pre4 = s[4];
+    /* first full round without lanes 0 and 4 */
+    u64 k[12];
+    for (int i = 0; i < 12; i++) k[i] = (i == 0 || i == 4) ? 0 : qpow::gf_sbox(s[i]);
+    qpow::ext_layer(k);
+    for (int i = 0; i < 12; i++) p.K[i] = qpow::gf_canon(qpow::gf_add(k[i], qpow::RC_INITIAL[1][i]));
+    p.tb = bits256(ctr + 32, 0, k_tbits);
 }
 
 /* Reference value of the kernel's output for one nonce. */
@@ -388,16 +454,18 @@ u64 cpu_out0(const uint8_t header[32], const uint8_t nonce[64])
 /* Hash 4096 nonces on the device and compare a spread of them with the reference code. */
 bool self_test(Dev& d)
 {
-    uint8_t header[32], nonce[64];
+    uint8_t header[32], ctr[64];
     for (int i = 0; i < 32; i++) header[i] = (uint8_t)(i * 37 + 11);
-    for (int i = 0; i < 64; i++) nonce[i] = (uint8_t)(i * 91 + 5);
-    nonce[60] = 0x10;
-    nonce[63] = 0xF0; /* crosses byte boundaries of the counter inside the run */
+    for (int i = 0; i < 64; i++) ctr[i] = (uint8_t)(i * 91 + 5);
+    ctr[60] = 0x13;  /* t starts at 0x3000FF0: crosses byte boundaries, stays below 2^26 */
+    ctr[61] = 0x00;
+    ctr[62] = 0x0F;
+    ctr[63] = 0xF0;
     const u32 n = 4096;
     u64 mid[12];
-    qpow::mining_midstate(header, nonce, mid);
+    qpow::mining_midstate(header, ctr, mid);
     Params p{};
-    make_params(mid, nonce, p);
+    make_params(mid, ctr, p);
     p.count = n;
     p.t0 = 0;
     u64* dump = nullptr;
@@ -414,11 +482,12 @@ bool self_test(Dev& d)
     if (ok) ok = ck(cudaMemcpy(got.data(), dump, n * sizeof(u64), cudaMemcpyDeviceToHost), "self-test copy", d.ordinal);
     cudaFree(dump);
     if (!ok) return false;
-    const u32 idx[] = {0, 1, 2, 15, 16, 255, 256, 1000, 2047, 4095};
-    for (u32 i : idx) {
-        uint8_t nn[64];
-        memcpy(nn, nonce, 64);
-        be_add(nn, i);
+    /* 128 samples: an unstable overclock that corrupts a few hashes in a thousand still shows up */
+    for (u32 i = 0; i < n; i += 32) {
+        uint8_t c[64], nn[64];
+        memcpy(c, ctr, 64);
+        be_add(c, i);
+        map_nonce(c, nn);
         const u64 ref = cpu_out0(header, nn);
         if (got[i] != ref) {
             fprintf(stderr, "[qpow-cuda] device %d: self-test mismatch at nonce +%u (got %016llx, want %016llx)\n",
@@ -557,16 +626,15 @@ extern "C" int cp_qpow_cuda_worker_search(
             *out_hashes = done;
             return CP_QPOW_CUDA_CANCELLED;
         }
-        /* Split the next step across the devices; no launch crosses a counter-word wrap. */
+        /* Split the next step across the devices; no launch crosses a wrap of t (k stays fixed). */
         uint64_t planned = 0;
         for (Dev& d : g_devs) {
             d.n = 0;
             if (done + planned >= count) continue;
             memcpy(d.base, cur, 64);
-            const u32 w0 = ((u32)cur[60] << 24) | ((u32)cur[61] << 16) | ((u32)cur[62] << 8) | cur[63];
             uint64_t n = d.launch;
             n = n < count - done - planned ? n : count - done - planned;
-            const uint64_t room = (uint64_t)0x100000000ull - w0;
+            const uint64_t room = k_tspan - bits256(cur + 32, 0, k_tbits);
             n = n < room ? n : room;
             d.n = (uint32_t)n;
             be_add(cur, n);
@@ -617,15 +685,18 @@ extern "C" int cp_qpow_cuda_worker_search(
             for (u32 k = 0; k < nc && !found; k++) {
                 const u32 idx = d.h_out[1 + k];
                 if (idx >= best) continue;
-                uint8_t nonce[64], hash[64];
-                memcpy(nonce, d.base, 64);
-                be_add(nonce, idx);
+                uint8_t c[64], nonce[64], hash[64];
+                memcpy(c, d.base, 64);
+                be_add(c, idx);
+                map_nonce(c, nonce);
                 u64 m[12];
                 qpow::mining_midstate(header, nonce, m);
                 if (qpow::hash_if_valid(m, nonce + 32, target_be, hash)) {
                     best = idx;
                     memcpy(out_nonce_be, nonce, 64);
                     memcpy(out_hash_be, hash, 64);
+                    memcpy(g_found_nonce, nonce, 64);
+                    memcpy(g_found_ctr, c, 64);
                 }
             }
             if (best != 0xFFFFFFFFu) found = 1;
@@ -635,4 +706,10 @@ extern "C" int cp_qpow_cuda_worker_search(
         if (found) return CP_QPOW_CUDA_OK_FOUND;
     }
     return CP_QPOW_CUDA_OK_EXHAUSTED;
+}
+
+extern "C" void cp_qpow_cuda_worker_resume(const uint8_t found_be[64], uint8_t next_be[64])
+{
+    memcpy(next_be, memcmp(found_be, g_found_nonce, 64) == 0 ? g_found_ctr : found_be, 64);
+    be_add(next_be, 1);
 }

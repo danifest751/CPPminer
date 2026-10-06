@@ -422,6 +422,9 @@ struct QpowGpuOps {
     int (*search)(const uint8_t header[32], const uint8_t target_be[64],
                   const uint8_t start_be[64], uint64_t count,
                   uint8_t out_nonce_be[64], uint8_t out_hash_be[64], uint64_t* out_hashes);
+    /* Optional: where to continue after a found nonce when search() does not report the
+     * searched counters themselves; null means found + 1. */
+    void (*resume)(const uint8_t found_be[64], uint8_t next_be[64]);
 };
 
 static int mine_job_gpu(const QpowGpuOps& ops, const CpQpowJob* job, int sock, int* msg_id,
@@ -468,8 +471,12 @@ static int mine_job_gpu(const QpowGpuOps& ops, const CpQpowJob* job, int sock, i
                 stop_rc = CP_JOB_NONE;
                 break;
             }
-            memcpy(cur, out_nonce, CP_QPOW_NONCE_BYTES);
-            qpow::inc_be(cur);
+            if(ops.resume){
+                ops.resume(out_nonce, cur);
+            } else {
+                memcpy(cur, out_nonce, CP_QPOW_NONCE_BYTES);
+                qpow::inc_be(cur);
+            }
         } else if(st == CP_QPOW_OCL_OK_EXHAUSTED){
             add_be_u64(cur, hashes > 0 ? hashes : search_chunk);
         } else if(st == CP_QPOW_OCL_CANCELLED){
@@ -502,7 +509,7 @@ static int mine_job_opencl(const CpQpowJob* job, int sock, int* msg_id,
                            const char* worker_name)
 {
     static const QpowGpuOps ops = {
-        "opencl", cp_qpow_opencl_worker_is_ready, cp_qpow_opencl_worker_search};
+        "opencl", cp_qpow_opencl_worker_is_ready, cp_qpow_opencl_worker_search, nullptr};
     return mine_job_gpu(ops, job, sock, msg_id, worker_name);
 }
 #endif
@@ -515,7 +522,8 @@ static int mine_job_cuda(const CpQpowJob* job, int sock, int* msg_id,
                          const char* worker_name)
 {
     static const QpowGpuOps ops = {
-        "cuda", cp_qpow_cuda_worker_is_ready, cp_qpow_cuda_worker_search};
+        "cuda", cp_qpow_cuda_worker_is_ready, cp_qpow_cuda_worker_search,
+        cp_qpow_cuda_worker_resume};
     return mine_job_gpu(ops, job, sock, msg_id, worker_name);
 }
 #endif

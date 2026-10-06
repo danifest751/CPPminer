@@ -23,8 +23,10 @@ void cp_qpow_cuda_worker_set_batch_size(uint32_t batch);
 /* Nonces one search step covers on all devices (for the mine loop's chunking). */
 uint64_t cp_qpow_cuda_worker_batch_size(void);
 
-/* Search [start_be, start_be + count). Every GPU candidate is re-hashed on the host;
- * OK_FOUND only for a nonce whose full 64-byte hash is below the target. */
+/* Search the counters [start_be, start_be + count). Each counter stands for one nonce (bytes
+ * 0..31 as given, bytes 32..63 mapped onto a structured nonce family), so out_nonce_be is the
+ * nonce to submit, not a counter. Every GPU candidate is re-hashed on the host; OK_FOUND only
+ * for a nonce whose full 64-byte hash is below the target. */
 int cp_qpow_cuda_worker_search(
     const uint8_t header[32],
     const uint8_t target_be[64],
@@ -33,6 +35,9 @@ int cp_qpow_cuda_worker_search(
     uint8_t out_nonce_be[64],
     uint8_t out_hash_be[64],
     uint64_t* out_hashes);
+
+/* The counter to continue from after search() reported found_be. */
+void cp_qpow_cuda_worker_resume(const uint8_t found_be[64], uint8_t next_be[64]);
 
 #ifdef __cplusplus
 }
