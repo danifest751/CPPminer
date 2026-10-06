@@ -509,7 +509,8 @@ static int mine_job_opencl(const CpQpowJob* job, int sock, int* msg_id,
                            const char* worker_name)
 {
     static const QpowGpuOps ops = {
-        "opencl", cp_qpow_opencl_worker_is_ready, cp_qpow_opencl_worker_search, nullptr};
+        "opencl", cp_qpow_opencl_worker_is_ready, cp_qpow_opencl_worker_search,
+        cp_qpow_opencl_worker_resume};
     return mine_job_gpu(ops, job, sock, msg_id, worker_name);
 }
 #endif
@@ -605,7 +606,7 @@ static int mine_job_cpu(const CpQpowJob* job, int sock, int* msg_id,
                     running.store(0, std::memory_order_relaxed);
                     break;
                 }
-                memcpy(cur, r.nonce, CP_QPOW_NONCE_BYTES);
+                memcpy(cur, r.counter, CP_QPOW_NONCE_BYTES);
                 qpow::inc_be(cur);
             } else {
                 add_be_u64(cur, k_search_chunk);

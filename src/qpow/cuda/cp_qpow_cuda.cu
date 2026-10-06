@@ -1,7 +1,7 @@
 /* Quantus QPoW (Poseidon2 over Goldilocks, width 12) mining kernel and CUDA worker.
  *
- * One thread hashes one nonce. Inside a launch the nonces form the line B + t*v (see the nonce
- * mapping below), along which only lanes 0 and 4 change after the first linear layer: the host
+ * One thread hashes one nonce. Inside a launch the nonces form the line B + t*v (see
+ * qpow/nonce_line.hpp), along which only lanes 0 and 4 change after the first linear layer: the host
  * folds the midstate, B, the first linear layer and the other ten S-boxes of the first round
  * into Params, and the kernel runs two S-boxes before the rest of both permutations. Only the
  * first output element is computed after the last S-box layer: it holds the first 8 hash bytes,
@@ -14,6 +14,7 @@
 
 #include "cp_job_ctrl.h"
 #include "cp_pool.h"
+#include "qpow/nonce_line.hpp"
 #include "qpow/poseidon2.hpp"
 
 #include <cuda_runtime.h>
@@ -378,64 +379,19 @@ bool upload_constants()
            cudaMemcpyToSymbol(c_eps, &eps, sizeof(eps)) == cudaSuccess;
 }
 
-/* ------------------------------------------------------------------ nonce mapping
- * The search interface counts 64-byte big-endian values. Bytes 0..31 pass through unchanged (they
- * feed the midstate). Bytes 32..63 are read as a 256-bit counter C = k * 2^26 + t and become eight
- * little-endian words w = B(k) + t * v with B_i = 2^31 + bits [29i, 29i + 29) of k and
- * v = (u, -u), u = (4, -17, 11, -3) = column 0 of adj(M4): M_ext * v is zero except lanes 0 and 4.
- * |17 t| < 2^30.1 keeps every word inside [0, 2^32). Counters of one job differ in k only in their
- * low words, never by a multiple of v, so distinct counters give distinct nonces. */
-constexpr int k_tbits = 26;
-constexpr uint64_t k_tspan = 1ull << k_tbits;
-const int k_v[8] = {4, -17, 11, -3, -4, 17, -11, 3};
+using qpow::nonce_line::kTSpan;
 
-/* bits [pos, pos + len) of the 256-bit big-endian number b[0..31] */
-u32 bits256(const uint8_t b[32], int pos, int len)
-{
-    u32 r = 0;
-    for (int i = len - 1; i >= 0; i--) {
-        const int bit = pos + i;
-        r = (r << 1) | (bit < 256 ? (u32)(b[31 - bit / 8] >> (bit % 8)) & 1u : 0u);
-    }
-    return r;
-}
+void map_nonce(const uint8_t ctr[64], uint8_t out[64]) { qpow::nonce_line::map(ctr, out); }
 
-void base_words(const uint8_t ctr[64], u32 b[8])
-{
-    for (int i = 0; i < 8; i++) b[i] = 0x80000000u | bits256(ctr + 32, k_tbits + 29 * i, 29);
-}
-
-/* The nonce that search counter `ctr` stands for. */
-void map_nonce(const uint8_t ctr[64], uint8_t out[64])
-{
-    u32 b[8];
-    base_words(ctr, b);
-    const u32 t = bits256(ctr + 32, 0, k_tbits);
-    memcpy(out, ctr, 32);
-    for (int i = 0; i < 8; i++) {
-        const u32 w = b[i] + (u32)((int64_t)k_v[i] * t);
-        memcpy(out + 32 + 4 * i, &w, 4);
-    }
-}
-
-/* Kernel parameters for counters ctr .. ctr + count - 1 (count <= k_tspan - t, k fixed). */
+/* Kernel parameters for counters ctr .. ctr + count - 1 (count <= kTSpan - t: k stays fixed). */
 void make_params(const u64 mid[12], const uint8_t ctr[64], Params& p)
 {
-    u32 b[8];
-    base_words(ctr, b);
-    u64 s[12];
-    memcpy(s, mid, sizeof(s));
-    for (int i = 0; i < 8; i++) s[i] = qpow::gf_add(s[i], (u64)b[i]);
-    qpow::ext_layer(s);
-    for (int i = 0; i < 12; i++) s[i] = qpow::gf_canon(qpow::gf_add(s[i], qpow::RC_INITIAL[0][i]));
-    p.pre0 = s[0];
-    p.pre4 = s[4];
-    /* first full round without lanes 0 and 4 */
-    u64 k[12];
-    for (int i = 0; i < 12; i++) k[i] = (i == 0 || i == 4) ? 0 : qpow::gf_sbox(s[i]);
-    qpow::ext_layer(k);
-    for (int i = 0; i < 12; i++) p.K[i] = qpow::gf_canon(qpow::gf_add(k[i], qpow::RC_INITIAL[1][i]));
-    p.tb = bits256(ctr + 32, 0, k_tbits);
+    u64 pk[qpow::nonce_line::kParams];
+    qpow::nonce_line::launch_params(mid, ctr, pk);
+    p.pre0 = pk[0];
+    p.pre4 = pk[1];
+    memcpy(p.K, pk + 2, sizeof(p.K));
+    p.tb = qpow::nonce_line::t_of(ctr);
 }
 
 /* Reference value of the kernel's output for one nonce. */
@@ -634,7 +590,7 @@ extern "C" int cp_qpow_cuda_worker_search(
             memcpy(d.base, cur, 64);
             uint64_t n = d.launch;
             n = n < count - done - planned ? n : count - done - planned;
-            const uint64_t room = k_tspan - bits256(cur + 32, 0, k_tbits);
+            const uint64_t room = kTSpan - qpow::nonce_line::t_of(cur);
             n = n < room ? n : room;
             d.n = (uint32_t)n;
             be_add(cur, n);
