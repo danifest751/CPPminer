@@ -1,6 +1,14 @@
 // Standalone CUDA Quantus (Poseidon2 / Goldilocks) mining kernel: verify + bench.
 //   qtc test            field-op edge tests + hash cross-check against the CPU reference
 //   qtc bench SEC [TPB] [NPT]
+//   qtc cyc [NPH]       SM cycles per hash (clock64)
+//
+// Carry-chain A/B switches (build with -D, e.g. nvcc -DQTC_RED_SIGNED=1 -DQTC_INT_SPLIT=1):
+//   QTC_RED_SIGNED 1 = signed long long reduction (KanQ / official combined_reduce)
+//   QTC_MULHI      1 = native __umul64hi product (official v5)
+//   QTC_INT_SPLIT  1 = split internal product (sum + separate mul/add128; official/KanQ)
+//   QTC_SUM_SPLIT  1 = row sum in two independent u64 lo/hi accumulators (KanQ)
+//   QTC_RED_ALU 1, QTC_SQR3 1|2, QTC_INT_W 0|1, QTC_GFMA2 0|1|2, QTC_SUB 0|1, QTC_IUNR n
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -44,10 +52,28 @@ __constant__ u32 c_eps;
 #ifndef QTC_RED_ALU
 #define QTC_RED_ALU 0
 #endif
+#ifndef QTC_RED_SIGNED
+#define QTC_RED_SIGNED 0  /* 1 = KanQ/official signed long long form, lets ptxas build the carry net */
+#endif
+DEV u64 red128_signed(u32 r0, u32 r1, u32 r2, u32 r3)
+{
+    /* From KanQ goldilocks32.cuh fold128_lazy32 (same as official quantus-miner combined_reduce):
+     * X = r0 - r2 - r3 in (-2^33,2^32); Y = r1 + r2 + (X>>32); fold y_hi*2^64 = y_hi*EPS.
+     * Signed C: ptxas reorders the CC chain into an equivalent carry network. Lazy, +/-EPS,
+     * host re-verifies every candidate. */
+    const long long X = (long long)r0 - (long long)r2 - (long long)r3;
+    const long long Y = (long long)r1 + (long long)r2 + (X >> 32);
+    const long long y_hi = Y >> 32;
+    const u32 o1 = (u32)(Y + y_hi);
+    const u32 o0 = (u32)(X - y_hi);
+    return mk64(o0, o1);
+}
 DEV u64 red128(u32 r0, u32 r1, u32 r2, u32 r3)
 {
     u32 z0, z1;
-#if QTC_RED_ALU
+#if QTC_RED_SIGNED
+    return red128_signed(r0, r1, r2, r3);
+#elif QTC_RED_ALU
     // r2*EPS = (r2 << 32) - r2 from adds: keeps the reduction on the ALU pipe, which Turing
     // has spare, instead of a wide multiply on the busier FMA pipe.
     asm("{.reg .u32 u, h, t0, t1, rc, tc;\n\t"
@@ -102,6 +128,19 @@ DEV void mulk(u64 a, u64 b, u32 c0, u32 c1, u32& r0, u32& r1, u32& r2, u32& r3)
 }
 
 DEV void mul128(u64 a, u64 b, u32& r0, u32& r1, u32& r2, u32& r3) { mulk<false>(a, b, 0, 0, r0, r1, r2, r3); }
+#ifndef QTC_MULHI
+#define QTC_MULHI 0  /* 1 = native __umul64hi product (official v5); 0 = 3x mul.wide.u32 (ours) */
+#endif
+/* 64x64 -> 128 as one lo product + native __umul64hi, split into 32-bit limbs. The official
+ * miner moved to this (v5, +7% on the 3060 Ti); on Turing there is no VCC, so the wide-mul chain
+ * of mulk() may be more expensive than the native hi/lo pair. */
+DEV void mul128_hi(u64 a, u64 b, u32& r0, u32& r1, u32& r2, u32& r3)
+{
+    const u64 lo = a * b;
+    const u64 hi = __umul64hi(a, b);
+    r0 = (u32)lo; r1 = (u32)(lo >> 32);
+    r2 = (u32)hi; r3 = (u32)(hi >> 32);
+}
 #ifndef QTC_SQR3
 #define QTC_SQR3 1
 #endif
@@ -169,7 +208,16 @@ DEV void fma128(u64 a, u64 b, u64 c, u32& r0, u32& r1, u32& r2, u32& r3)
         : "r"(a0), "r"(a1), "r"(b0), "r"(b1), "r"(c0), "r"(c1), "r"(t0), "r"(t1), "r"(q0), "r"(q1));
 }
 
-DEV u64 gmul(u64 a, u64 b) { u32 r0, r1, r2, r3; mul128(a, b, r0, r1, r2, r3); return red128(r0, r1, r2, r3); }
+DEV void mul128u(u64 a, u64 b, u32& r0, u32& r1, u32& r2, u32& r3)
+{
+#if QTC_MULHI
+    mul128_hi(a, b, r0, r1, r2, r3);
+#else
+    mul128(a, b, r0, r1, r2, r3);
+#endif
+}
+
+DEV u64 gmul(u64 a, u64 b) { u32 r0, r1, r2, r3; mul128u(a, b, r0, r1, r2, r3); return red128(r0, r1, r2, r3); }
 DEV u64 gsqr(u64 a) { u32 r0, r1, r2, r3; sqr128(a, r0, r1, r2, r3); return red128(r0, r1, r2, r3); }
 DEV u64 gfma(u64 a, u64 b, u64 c) { u32 r0, r1, r2, r3; fma128(a, b, c, r0, r1, r2, r3); return red128(r0, r1, r2, r3); }
 
@@ -244,9 +292,9 @@ DEV u64 sbox(u64 x)
 {
     u32 r0, r1, r2, r3;
     sqr128(x, r0, r1, r2, r3); const u64 x2 = redk<0>(r0, r1, r2, r3);
-    mul128(x2, x, r0, r1, r2, r3); const u64 x3 = redk<1>(r0, r1, r2, r3);
+    mul128u(x2, x, r0, r1, r2, r3); const u64 x3 = redk<1>(r0, r1, r2, r3);
     sqr128(x2, r0, r1, r2, r3); const u64 x4 = redk<2>(r0, r1, r2, r3);
-    mul128(x3, x4, r0, r1, r2, r3); return redk<3>(r0, r1, r2, r3);
+    mul128u(x3, x4, r0, r1, r2, r3); return redk<3>(r0, r1, r2, r3);
 }
 
 // ---------------------------------------------------------------- constants
@@ -309,6 +357,49 @@ DEV void ext_add(u64 s[12], const u64* add)
 #ifndef QTC_INT_W
 #define QTC_INT_W 1
 #endif
+#ifndef QTC_SUM_SPLIT
+#define QTC_SUM_SPLIT 0  /* 1 = row sum in two independent u64 lo/hi accumulators (KanQ), no carry chain */
+#endif
+/* Row sum of up to 12 values as one lazy W. KanQ/official accumulate the 32-bit low and high
+ * halves in two independent u64 registers (no inter-value carry dependency, ptxas folds into an
+ * IADD3 tree); our default chains wadd64 (add.cc carry chain). Same 96-bit value. */
+DEV W wsum(const u64* s, int from, int to)
+{
+    W r;
+    if (QTC_SUM_SPLIT) {
+        u64 lo = 0, hi = 0;
+#pragma unroll
+        for (int i = from; i <= to; i++) { lo += (u32)s[i]; hi += s[i] >> 32; }
+        const u64 mid = (lo >> 32) + (u32)hi;
+        r.lo = (u32)lo;
+        r.hi = (u32)mid;
+        r.t  = (u32)((mid >> 32) + (hi >> 32));
+    } else {
+        r = w2(s[from], s[from + 1]);
+#pragma unroll
+        for (int i = from + 2; i <= to; i++) r = wadd64(r, s[i]);
+    }
+    return r;
+}
+#ifndef QTC_INT_SPLIT
+#define QTC_INT_SPLIT 0  /* 1 = official/KanQ split: sum lo/hi, then separate mul + add128 */
+#endif
+/* Split internal product a*b + w (w = lazy 96-bit): the sum and the product are NOT fused into
+ * one carry chain. Matches official quantus-miner int_round_p and KanQ: the row sum is added to a
+ * separately computed 128-bit product. The official explicitly rejected the fused form (our
+ * gfma_w) at -3..5% with a 16 B spill. */
+DEV u64 mul_add_wide_split(u64 a, u64 b, W w)
+{
+    u32 r0, r1, r2, r3;
+    mul128u(a, b, r0, r1, r2, r3);
+    asm("add.cc.u32  %0, %0, %4;\n\t"
+        "addc.cc.u32 %1, %1, %5;\n\t"
+        "addc.cc.u32 %2, %2, %6;\n\t"
+        "addc.u32    %3, %3, 0;"
+        : "+r"(r0), "+r"(r1), "+r"(r2), "+r"(r3)
+        : "r"(w.lo), "r"(w.hi), "r"(w.t));
+    return red128(r0, r1, r2, r3);
+}
 // a*b + w with w a lazy 96-bit sum (lo, hi, t): w enters the product chain unreduced.
 // a*b + w < 2^128 - 2^96 when b < 0xF3FB... (MDS diagonal), so r3 <= 2^32 - 2 holds.
 DEV u64 red128_alu(u32 r0, u32 r1, u32 r2, u32 r3)
@@ -424,13 +515,15 @@ DEV void internal22(u64 s[12], u64 rc0)
 #endif
 #if QTC_INT_W
         // lanes 1..11 do not depend on the S-box: sum them while it runs
-        W rest = w2(s[1], s[2]);
-#pragma unroll
-        for (int i = 3; i < 12; i++) rest = wadd64(rest, s[i]);
+        W rest = wsum(s, 1, 11);
         s[0] = sbox(s[0]);
         W sg = wadd64(rest, s[0]);
         W sg0 = wadd64(sg, c_rci[r]);
-#if QTC_GFMA2 == 2
+#if QTC_INT_SPLIT
+        s[0] = mul_add_wide_split(s[0], c_diag[0], sg0);
+#pragma unroll
+        for (int i = 1; i < 12; i++) s[i] = mul_add_wide_split(s[i], c_diag[i], sg);
+#elif QTC_GFMA2 == 2
         s[0] = gfma_y(s[0], c_diag[0], sg0);
 #pragma unroll
         for (int i = 1; i < 12; i++) s[i] = gfma_y(s[i], c_diag[i], sg);
