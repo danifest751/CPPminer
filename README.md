@@ -25,9 +25,20 @@ Pearl, full pool size, default settings, stock power limit (1 TMAC/s = 1 TH/s on
 | RTX 5070 | 250 W | 115–117 |
 | RTX 3090 | 350 W | 108–113 |
 | CMP 50HX | 225 W | 68–69 |
+| Radeon AI PRO R9700 | stock | 88.5 |
 | Arc A380 | stock | 18.8 |
 | Radeon 780M (iGPU) | laptop | 6.4 |
 | RX 580 4 GB | stock | 1.84 |
+
+Quantus (QTC), stock power limit:
+
+| GPU | Power | Backend | MH/s |
+|---|---:|---|---:|
+| RTX 3090 | 350 W | CUDA | 419 |
+| RTX 2080 Ti | 250 W | CUDA | 316 |
+| CMP 50HX | 225 W | CUDA | 288 |
+| Radeon AI PRO R9700 | stock | OpenCL | 162 |
+| Arc A380 | stock | OpenCL | 30 |
 
 More cards and CPUs: [Supported hardware and speed](#supported-hardware-and-speed).
 
@@ -59,6 +70,9 @@ More cards and CPUs: [Supported hardware and speed](#supported-hardware-and-spee
 | **NVIDIA Ampere / Ada / Blackwell** (RTX 30xx, 40xx, 50xx, A-series) | Own `mma.m16n8k32` kernel with a 4-stage `cp.async` ring on packed operands: RTX 3090 31 → 113 TMAC/s, RTX 4090 244 → 273, RTX 5070 107 → 115. It also runs on cards where upstream did not start |
 | **All CUDA** | Noisy matrices stored in a packed layout, so every k-tile of a threadblock is one contiguous read (less L2/DRAM traffic, higher power-limited clocks); lighter milestone code; the next attempt's matrix is prepared while the current one is scanned |
 | **AMD RDNA3** (RX 7000, Radeon 780M/760M) | WMMA matrix cores (`v_wmma_i32_16x16x16_iu8`): 780M 3.65 → 6.4 TMAC/s. Before that, `v_dot4` and work-group swizzle |
+| **AMD RDNA4** (RX 9000, Radeon AI PRO R9700) | WMMA on gfx12, the operand layout picked by a start-up self-test: R9700 88.5 TMAC/s |
+| **Quantus on NVIDIA** | New CUDA backend (`--algo quantus --backend cuda`): Goldilocks arithmetic tuned for the integer pipes, lazy 96-bit sums in the linear layers, only two S-boxes in the first round. CMP 50HX 101 (OpenCL) → 288 MH/s |
+| **Quantus on OpenCL** | Rewritten kernel: variants probed per device, carry-free 22-bit limbs in the linear layers, carry chains through `__builtin_addc` on AMD, launch pipeline. A380 → 30 MH/s |
 | **AMD Polaris and older GCN** (RX 470/480/570/580, Fiji, Tonga) | Dedicated 24-bit multiply-add kernel: RX 580 1.38 → 1.84 TMAC/s |
 | **Intel Arc** (Xe-HPG) | `--backend onednn`: an ESIMD XMX kernel does the GEMM, milestone XOR and the whole jackpot in one pass, on operands the prep writes in DPAS layout (A380 3.2 → 18.8 TMAC/s); gemmstone systolic kernels as the fallback (16.7) |
 | **Qualcomm Adreno** | The prep program compiles now, and a 4x4 register tile is used: ~15 → ~700 GMAC/s |
@@ -86,6 +100,19 @@ Hashrate is in **MAC/s**: multiply-accumulates per second of the int8 matrix pro
 | Radeon 780M (iGPU) | RDNA3, gfx1103 | OpenCL, WMMA | 6.4 | laptop, shared memory |
 | RX 580 4 GB | Polaris, gfx803 | OpenCL, GCN kernel | 1.84 | AMD Windows driver |
 | Adreno 830 | Snapdragon 8 Elite | OpenCL, 4x4 tile | ~0.7 | 8192² |
+
+### Quantus GPUs measured by the fork
+
+| GPU | Architecture | Backend | MH/s | Notes |
+|---|---|---|---|---|
+| RTX 3090 | Ampere, sm_86 | CUDA | 419 | 350 W, `--mock` |
+| RTX 2080 Ti | Turing, sm_75 | CUDA | 316 | 250 W, `--mock` |
+| CMP 50HX | Turing, sm_75 | CUDA | 288 | 225 W, Kryptex, all shares accepted |
+| RTX 5070 | Blackwell, sm_120 | CUDA | ~370 | kernel benchmark, 250 W |
+| Radeon AI PRO R9700 | RDNA4, gfx1201 | OpenCL | 162 | per GPU; before the `__builtin_addc` carry chains |
+| Arc A380 | Xe-HPG (DG2) | OpenCL | 30 | Linux, Kryptex |
+
+Every Quantus GPU backend checks its kernel against the CPU at start-up, and every candidate share is hashed again on the CPU before it is sent.
 
 ### CPUs measured by the fork
 
@@ -118,7 +145,7 @@ Measured by the upstream author on upstream builds; the fork's kernels for these
 | NVIDIA GTX 16xx, CMP 30HX (Turing without tensor cores) | `cuda` | not measured; `--cuda-mma simt` is the safe choice |
 | NVIDIA RTX 30xx / 40xx, A-series (Ampere, Ada) | `cuda` | tensor cores, multistage |
 | AMD RX 7000 / 780M / 760M (RDNA3) | `opencl` | WMMA |
-| AMD RX 9000 (RDNA4) | `opencl` | `v_dot4`; WMMA is opt-in with `--ocl-dot wmma` (not yet verified on hardware) |
+| AMD RX 9000, Radeon AI PRO R9700 (RDNA4) | `opencl` | WMMA, operand layout picked by a start-up self-test |
 | AMD RX 6000, Radeon VII (Vega 20) | `opencl` | `v_dot4` |
 | AMD RX 5000 (RDNA1) | `opencl` | `v_dot4` where the chip has it, otherwise scalar |
 | AMD Vega 56 / 64 | `opencl` | scalar |
@@ -139,6 +166,7 @@ Measured by the upstream author on upstream builds; the fork's kernels for these
    - HeroMiners: your Pearl address `prl1...`;
    - Kryptex: your Kryptex account (`krx...`) or a Pearl address.
 3. Intel Arc: use `start-herominers-intel.bat` (`--backend onednn`). AMD GPU: change `--backend cuda` to `--backend opencl`. CPU only: `--backend cpu`.
+   Quantus: `start-quantus-kryptex.bat` (set `WALLET` to your Kryptex account `krx...`).
 4. Double-click the script. It restarts the miner if it exits.
 
 Requirements:
@@ -178,6 +206,7 @@ cppminer --backend cuda --mock              # mines offline until the first shar
 | **HeroMiners** | `stratum+tcp://ru.pearl.herominers.com:1200` (other regions: [pearl.herominers.com](https://pearl.herominers.com)) | Pearl address `prl1...` | Worker name from `--worker`; gzip proofs |
 | **Kryptex** | `stratum+tcp://prl.kryptex.network:7048` | Kryptex account or Pearl address | Worker sent as `WALLET.worker`; gzip proofs; `--pool-pass d=N` sets the share difficulty |
 | **Kryptex (Russia)** | `stratum+tcp://prl-ru.kryptex.network:7048` | same | Use this one from Russia (see below) |
+| **Kryptex Quantus** | `stratum+tcp://qtc.kryptex.network:7049`, from Russia `stratum+tcp://qtc-ru.kryptex.network:7049` | Kryptex account `krx...` | `--algo quantus` |
 | **LuckyPool** | `stratum+tcp://pearl-eu1.luckypool.io:3360` (GPU), `stratum+tcp://pearl-cpu-eu1.luckypool.io:3370` (CPU) | Pearl address | Plain (uncompressed) proofs |
 
 **Proof compression.** Kryptex and HeroMiners speak the gzip stratum v2 ([spec](https://gist.github.com/maxmalysh/eaaf4332dbc5ca99d0a78f24a733fffe)), and the miner enables it automatically when the pool answers `"type":"v2"`. A GPU share then takes ~40 KB instead of ~130 KB.
@@ -220,6 +249,12 @@ cppminer --backend cpu --no-smt --pool stratum+tcp://pearl-cpu-eu1.luckypool.io:
 
 # Several NVIDIA GPUs in one process (independent A attempts per device)
 cppminer --backend cuda --devices 0,1,2 --pool ... --wallet ... --worker rig1
+
+# Quantus on an NVIDIA GPU, Kryptex
+cppminer --algo quantus --backend cuda --devices 0 --pool stratum+tcp://qtc.kryptex.network:7049 --wallet krx... --worker rig1
+
+# Quantus on an AMD / Intel GPU
+cppminer --algo quantus --backend opencl --devices 0 --pool stratum+tcp://qtc.kryptex.network:7049 --wallet krx... --worker rig1
 
 # Quantus on CPU
 cppminer --algo quantus --backend cpu --threads 8 --pool stratum+tcp://HOST:PORT --wallet qzpp... --worker rig1
@@ -434,7 +469,7 @@ Cross-building with the NDK works with `-DCP_PROOF_FFI=OFF`. That build can benc
 
 ## Developer fee
 
-The miner keeps upstream's **1% developer fee**: one matrix in about 101 is mined for the developer. In this fork's builds the fee goes to the **fork maintainer**:
+**Quantus is mined without a fee** in this release. For Pearl the miner keeps upstream's **1% developer fee**: one matrix in about 101 is mined for the developer. In this fork's builds the fee goes to the **fork maintainer**:
 - **Normally.** For each fee cycle the miner reconnects to HeroMiners (`ru.pearl.herominers.com:1200`) and mines to `prl1pp9k3spr6l0c0s00mlmcnpktm5yfp0up9lu92deuvj2hnp38s8x0svyseuq` (worker `devfee`). Then it returns to your pool.
 - **If HeroMiners can't be reached** three times in a row, the fee is mined on your own pool instead: Kryptex account `krxX8QJ872` on Kryptex, the same Pearl address elsewhere.
 
@@ -467,7 +502,7 @@ src/cuda/                CUDA backend; cutlass/ holds the fused CUTLASS kernels 
 src/opencl/              OpenCL backend; kernels/ holds the GEMM (dot4 / WMMA / GCN / scalar) and prep kernels
 src/onednn/              Intel GPU oneDNN / gemmstone backend
 src/pearl/wgpu/, rust/cp-pearl-wgpu-ffi/   Pearl wgpu backend (WGSL)
-src/qpow/                Quantus (Poseidon2) on CPU, OpenCL and wgpu
+src/qpow/                Quantus (Poseidon2) on CPU, CUDA, OpenCL and wgpu
 rust/cp-proof-ffi/       plain_proof Merkle proof, gzip, zk-pow verify (Rust, linked in)
 third_party/             BLAKE3, pearl-blake3, zk-pow, plonky2, OpenCL headers, CUTLASS
 scripts/                 benchmark sweeps (sweep_ampere.sh), optional Python proof bridge
