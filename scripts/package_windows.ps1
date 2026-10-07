@@ -4,7 +4,7 @@ param(
     [string]$Root = (Join-Path $PSScriptRoot '..'),
     [string]$OutputDir,
     [string]$SourceCommit = '',
-    [string]$Version = 'v0.5-fork.6'
+    [string]$Version = 'v0.5-fork.7'
 )
 $ErrorActionPreference='Stop'
 $Root=(Resolve-Path -LiteralPath $Root).Path
@@ -61,16 +61,17 @@ if "%WALLET%"=="YOUR_WALLET" (
 set "WORKER=%~2"
 if "%WORKER%"=="" set "WORKER=cppminer"
 :mine
-cppminer.exe --backend BACKEND_PLACEHOLDER --devices 0 --verify --pool POOL_PLACEHOLDER --wallet "%WALLET%" --worker "%WORKER%"
+cppminer.exe ARGS_PLACEHOLDER --pool POOL_PLACEHOLDER --wallet "%WALLET%" --worker "%WORKER%"
 timeout /t 5 /nobreak >nul
 goto mine
 '@
 foreach($entry in @(
-    @{File='start-herominers.bat';Backend='cuda';Pool='stratum+tcp://ru.pearl.herominers.com:1200'},
-    @{File='start-herominers-intel.bat';Backend='onednn';Pool='stratum+tcp://ru.pearl.herominers.com:1200'},
-    @{File='start-kryptex.bat';Backend='cuda';Pool='stratum+tcp://prl.kryptex.network:7048'}
+    @{File='start-herominers.bat';Args='--backend cuda --devices 0 --verify';Pool='stratum+tcp://ru.pearl.herominers.com:1200'},
+    @{File='start-herominers-intel.bat';Args='--backend onednn --devices 0 --verify';Pool='stratum+tcp://ru.pearl.herominers.com:1200'},
+    @{File='start-kryptex.bat';Args='--backend cuda --devices 0 --verify';Pool='stratum+tcp://prl.kryptex.network:7048'},
+    @{File='start-quantus-kryptex.bat';Args='--algo quantus --backend cuda --devices 0';Pool='stratum+tcp://qtc.kryptex.network:7049'}
 )) {
-    $start.Replace('BACKEND_PLACEHOLDER',$entry.Backend).Replace('POOL_PLACEHOLDER',$entry.Pool) |
+    $start.Replace('ARGS_PLACEHOLDER',$entry.Args).Replace('POOL_PLACEHOLDER',$entry.Pool) |
         Set-Content (Join-Path $OutputDir $entry.File) -Encoding ascii
 }
 $info=@{

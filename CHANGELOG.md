@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5-fork.7
+- Quantus CUDA backend (`--algo quantus --backend cuda`): CMP 50HX 101 (OpenCL) → 288 MH/s on Kryptex, RTX 2080 Ti 316, RTX 3090 419. Start-up self-test against the CPU reference; every candidate is re-hashed on the CPU.
+- Quantus OpenCL kernel rewritten: per-device variant probe, carry-free 22-bit limbs in the linear layers, `__builtin_addc` carry chains on AMD, registers instead of scratch on AMD, two launches in flight. Arc A380 30 MH/s, Radeon AI PRO R9700 162 MH/s.
+- Pearl: WMMA by default on AMD RDNA4 (gfx12), layout picked by a start-up self-test: R9700 88.5 TMAC/s. WMMA milestone without dynamic private indexing.
+- Quantus is mined without a developer fee in this release.
+- Pool agent `cppminer/0.5-fork.7`; start script `start-quantus-kryptex`.
+- Detailed release notes: [v0.5-fork.7](docs/releases/v0.5-fork.7.md).
+
 ## v0.5-fork.6
 - New CUDA scan kernels on packed noisy operands for Turing (`mma.m8n8k16`), Ampere/Ada and Blackwell GeForce (`mma.m16n8k32`, 4-stage `cp.async`), replacing the CUTLASS kernels there. The prep writes every 256/128-row block and 32-wide k-tile as one contiguous record. Same hash tiles, words and hit coordinates as CUTLASS.
 - RTX 4090 (450 W): 243.8 → 271–275 TMAC/s, 271 live. RTX 3090 (350 W): 99.0 → 112.4–113.5 TMAC/s kernel, 108–110 live. CMP 50HX (225 W): 62.5 → 68.4–69.5. RTX 5070 (250 W): 106.6 → 115.3, 116.8 live.
