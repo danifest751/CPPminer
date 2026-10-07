@@ -27,10 +27,24 @@ else
   if [ -z "$deb" ]; then echo "[setup] could not find amdgpu-install for ${VERSION_CODENAME} at $base"; exit 1; fi
   say "installing $deb"
   wget -q "$base$deb" -O "/tmp/$deb" && apt-get install -y -qq "/tmp/$deb" >/dev/null
-  # --no-dkms: keep the kernel driver the host already runs (a DKMS build would need a reboot).
-  amdgpu-install -y --usecase=opencl --no-dkms
+  # The in-kernel amdgpu of older kernels cannot initialize RDNA4: on the Ubuntu 24.04 kernel
+  # 6.8 an R9700 (gfx1201) logs "amdgpu: Fatal error during GPU init" and has no /dev/kfd.
+  # Then the amdgpu DKMS module is needed (and a reboot); otherwise keep the running driver.
+  need_dkms=0
+  if [ ! -e /dev/kfd ] || dmesg 2>/dev/null | grep -qi "fatal error during gpu init"; then need_dkms=1; fi
+  if [ "$need_dkms" = 1 ]; then
+    say "amdgpu kernel driver not working: installing the amdgpu DKMS module + OpenCL (reboot needed)"
+    apt-get install -y -qq "linux-headers-$(uname -r)" >/dev/null 2>&1 || true
+    amdgpu-install -y --usecase=dkms,opencl
+  else
+    amdgpu-install -y --usecase=opencl --no-dkms
+  fi
   for u in ${SUDO_USER:-} root; do [ -n "$u" ] && usermod -aG render,video "$u" 2>/dev/null; done
   ldconfig
+  if [ "$need_dkms" = 1 ]; then
+    say "DKMS driver installed. REBOOT now (sudo reboot), then run ./setup.sh again."
+    exit 2
+  fi
 fi
 
 command -v clinfo >/dev/null && { say "clinfo:"; clinfo -l 2>/dev/null | sed 's/^/  /'; }

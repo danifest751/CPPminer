@@ -21,3 +21,10 @@ amd_devices() {
 }
 
 stamp() { date +%Y%m%d-%H%M%S; }
+
+# gfx target of an AMD GPU (for llvm-objdump --mcpu), default gfx1201.
+amd_gfx() {
+  local g
+  g=$(rocminfo 2>/dev/null | grep -oE "gfx[0-9a-f]{3,4}" | sort -u | head -1)
+  echo "${g:-gfx1201}"
+}
