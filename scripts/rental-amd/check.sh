@@ -21,7 +21,7 @@ for d in $devs; do
   echo "GPU $d pearl align-test: $res | $kern | $wmma" | tee -a "$summary"
 
   echo "[check] GPU $d: Pearl mock share (zk-pow verify, a few minutes)"
-  timeout 1800 "$BIN/cppminer" --backend opencl --devices "$d" --mock --mock-diff 16 > "$OUT/pearl-mock-$d.log" 2>&1
+  timeout 1800 "$BIN/cppminer" --backend opencl --devices "$d" --mock --mock-diff 62 > "$OUT/pearl-mock-$d.log" 2>&1
   res=$(grep -qiE "verify OK" "$OUT/pearl-mock-$d.log" && echo PASS || echo FAIL)
   rate=$(grep -oE "attempt timing: .*" "$OUT/pearl-mock-$d.log" | tail -1)
   echo "GPU $d pearl mock: $res | $rate" | tee -a "$summary"
