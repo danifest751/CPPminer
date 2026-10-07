@@ -61,14 +61,40 @@ dynamic ~25.6k per hash. Static mix: IMAD 913, IADD3 896, SEL 138, LEA 108, SHF 
 LDC 13. IMAD (multiply pipe) and IADD3 (ALU) are roughly balanced and the multiply pipe is saturated;
 only 13 constant-bank loads (EPS/MDS are already in `__constant__`).
 
+## Lane-parallel layout also refuted
+
+A second prototype (`tools/cuda-quantus/q2-harness/qlane.cu`) puts one field element per thread: a
+warp holds 2 hashes in two 16-lane groups (12 active lanes each), and every coupling (M4 blocks,
+external diffusion, internal row sum) goes through `__shfl_sync`. Verified against the host
+reference (`qlane test` passes). Fair throughput on the CMP, 256-thread blocks vs warp blocks:
+
+| Layout | Mperm/s | regs | blocks/SM |
+|---|---|---|---|
+| 1 state / thread | **327.8** | 70 | 3 |
+| lane-parallel (thread per lane) | 84.2 | 42 | 16 |
+
+Lane-parallel is **3.9x slower**. The shuffle traffic (7 per external round, 4 per internal round)
+plus the idle lanes dominate; the lower register pressure does not compensate. Occupancy is not the
+limiter (already known), and the shuffle overhead is the same every round, so this direction is dead
+on Turing.
+
 ## Where this leaves the 1.34x / 1.38x-per-clock gap to RGminer
 
-The planned restructurings are exhausted and refuted on sm_75. Because the kernel is issue-bound
-with a saturated multiply pipe, closing the gap needs **~28% fewer instructions per hash** (our
-~25.6k vs PeakMiner ~17.7k), which the shape changes above do not deliver. Remaining untested
-direction: a **lane-parallel** layout (one field element / one lane per thread, 12 threads or a warp
-per hash, row sum via shuffles) instead of 1 hash/thread in 96-118 registers. That is the opposite
-direction from NPT and is the only structural change not yet tried. It is a research-scale rewrite.
+Everything tried is now refuted on the real card: every arithmetic shape (signed/mulhi/split/fused/
+sum-split), per-thread ILP (`QTC_NPT`), and the lane-parallel layout. The kernel is issue-bound with
+a saturated multiply pipe and the 1-state/thread layout is the fastest of all of them.
+
+Closing the gap needs **~28% fewer instructions per hash** (our ~25.6k vs PeakMiner ~17.7k) with the
+same layout. Nothing in the open references (official quantus-miner, KanQ, sppark) or the shapes we
+tried delivers that on sm_75. The remaining plausible levers are all research-scale and none is
+validated:
+
+- a cheaper 64x64->128 product + reduction than the 3-mul.wide + 6-op `red128` we and KanQ use;
+- a *partially reduced* state carried across rounds (`sppark` GL64_PARTIALLY_REDUCED) that removes
+  some per-round reductions, which no open source implements for this exact round structure;
+- a different lane count per thread than 1 or 12 (e.g. splitting the 12 lanes over 2-3 threads) --
+  the lane-parallel result suggests any cross-thread coupling via shuffles is too expensive on
+  Turing to pay off.
 
 ## How to reproduce
 
