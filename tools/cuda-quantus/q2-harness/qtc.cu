@@ -164,6 +164,29 @@ DEV void mul128_hi(u64 a, u64 b, u32& r0, u32& r1, u32& r2, u32& r3)
     r0 = (u32)lo; r1 = (u32)(lo >> 32);
     r2 = (u32)hi; r3 = (u32)(hi >> 32);
 }
+#ifndef QTC_MUL_RG
+#define QTC_MUL_RG 0  /* 1 = RGminer quantus_arithmetic: schoolbook 4x mul.wide + carried adds */
+#endif
+/* RGminer's field multiply (decoded from quantus_arithmetic): four full 32x32->64 products
+ * (a0b0, a0b1, a1b0, a1b1) instead of our Karatsuba 3. The two middle products are summed as a
+ * 65-bit value (mc:M1:M0) and folded in with carried adds. Mathematically identical 128-bit
+ * product; different pipe mix (more IMAD.WIDE, fewer carry-chain steps). */
+DEV void mul128_rg(u64 a, u64 b, u32& r0, u32& r1, u32& r2, u32& r3)
+{
+    u32 a0, a1, b0, b1; sp64(a, a0, a1); sp64(b, b0, b1);
+    u32 P0, P1, Q0, Q1, R0, R1, S0, S1;
+    { u64 P = (u64)a0 * b0; P0 = (u32)P; P1 = (u32)(P >> 32); }
+    { u64 Q = (u64)a0 * b1; Q0 = (u32)Q; Q1 = (u32)(Q >> 32); }
+    { u64 R = (u64)a1 * b0; R0 = (u32)R; R1 = (u32)(R >> 32); }
+    { u64 S = (u64)a1 * b1; S0 = (u32)S; S1 = (u32)(S >> 32); }
+    u32 M0, M1, mc;
+    asm("add.cc.u32 %0, %3, %5;\n\t addc.cc.u32 %1, %4, %6;\n\t addc.u32 %2, 0, 0;"
+        : "=r"(M0), "=r"(M1), "=r"(mc) : "r"(Q0), "r"(Q1), "r"(R0), "r"(R1));
+    u32 w1, w2, w3;
+    asm("add.cc.u32 %0, %3, %4;\n\t addc.cc.u32 %1, %5, %6;\n\t addc.u32 %2, %7, %8;"
+        : "=r"(w1), "=r"(w2), "=r"(w3) : "r"(P1), "r"(M0), "r"(M1), "r"(S0), "r"(mc), "r"(S1));
+    r0 = P0; r1 = w1; r2 = w2; r3 = w3;
+}
 #ifndef QTC_SQR3
 #define QTC_SQR3 1
 #endif
@@ -233,7 +256,9 @@ DEV void fma128(u64 a, u64 b, u64 c, u32& r0, u32& r1, u32& r2, u32& r3)
 
 DEV void mul128u(u64 a, u64 b, u32& r0, u32& r1, u32& r2, u32& r3)
 {
-#if QTC_MULHI
+#if QTC_MUL_RG
+    mul128_rg(a, b, r0, r1, r2, r3);
+#elif QTC_MULHI
     mul128_hi(a, b, r0, r1, r2, r3);
 #else
     mul128(a, b, r0, r1, r2, r3);

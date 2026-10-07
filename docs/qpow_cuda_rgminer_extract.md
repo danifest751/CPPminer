@@ -89,6 +89,21 @@ rates on the CMP 50HX are:
 
 So both closed miners are 1.21-1.24x our Quantus kernel; the earlier 3x-looking gap was the leak.
 
+## Port attempts
+
+Both field shapes were implemented in the harness and measured on the CMP (base =
+`QTC_SUB=1,SQR3=2,GFMA2=2`, interleaved `cyc 256`):
+
+| variant | cycles/hash |
+|---|---|
+| base (Karatsuba 3-wide + `mad.lo`/`madc.hi` reduce) | 300.6 |
+| `QTC_MUL_RG` (RG schoolbook 4-wide) | 309.4 (+2.9%) |
+| `QTC_MUL_RG` + `QTC_RED_SHIFT` | 323.4 (+7.6%) |
+
+So RG's own multiply/reduce shapes are also slower inside our kernel. Combined with the PeakMiner
+attempts (`QTC_RED_SHIFT`, full unroll) this confirms the gap is not in any single field primitive we
+can swap in — it is the whole-kernel codegen/schedule (instruction count + IPC) of their builds.
+
 ## Takeaway
 
 Both closed miners are now extracted (PeakMiner by memory dump past its anti-debug, RGminer via
