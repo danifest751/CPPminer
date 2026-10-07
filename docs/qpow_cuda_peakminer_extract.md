@@ -71,8 +71,36 @@ The 1.24x is not algorithmic and not layout (we already refuted layout/ILP chang
 It is a different **field-multiply/reduction codegen**: half the wide multiplies, immediate EPS via
 `IMAD.HI`, and a fully-unrolled schedule that fills both pipes. That is the thing to port.
 
-## Next step
+## Attempts to port the technique (all measured on the CMP, exclusive GPU)
 
-Reconstruct the field multiply + reduction block from the extracted SASS (the repeating IMAD.WIDE /
-IMAD.WIDE.U32.X / IADD3 / IMAD.HI pattern) and implement it as a variant in
-`tools/cuda-quantus/q2-harness/qtc.cu`, then A/B on the CMP against the current `gmul`/`red128`.
+Decoded from the SASS: PeakMiner computes `x*EPS` as `(x<<32)-x` using `IMAD.HI.U32 r,-0x1`
+(gives `x-1`) plus `IMAD.X r,r,0x1,Rb,P` to rebuild the word, i.e. no wide multiply for the
+reduction. Implemented as `QTC_RED_SHIFT` in the harness:
+
+| variant (base = SUB=1,SQR3=2,GFMA2=2) | cycles/hash |
+|---|---|
+| base (constant-EPS `mad.lo`/`madc.hi` reduction) | 300.6 |
+| `QTC_RED_SHIFT` (shift/borrow EPS, like PeakMiner) | 311.5 (+3.6%) |
+| `QTC_RED_ALU` (sub-based, existing) | 311.0 (+3.5%) |
+
+So the EPS formulation is not the lever on its own; our constant-EPS form stays best.
+
+Full unrolling (`QTC_IUNR=22`) is also worse on our kernel: 362.6 vs 300.7 cycles. PeakMiner is
+fully unrolled and faster, so their unrolled schedule does not blow register pressure / icache the
+way ours does — the difference is inside their code shape, not the unroll flag.
+
+## Conclusion
+
+PeakMiner is ~1.24x our kernel and we now have its exact sm_75 SASS, but none of the field-op
+shapes we can express in our kernel reproduces the gain: sign/mulhi/split/fused/ALU/shift
+reductions are all neutral or worse, NPT ILP is worse, lane-parallel is 3.9x worse, full unroll is
+worse. Their advantage lives in a specific codegen (roughly 2.5 IMAD.WIDE per field multiply vs our
+~3, EPS folded as an immediate, and an unrolled schedule that keeps both pipes full) that would have
+to be ported op-by-op from the disassembly. That is a rewrite of the field layer, not a tweak.
+
+## Next step (if pursued)
+
+Isolate one full field-multiply + reduction block from `peakm_quantus_sm75.sass` (the repeating
+`IMAD.WIDE[.X]` + `IMAD.HI -0x1` + `IADD3` pattern spans ~150-250 instructions because several
+independent multiplies are interleaved), express it as one `gmul` in the harness, and A/B. Expected
+effort: high; payoff: the ~20% instruction-count gap if the schedule transfers.

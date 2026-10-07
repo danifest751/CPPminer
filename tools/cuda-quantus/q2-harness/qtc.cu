@@ -55,6 +55,27 @@ __constant__ u32 c_eps;
 #ifndef QTC_RED_SIGNED
 #define QTC_RED_SIGNED 0  /* 1 = KanQ/official signed long long form, lets ptxas build the carry net */
 #endif
+#ifndef QTC_RED_SHIFT
+#define QTC_RED_SHIFT 0  /* 1 = r2*EPS as (r2<<32)-r2 via sub/borrow (PeakMiner), no multiply */
+#endif
+/* r2*EPS = r2*(2^32-1) = (r2-1):(0-r2). PeakMiner's SASS computes the high word with
+ * IMAD.HI.U32 r,-0x1 and rebuilds the low from the borrow, i.e. no wide multiply for the
+ * reduction. Same result as the mad.lo/madc.hi form, but on the ALU pipe. */
+DEV u64 red128_shift(u32 r0, u32 r1, u32 r2, u32 r3)
+{
+    u32 z0, z1;
+    asm("{.reg .u32 le, he, t0, t1, rc, tc;\n\t"
+        "sub.cc.u32     le, 0, %2;\n\t"
+        "subc.u32       he, %2, 0;\n\t"
+        "add.cc.u32     t0, %3, le;\n\t"
+        "addc.cc.u32    t1, %4, he;\n\t"
+        "addc.u32       rc, %5, 0;\n\t"
+        "addc.u32       tc, t1, 0;\n\t"
+        "sub.cc.u32     %0, t0, rc;\n\t"
+        "subc.u32       %1, tc, 0;}"
+        : "=r"(z0), "=r"(z1) : "r"(r2), "r"(r0), "r"(r1), "r"(r3));
+    return mk64(z0, z1);
+}
 DEV u64 red128_signed(u32 r0, u32 r1, u32 r2, u32 r3)
 {
     /* From KanQ goldilocks32.cuh fold128_lazy32 (same as official quantus-miner combined_reduce):
@@ -73,6 +94,8 @@ DEV u64 red128(u32 r0, u32 r1, u32 r2, u32 r3)
     u32 z0, z1;
 #if QTC_RED_SIGNED
     return red128_signed(r0, r1, r2, r3);
+#elif QTC_RED_SHIFT
+    return red128_shift(r0, r1, r2, r3);
 #elif QTC_RED_ALU
     // r2*EPS = (r2 << 32) - r2 from adds: keeps the reduction on the ALU pipe, which Turing
     // has spare, instead of a wide multiply on the busier FMA pipe.
