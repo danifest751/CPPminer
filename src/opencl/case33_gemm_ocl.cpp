@@ -232,17 +232,17 @@ std::vector<Case32OclDotBackend> select_dot_backends(Case32OclDotPolicy policy, 
         return out;
     case Case32OclDotPolicy::Auto:
     default:
-        /* AMD: WMMA on gfx11 (RDNA3: ~1.7x sudot4 on a 780M, verified bit-exact) →
-         * sudot4 (RDNA3) → sdot4 (GFX9/RDNA2) → KHR if advertised → scalar.
-         * gfx12 WMMA stays opt-in (--ocl-dot wmma) until its lane layout is
-         * confirmed on hardware. WMMA refuses non-8x16 tiles / LDS staging, so
-         * those configurations fall through to sudot4.
+        /* AMD: WMMA on gfx11 (RDNA3: ~1.7x sudot4 on a 780M, verified bit-exact) and
+         * gfx12 (RDNA4: lane layout checked by a self-test at start-up, see try_build)
+         * → sudot4 (RDNA3/4) → sdot4 (GFX9/RDNA2) → KHR if advertised → scalar.
+         * WMMA refuses non-8x16 tiles / LDS staging, so those configurations fall
+         * through to sudot4.
          * Intel/NVIDIA/other: KHR if advertised → scalar. Intel XMX (DPAS) stays
          * opt-in (--ocl-dot dpas, which also switches the auto tile to 8x16) until its
          * lane layout is confirmed on hardware (CP_OCL_DPAS_SELFTEST=1).
          * Asm stays opt-in via PinAsm only. */
         if (vendor_amd) {
-            if (wmma_arch == 11) {
+            if (wmma_arch == 11 || wmma_arch == 12) {
                 push_unique(B::Wmma);
             }
             push_unique(B::Sudot4);
@@ -344,6 +344,7 @@ bool Case33GemmOcl::build_kernel_(const char *kernel_cl_path) {
         const bool force_ext = backend == Case32OclDotBackend::KhrDpiForce;
         const bool scalar = backend == Case32OclDotBackend::Scalar;
         const bool use_wmma = backend == Case32OclDotBackend::Wmma;
+        bool wmma_ksplit_forced = false; /* CP_OCL_WMMA_G12_KSPLIT set: no auto switch */
         const bool use_dpas = backend == Case32OclDotBackend::Dpas;
         const bool gcn = scalar && gcn_mad24_ && issue_mode_ == 0;
         const char *label = gcn ? "GCN scalar mad24 (no int8 dot)"
@@ -353,8 +354,16 @@ bool Case33GemmOcl::build_kernel_(const char *kernel_cl_path) {
             return false;
         }
 
+        /* CP_OCL_WMMA_EMU=11|12: build the WMMA path for that arch with the instruction and
+           ds_swizzle emulated in LDS, on any OpenCL device (a correctness test of the WMMA
+           kernel without AMD hardware; slow). */
+        int wmma_emu = 0;
+        if (const char *e = std::getenv("CP_OCL_WMMA_EMU")) {
+            const int v = std::atoi(e);
+            wmma_emu = (v == 11 || v == 12) ? v : 0;
+        }
         if (use_wmma) {
-            wmma_arch_ = amd_wmma_arch(ocl_.device_name);
+            wmma_arch_ = wmma_emu ? wmma_emu : amd_wmma_arch(ocl_.device_name);
             if (wmma_arch_ == 0) {
                 std::snprintf(dpi_status_, sizeof(dpi_status_),
                               "%s: refused on '%s' (needs gfx11xx or gfx12xx)", label,
@@ -370,9 +379,15 @@ bool Case33GemmOcl::build_kernel_(const char *kernel_cl_path) {
                 std::fprintf(stderr, "[ocl] %s\n", dpi_status_);
                 return false;
             }
-            wmma_g12_ksplit_ = 0;
+            /* gfx12 A/B k mapping: AMD's RDNA4 guide gives every data type one layout,
+               8 consecutive k per lane (half h: k 8h..8h+7), i.e. ksplit=1. The start-up
+               self-test checks both and switches if the hardware disagrees. */
+            wmma_g12_ksplit_ = 1;
             if (const char *ks = std::getenv("CP_OCL_WMMA_G12_KSPLIT")) {
-                wmma_g12_ksplit_ = std::atoi(ks) ? 1 : 0;
+                if (ks[0]) {
+                    wmma_g12_ksplit_ = std::atoi(ks) ? 1 : 0;
+                    wmma_ksplit_forced = true;
+                }
             }
         }
 
@@ -432,9 +447,17 @@ bool Case33GemmOcl::build_kernel_(const char *kernel_cl_path) {
             build_opts += " -DCASE32_WMMA=" + std::to_string(wmma_arch_);
             build_opts += " -DCASE32_WMMA_G12_KSPLIT=" + std::to_string(wmma_g12_ksplit_);
             const char *pipe = std::getenv("CP_OCL_WMMA_PIPELINE");
-            /* Default on (+5-8% on gfx1103, same VGPRs); CP_OCL_WMMA_PIPELINE=0 disables. */
-            wmma_pipeline_ = (pipe && pipe[0] && std::atoi(pipe) == 0) ? 0 : 1;
+            /* Register double buffer of the step operands: on for gfx11 (+5-8% on gfx1103, same
+               VGPRs), off for gfx12 (R9700: 88.5 vs 70.9 TMAC/s without it; the fully unrolled
+               pipelined k loop spills). CP_OCL_WMMA_PIPELINE=0/1 overrides. */
+            wmma_pipeline_ = wmma_arch_ == 12 ? 0 : 1;
+            if (pipe && pipe[0]) {
+                wmma_pipeline_ = std::atoi(pipe) != 0 ? 1 : 0;
+            }
             build_opts += " -DCASE32_WMMA_PIPELINE=" + std::to_string(wmma_pipeline_);
+            if (wmma_emu) {
+                build_opts += " -DCASE32_WMMA_EMU=1";
+            }
         } else if (use_dpas) {
             build_opts += " -DCASE32_DPAS=" + std::to_string(dpas_sg_);
             build_opts += " -DCASE32_DPAS_AK=" + std::to_string(dpas_ak_);
@@ -457,6 +480,16 @@ bool Case33GemmOcl::build_kernel_(const char *kernel_cl_path) {
                 build_opts += " -DCASE32_FORCE_DPI=1";
             } else {
                 build_opts += " -Dcl_khr_integer_dot_product";
+            }
+        }
+        /* CP_OCL_EXTRA_OPTS: appended to the GEMM kernel build options, to try kernel
+           variants (e.g. "-DCASE32_WMMA_KUNROLL=2") without rebuilding the miner. */
+        if (const char *x = std::getenv("CP_OCL_EXTRA_OPTS")) {
+            if (x[0]) {
+                build_opts += " ";
+                build_opts += x;
+                std::printf("[ocl] extra GEMM kernel options: %s\n", x);
+                std::fflush(stdout);
             }
         }
 
@@ -580,10 +613,34 @@ bool Case33GemmOcl::build_kernel_(const char *kernel_cl_path) {
             return false;
         }
         if (use_wmma) {
+            /* gfx11 is verified on hardware: self-test on request (CP_OCL_WMMA_SELFTEST=1).
+               gfx12 always runs it before mining; if the compiled k mapping fails and the
+               other one passes, rebuild with that one; if neither passes, the caller falls
+               back to sudot4. */
             const char *st = std::getenv("CP_OCL_WMMA_SELFTEST");
-            if (st && st[0] && std::strcmp(st, "0") != 0 && !run_wmma_selftest_()) {
-                std::snprintf(dpi_status_, sizeof(dpi_status_), "%s: SELF-TEST FAILED", label);
-                return false;
+            const bool want_test = (st && st[0] && std::strcmp(st, "0") != 0) || wmma_arch_ == 12;
+            if (want_test) {
+                int pass_mask = 0;
+                bool ok = run_wmma_selftest_(&pass_mask);
+                const int other = 1 - wmma_g12_ksplit_;
+                if (!ok && wmma_arch_ == 12 && !wmma_ksplit_forced && (pass_mask & (1 << other))) {
+                    std::printf("[ocl] WMMA gfx12: switching to ksplit=%d (passed the self-test)\n",
+                                other);
+                    std::fflush(stdout);
+                    wmma_g12_ksplit_ = other;
+                    const std::string key = " -DCASE32_WMMA_G12_KSPLIT=";
+                    const size_t at = build_opts.find(key);
+                    if (at != std::string::npos) {
+                        build_opts[at + key.size()] = static_cast<char>('0' + other);
+                    }
+                    ok = ocl_.safe_build_program_from_file(kernel_cl_path, build_opts.c_str(),
+                                                           probe_quiet) &&
+                         run_wmma_selftest_();
+                }
+                if (!ok) {
+                    std::snprintf(dpi_status_, sizeof(dpi_status_), "%s: SELF-TEST FAILED", label);
+                    return false;
+                }
             }
             char wl[96];
             std::snprintf(wl, sizeof(wl), "%s (gfx%d layout%s%s)", label, wmma_arch_,
@@ -661,7 +718,10 @@ bool Case33GemmOcl::build_kernel_(const char *kernel_cl_path) {
    kernel's own operand/accumulator layout helpers and compares with a scalar loop; it
    also checks the milestone reduce-scatter and the hash-tile split of D. On gfx12 both
    candidate A/B k mappings are tried, so one run tells which one the hardware uses. */
-bool Case33GemmOcl::run_wmma_selftest_() {
+bool Case33GemmOcl::run_wmma_selftest_(int *pass_mask) {
+    if (pass_mask) {
+        *pass_mask = 0;
+    }
     cl_kernel k = ocl_.create_kernel("case33_wmma_selftest");
     if (!k) {
         std::fprintf(stderr, "[ocl] WMMA self-test: kernel create failed\n");
@@ -768,6 +828,9 @@ bool Case33GemmOcl::run_wmma_selftest_() {
         const int compiled = wmma_arch_ == 12 ? wmma_g12_ksplit_ : 0;
         if (v == compiled) {
             pass_compiled = pass;
+        }
+        if (pass && pass_mask) {
+            *pass_mask |= 1 << v;
         }
     }
     std::printf("[ocl] WMMA self-test: %s\n", io_ok && pass_compiled ? "PASS" : "FAIL");
