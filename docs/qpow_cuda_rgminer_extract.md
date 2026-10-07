@@ -53,9 +53,41 @@ the per-hash wide count is not directly comparable.
 
 ## Rate note
 
-In this session the RGminer container measured only **~154 MH/s** on the CMP (handoff recorded ~372).
-That is a separate issue (clock/unlock/`--no-cmp-unlock`/dual backend) and did not affect the
-extraction; it should be re-checked before trusting RG's absolute number on this box.
+See "Corrected rates" below: RGminer measures 337 MH/s (Quantus) / 82.4 TH/s (Pearl) on an idle box.
+An earlier reading of ~154 MH/s was caused by a leftover `ncu` process holding the GPU.
+
+## RGminer Pearl (same backend exe)
+
+Running the container with `--algo pearl` loads the same `rgminer.cuda12.turing` backend (same
+BuildID) but different modules. Measured **82.4 TH/s** on the CMP (PeakMiner Pearl: 83.5 TH/s — a
+tie).
+
+RGminer's Pearl kernels (namespace `pearl::cuda`, mangled but recognizable):
+- `pearl::cuda::sm75::fingerprint_u32_words_kernel` (an sm_75-specific kernel)
+- `pearl::cuda::proof::*` (q1scg2kf9d2wvj, qezr980ztbgub, q19b2hu17kf856, q2fgoogsut993e, q2xsbn3632lizl)
+- `pearl::cuda::common::{generate_uniform_kernel, generate_permutation_kernel,
+  generate_permutation_digest_kernel, transpose_b_to_bt_kernel, derive_b_noise_seed_kernel, ...}`
+- `pearl::cuda::sm80_plus::detail::generate_*`
+
+Opcode evidence: RGminer's Pearl uses the Turing **int8 tensor cores** —
+`IMMA.8816.S8.S8` (7168 in the dumped kernels) plus `LDSM.16.M88.4` (96). PeakMiner's (equally
+fast) Pearl build does not use IMMA in the kernels we captured.
+
+Artifacts: `rg_pearl_reg_2_60.*`, `rg_pearl_reg_3_162.*`, `rg_pearl_reg_6_281.*`.
+
+## Corrected rates (clean GPU)
+
+Earlier in this session the RG container reported 154 MH/s / 40 TH/s; that was an artifact of a
+leaked `ncu` process from an aborted profiling run holding the GPU. With the box idle the measured
+rates on the CMP 50HX are:
+
+| miner | Quantus | Pearl |
+|---|---|---|
+| ours (this branch) | 279.3 MH/s | — |
+| RGminer 1.1.2 | 337 MH/s | 82.4 TH/s |
+| PeakMiner 2.17.2 | 347.5 MH/s | 83.5 TH/s |
+
+So both closed miners are 1.21-1.24x our Quantus kernel; the earlier 3x-looking gap was the leak.
 
 ## Takeaway
 
