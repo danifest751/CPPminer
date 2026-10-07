@@ -625,24 +625,36 @@ DEV u64 qtc_hash_out0(const Params& p, u32 x)
 #ifndef QTC_MINB
 #define QTC_MINB 1
 #endif
+#ifndef QTC_NPT
+#define QTC_NPT 1  /* hashes per thread, computed back-to-back for ILP between independent chains */
+#endif
 __global__ void __launch_bounds__(QTC_TPB, QTC_MINB) qtc_scan(const Params p)
 {
     const long long t0 = clock64();
     const u32 stride = gridDim.x * blockDim.x;
-    for (u32 base = blockIdx.x * blockDim.x; base < p.count; base += stride) {
-        const u32 idx = base + threadIdx.x;
+    for (u32 base = blockIdx.x * blockDim.x; base < p.count; base += stride * QTC_NPT) {
+        u64 o[QTC_NPT]; u32 idxs[QTC_NPT];
+#pragma unroll
+        for (int j = 0; j < QTC_NPT; j++) {
+            const u32 idx = base + j * stride + threadIdx.x;
+            idxs[j] = idx;
 #if QTC_SUB
-        u32 x = p.w0 + idx;  /* t */
+            u32 x = p.w0 + idx;  /* t */
 #else
-        u32 x = __byte_perm(p.w0 + idx, 0, 0x0123);
+            u32 x = __byte_perm(p.w0 + idx, 0, 0x0123);
 #endif
-        u64 o = qtc_hash_out0(p, x);
-        u64 key; { u32 l, h; sp64(o, l, h); key = mk64(__byte_perm(h, 0, 0x0123), __byte_perm(l, 0, 0x0123)); }
-        if (idx >= p.count) continue;
-        if (p.dump) p.dump[idx] = o;
-        if (key <= p.t0) {
-            u32 slot = atomicAdd(p.out, 1u);
-            if (slot < 15) p.out[1 + slot] = idx;
+            o[j] = qtc_hash_out0(p, x);
+        }
+#pragma unroll
+        for (int j = 0; j < QTC_NPT; j++) {
+            const u32 idx = idxs[j];
+            u64 key; { u32 l, h; sp64(o[j], l, h); key = mk64(__byte_perm(h, 0, 0x0123), __byte_perm(l, 0, 0x0123)); }
+            if (idx >= p.count) continue;
+            if (p.dump) p.dump[idx] = o[j];
+            if (key <= p.t0) {
+                u32 slot = atomicAdd(p.out, 1u);
+                if (slot < 15) p.out[1 + slot] = idx;
+            }
         }
     }
     if (p.cyc) { __syncthreads(); if (threadIdx.x == 0) p.cyc[blockIdx.x] = (u64)(clock64() - t0); }
