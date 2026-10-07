@@ -94,8 +94,16 @@ DEV void mul128(u64 a, u64 b, u32& r0, u32& r1, u32& r2, u32& r3)
  * 128-bit C: ptxas folds the doubled middle product into IMAD.WIDE.U32.X carry chains (sm_75:
  * 54 fewer wide multiplies per loop body, -3.5% cycles with the 128-bit lazy sums). Otherwise
  * the middle product is doubled by a one-bit funnel shift, which leaves a single 3-word add. */
+/* Measured on sm_75 only; the sm_8x SASS shows the same trade (fewer ALU ops, more IMADs).
+ * sm_120 has native 64-bit adds and ptxas then spills, so Blackwell keeps the inline-PTX forms
+ * until it is measured there. */
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1000
+#define CP_QPOW_PLAIN_C_DEFAULT 0
+#else
+#define CP_QPOW_PLAIN_C_DEFAULT 1
+#endif
 #ifndef CP_QPOW_SQRC
-#define CP_QPOW_SQRC 1
+#define CP_QPOW_SQRC CP_QPOW_PLAIN_C_DEFAULT
 #endif
 DEV void sqr128(u64 a, u32& r0, u32& r1, u32& r2, u32& r3)
 {
@@ -128,7 +136,7 @@ DEV u64 gsqr(u64 a) { u32 r0, r1, r2, r3; sqr128(a, r0, r1, r2, r3); return red1
  * with two carries, which it never does for inline add.cc chains (sm_75: -1.8% cycles, 10 fewer
  * registers). CP_QPOW_W128=0 is the inline-PTX form. */
 #ifndef CP_QPOW_W128
-#define CP_QPOW_W128 1
+#define CP_QPOW_W128 CP_QPOW_PLAIN_C_DEFAULT
 #endif
 #if CP_QPOW_W128
 struct W { u128 v; };
