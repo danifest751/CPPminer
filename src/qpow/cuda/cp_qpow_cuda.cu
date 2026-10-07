@@ -50,11 +50,6 @@ __constant__ u32 c_eps;
  * miss there only changes the candidate filter, and every candidate is re-hashed on the host.
  * Precondition r3 <= 2^32 - 2: true for any product, and for a*b + c when b < 2^64 - 2^32
  * (the internal-layer diagonal is below 0xF3FB...). */
-typedef unsigned __int128 u128;
-DEV void split128(u128 v, u32& r0, u32& r1, u32& r2, u32& r3)
-{
-    r0 = (u32)v; r1 = (u32)(v >> 32); r2 = (u32)(v >> 64); r3 = (u32)(v >> 96);
-}
 DEV u64 red128(u32 r0, u32 r1, u32 r2, u32 r3)
 {
     u32 z0, z1;
@@ -90,32 +85,42 @@ DEV void mul128(u64 a, u64 b, u32& r0, u32& r1, u32& r2, u32& r3)
     r0 = p0;
 }
 
-/* a^2 from three wide products: a0^2 + 2*a0*a1*2^32 + a1^2*2^64. CP_QPOW_SQRC writes it as plain
- * 128-bit C: ptxas folds the doubled middle product into IMAD.WIDE.U32.X carry chains (sm_75:
- * 54 fewer wide multiplies per loop body, -3.5% cycles with the 128-bit lazy sums). Otherwise
- * the middle product is doubled by a one-bit funnel shift, which leaves a single 3-word add. */
-/* Measured on sm_75 only; the sm_8x SASS shows the same trade (fewer ALU ops, more IMADs).
- * sm_120 has native 64-bit adds and ptxas then spills, so Blackwell keeps the inline-PTX forms
- * until it is measured there. */
+/* CP_QPOW_ADD64: the lazy sums and the squaring's 128-bit add as 64-bit add.cc/addc chains
+ * (what a 128-bit integer lowers to) instead of 32-bit ones. ptxas then merges some adds into
+ * 3-input IADD3s with two carries and folds the doubled middle product of the square into
+ * IMAD.WIDE.U32.X chains, which it never does for 32-bit add.cc chains. RTX 2080 Ti (sm_75):
+ * -5% SM cycles per hash with four blocks per SM. The sm_8x SASS shows the same trade (fewer
+ * ALU ops, more IMADs). RTX 5070 (sm_120, driver JIT from PTX as shipped): +8..11% cycles, the
+ * adds become IADD.64 plus extra moves, so Blackwell keeps the 32-bit chains. Not a 128-bit C
+ * integer: MSVC has none, and the Windows build parses this file on the host side too. */
+#ifndef CP_QPOW_ADD64
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1000
-#define CP_QPOW_PLAIN_C_DEFAULT 0
+#define CP_QPOW_ADD64 0
 #else
-#define CP_QPOW_PLAIN_C_DEFAULT 1
+#define CP_QPOW_ADD64 1
 #endif
-#ifndef CP_QPOW_SQRC
-#define CP_QPOW_SQRC CP_QPOW_PLAIN_C_DEFAULT
 #endif
+
+/* a^2 from three wide products: a0^2 + 2*a0*a1*2^32 + a1^2*2^64. Without CP_QPOW_ADD64 the
+ * middle product is doubled by a one-bit funnel shift, which leaves a single 3-word add. */
 DEV void sqr128(u64 a, u32& r0, u32& r1, u32& r2, u32& r3)
 {
     u32 a0, a1; sp64(a, a0, a1);
-#if CP_QPOW_SQRC
-    split128(((u128)((u64)a1 * a1) << 64) + (u64)a0 * a0 + ((u128)((u64)a0 * a1) << 33), r0, r1, r2, r3);
-    return;
-#endif
     u64 P, Q, T;
     asm("mul.wide.u32 %0, %1, %1;" : "=l"(P) : "r"(a0));
     asm("mul.wide.u32 %0, %1, %1;" : "=l"(Q) : "r"(a1));
     asm("mul.wide.u32 %0, %1, %2;" : "=l"(T) : "r"(a0), "r"(a1));
+#if CP_QPOW_ADD64
+    u64 L, H;
+    asm("{.reg .u64 s, h;\n\t"
+        "shl.b64    s, %2, 33;\n\t"
+        "shr.u64    h, %2, 31;\n\t"
+        "add.cc.u64 %0, %3, s;\n\t"
+        "addc.u64   %1, %4, h;}"
+        : "=l"(L), "=l"(H) : "l"(T), "l"(P), "l"(Q));
+    sp64(L, r0, r1); sp64(H, r2, r3);
+    return;
+#endif
     u32 p0, p1, q0, q1, t0, t1; sp64(P, p0, p1); sp64(Q, q0, q1); sp64(T, t0, t1);
     u32 d0, d1, d2;
     asm("shl.b32 %0, %1, 1;" : "=r"(d0) : "r"(t0));
@@ -131,21 +136,30 @@ DEV void sqr128(u64 a, u32& r0, u32& r1, u32& r2, u32& r3)
 DEV u64 gmul(u64 a, u64 b) { u32 r0, r1, r2, r3; mul128(a, b, r0, r1, r2, r3); return red128(r0, r1, r2, r3); }
 DEV u64 gsqr(u64 a) { u32 r0, r1, r2, r3; sqr128(a, r0, r1, r2, r3); return red128(r0, r1, r2, r3); }
 
-/* Lazy sum for the linear layers: value = (hi:lo) + t*2^64. CP_QPOW_W128 keeps it as a plain
- * 128-bit integer: ptxas then sees ordinary wide adds and merges some of them into 3-input IADD3s
- * with two carries, which it never does for inline add.cc chains (sm_75: -1.8% cycles, 10 fewer
- * registers). CP_QPOW_W128=0 is the inline-PTX form. */
-#ifndef CP_QPOW_W128
-#define CP_QPOW_W128 CP_QPOW_PLAIN_C_DEFAULT
-#endif
-#if CP_QPOW_W128
-struct W { u128 v; };
+/* Lazy sum for the linear layers: value = (hi:lo) + t*2^64. */
+#if CP_QPOW_ADD64
+struct W { u64 v; u32 t; };
 #define W_LO(w) ((u32)(w).v)
 #define W_HI(w) ((u32)((w).v >> 32))
-#define W_T(w) ((u32)((w).v >> 64))
-DEV W w2(u64 a, u64 b) { W r; r.v = (u128)a + b; return r; }
-DEV W wadd(W a, W b) { W r; r.v = a.v + b.v; return r; }
-DEV W wadd64(W a, u64 b) { W r; r.v = a.v + b; return r; }
+#define W_T(w) ((w).t)
+DEV W w2(u64 a, u64 b)
+{
+    W r;
+    asm("add.cc.u64 %0, %2, %3;\n\t addc.u32 %1, 0, 0;" : "=l"(r.v), "=r"(r.t) : "l"(a), "l"(b));
+    return r;
+}
+DEV W wadd(W a, W b)
+{
+    W r;
+    asm("add.cc.u64 %0, %2, %4;\n\t addc.u32 %1, %3, %5;" : "=l"(r.v), "=r"(r.t) : "l"(a.v), "r"(a.t), "l"(b.v), "r"(b.t));
+    return r;
+}
+DEV W wadd64(W a, u64 b)
+{
+    W r;
+    asm("add.cc.u64 %0, %2, %4;\n\t addc.u32 %1, %3, 0;" : "=l"(r.v), "=r"(r.t) : "l"(a.v), "r"(a.t), "l"(b));
+    return r;
+}
 #else
 struct W { u32 lo, hi, t; };
 #define W_LO(w) ((w).lo)
