@@ -108,7 +108,8 @@ private:
 
     bool build_kernel_(const char *kernel_cl_path);
 
-    bool run_wmma_selftest_();
+    /* pass_mask (optional): bit v set when layout variant v passed (gfx12: v = ksplit). */
+    bool run_wmma_selftest_(int *pass_mask = nullptr);
 
     bool configure_dpas_(const char *label);
 
