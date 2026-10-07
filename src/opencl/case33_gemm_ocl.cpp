@@ -354,8 +354,16 @@ bool Case33GemmOcl::build_kernel_(const char *kernel_cl_path) {
             return false;
         }
 
+        /* CP_OCL_WMMA_EMU=11|12: build the WMMA path for that arch with the instruction and
+           ds_swizzle emulated in LDS, on any OpenCL device (a correctness test of the WMMA
+           kernel without AMD hardware; slow). */
+        int wmma_emu = 0;
+        if (const char *e = std::getenv("CP_OCL_WMMA_EMU")) {
+            const int v = std::atoi(e);
+            wmma_emu = (v == 11 || v == 12) ? v : 0;
+        }
         if (use_wmma) {
-            wmma_arch_ = amd_wmma_arch(ocl_.device_name);
+            wmma_arch_ = wmma_emu ? wmma_emu : amd_wmma_arch(ocl_.device_name);
             if (wmma_arch_ == 0) {
                 std::snprintf(dpi_status_, sizeof(dpi_status_),
                               "%s: refused on '%s' (needs gfx11xx or gfx12xx)", label,
@@ -447,6 +455,9 @@ bool Case33GemmOcl::build_kernel_(const char *kernel_cl_path) {
                 wmma_pipeline_ = std::atoi(pipe) != 0 ? 1 : 0;
             }
             build_opts += " -DCASE32_WMMA_PIPELINE=" + std::to_string(wmma_pipeline_);
+            if (wmma_emu) {
+                build_opts += " -DCASE32_WMMA_EMU=1";
+            }
         } else if (use_dpas) {
             build_opts += " -DCASE32_DPAS=" + std::to_string(dpas_sg_);
             build_opts += " -DCASE32_DPAS_AK=" + std::to_string(dpas_ak_);
@@ -469,6 +480,16 @@ bool Case33GemmOcl::build_kernel_(const char *kernel_cl_path) {
                 build_opts += " -DCASE32_FORCE_DPI=1";
             } else {
                 build_opts += " -Dcl_khr_integer_dot_product";
+            }
+        }
+        /* CP_OCL_EXTRA_OPTS: appended to the GEMM kernel build options, to try kernel
+           variants (e.g. "-DCASE32_WMMA_KUNROLL=2") without rebuilding the miner. */
+        if (const char *x = std::getenv("CP_OCL_EXTRA_OPTS")) {
+            if (x[0]) {
+                build_opts += " ";
+                build_opts += x;
+                std::printf("[ocl] extra GEMM kernel options: %s\n", x);
+                std::fflush(stdout);
             }
         }
 
