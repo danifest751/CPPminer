@@ -149,3 +149,22 @@ tree has no CUDA field backend (only CPU and PQC); its Goldilocks reduction is t
 with branches. One structural difference worth knowing: Boojum's Poseidon2 uses an internal
 diagonal of the form 1 + 2^k, so its internal products are shifts. Quantus fixes Plonky3's random
 64-bit diagonal, so that trick changes the hash and is not available.
+
+## Search for less known open miners (2026-10-08)
+
+GitHub code search for the first internal-diagonal constant `c3b6c08e23ba9300` (unique to width-12
+Goldilocks Poseidon2 with Plonky3's parameters) in `.cu/.cuh/.cl/.metal`, plus repository search on
+GitHub, GitLab, Codeberg and Gitee. Everything with source falls into the families already measured:
+
+| source | arithmetic | status |
+|---|---|---|
+| Yose144/Zion-v3.0.0 (MIT) `miner/csrc/cuda,opencl/poseidon2_kernel` | port of the official quantus-miner "G2" kernel: same reduce128 as ours, `__umul64hi` product (+4% cycles here) | nothing new |
+| jshojan/quantus-5060-miner, emanwrxsti/f4pool-quantus-miner (Apache-2.0) | forks of official `engine-cuda/mining.cu`; f4pool identical, 5060 fuses one mul+add | nothing new |
+| okx/zeknox (Apache-2.0), 0xPolygonHermez/pil2-proofman (Apache/MIT, has a PoW grinding kernel) | sppark `gl64_t` | 0.94-0.99 vs our 1.41 |
+| SihaoLiu/Lzvm, dloghin/plonky3-gpu | plain `__int128` / example code | slower by construction |
+| benjamin920101/quantus-ascend-miner | Huawei Ascend NPU | other hardware |
+| 0xMiden/miden-signature, elliottech/lighter-prover | Metal (Apple) | other hardware |
+
+Binary-only: kryptex/krig-miner, heishiqing/Vminer, 8gkgcom/QuantusMiner, amdpowgit/quan-amd-miner,
+DankMiner, FearMiner, longcipher/quantus-miner-perf, gitlab home-group2050535/quantus (custom
+SRBMiner and quanpool HiveOS archives). No public code carries the closed miners' advantage.
