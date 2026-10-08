@@ -1,0 +1,15 @@
+# cppminer for NVIDIA GPUs (CUDA backend). Needs the NVIDIA Container Toolkit on the host:
+#   docker run -d --gpus all -e WALLET=... -e ALGO=pearl cppminer:nvidia
+# The CUDA runtime is bundled; the driver (libcuda, nvidia-smi) comes from the host.
+FROM ubuntu:24.04
+ENV NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libgomp1 \
+        ocl-icd-libopencl1 \
+    && rm -rf /var/lib/apt/lists/*
+COPY pkg/ /opt/cppminer/
+COPY entrypoint.sh /opt/cppminer/entrypoint.sh
+RUN chmod 755 /opt/cppminer/cppminer /opt/cppminer/*.sh
+EXPOSE 4068
+ENTRYPOINT ["/opt/cppminer/entrypoint.sh"]

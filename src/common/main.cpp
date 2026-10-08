@@ -262,8 +262,6 @@ static int run_quantus_pool(const char* pool_host, int pool_port)
     int msg_id = 1;
 
     cp_qpow_pool_set_active(1);
-    cp_api_set_algo(NULL, cp_worker_backend_name());
-    if(cp_api_device_count() == 0) cp_api_add_device(cp_worker_backend_name(), NULL);
     printf("[mode] algo=quantus backend=%s\n", cp_worker_backend_name());
     if(cp_fee_enabled())
         printf("[mode] dev fee: 1%%\n");
@@ -1229,6 +1227,8 @@ int main(int argc, char** argv)
             if(cp_qpow_set_simd_isa(simd_isa) != 0)
                 return 1;
         }
+        cp_api_set_algo(NULL, cp_worker_backend_name());
+        if(cp_api_device_count() == 0) cp_api_add_device(cp_worker_backend_name(), NULL);
         int qrc;
         if(g_mock){
             qrc = cp_qpow_mine_mock(worker_global);

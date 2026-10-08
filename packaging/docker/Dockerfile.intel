@@ -1,0 +1,12 @@
+# cppminer for Intel Arc GPUs (OpenCL backend, Intel compute runtime from Ubuntu 24.04):
+#   docker run -d --device /dev/dri --group-add render -e WALLET=... -e ALGO=pearl cppminer:intel
+FROM ubuntu:24.04
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libgomp1 \
+        ocl-icd-libopencl1 intel-opencl-icd \
+    && rm -rf /var/lib/apt/lists/*
+COPY pkg/ /opt/cppminer/
+COPY entrypoint.sh /opt/cppminer/entrypoint.sh
+RUN chmod 755 /opt/cppminer/cppminer /opt/cppminer/*.sh
+EXPOSE 4068
+ENTRYPOINT ["/opt/cppminer/entrypoint.sh"]

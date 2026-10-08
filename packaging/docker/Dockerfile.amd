@@ -1,0 +1,22 @@
+# cppminer for AMD GPUs (OpenCL backend, ROCm OpenCL runtime). The host needs the amdgpu kernel
+# driver (in-kernel on current kernels; RDNA4 needs Linux 6.12+ or the amdgpu DKMS):
+#   docker run -d --device /dev/kfd --device /dev/dri --group-add video --group-add render \
+#     -e WALLET=... -e ALGO=pearl cppminer:amd
+FROM ubuntu:24.04
+ARG ROCM_VERSION=7.2.4
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+        libgomp1 \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor > /etc/apt/keyrings/rocm.gpg \
+    && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/${ROCM_VERSION} noble main" \
+        > /etc/apt/sources.list.d/rocm.list \
+    && printf 'Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600\n' > /etc/apt/preferences.d/rocm-pin \
+    && apt-get update && apt-get install -y --no-install-recommends rocm-opencl-runtime \
+    && apt-get purge -y curl gnupg && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+ENV PATH=/opt/rocm/bin:$PATH
+COPY pkg/ /opt/cppminer/
+COPY entrypoint.sh /opt/cppminer/entrypoint.sh
+RUN chmod 755 /opt/cppminer/cppminer /opt/cppminer/*.sh
+EXPOSE 4068
+ENTRYPOINT ["/opt/cppminer/entrypoint.sh"]

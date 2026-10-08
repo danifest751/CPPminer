@@ -50,6 +50,8 @@ bool g_pool_connected = false;
 std::vector<Device> g_devices;
 double g_cum = 0;            /* work since start */
 std::deque<Sample> g_samples; /* at most one per second, last ~16 minutes */
+double g_t_last = 0;          /* time of the last work report */
+double g_dt_last = 0;         /* gap between the last two reports */
 unsigned long long g_accepted = 0, g_rejected = 0;
 double g_last_share = 0;
 
@@ -75,16 +77,20 @@ int parse_pci_bus(const char* pci)
     return (int)v;
 }
 
-/* rate over the last w seconds, caller holds g_mx */
+/* Rate over about the last w seconds, caller holds g_mx. Work arrives in chunks (a Pearl attempt
+ * can take tens of seconds on a slow GPU), so the window ends at the last report rather than at
+ * "now"; once reports stop for much longer than their usual gap it ends at now and decays. */
 double rate_locked(double now, double w)
 {
     if(g_samples.empty()) return 0;
+    double end = g_t_last > 0 ? g_t_last : now;
+    if(now - end > 3.0 * g_dt_last + 10.0) end = now;
     const Sample* s = &g_samples.front();
     for(const Sample& x : g_samples){
-        if(x.t <= now - w) s = &x;
+        if(x.t <= end - w) s = &x;
         else break;
     }
-    const double dt = now - s->t;
+    const double dt = end - s->t;
     if(dt < 0.5) return 0;
     return (g_cum - s->cum) / dt;
 }
@@ -287,7 +293,11 @@ void cp_api_set_algo(const char* algo, const char* backend)
 {
     std::lock_guard<std::mutex> lk(g_mx);
     if(algo) g_algo = algo;
-    if(backend) g_backend = backend;
+    if(backend){
+        g_backend = backend;
+        /* the backend is set right before mining starts: the rate counts from here */
+        if(g_samples.empty()) g_samples.push_back({cp_now_sec(), g_cum});
+    }
 }
 
 void cp_api_set_pool(const char* host, int port, int connected)
@@ -324,8 +334,10 @@ void cp_api_add_work(double units)
     if(units <= 0) return;
     const double now = cp_now_sec();
     std::lock_guard<std::mutex> lk(g_mx);
-    if(g_samples.empty()) g_samples.push_back({now, g_cum}); /* rate starts at the first work */
+    if(g_samples.empty()) g_samples.push_back({now, g_cum}); /* no start mark: count from here */
     g_cum += units;
+    g_dt_last = now - (g_t_last > 0 ? g_t_last : g_samples.front().t);
+    g_t_last = now;
     if(now - g_samples.back().t >= 1.0) g_samples.push_back({now, g_cum});
     /* keep one sample at or before the longest window */
     while(g_samples.size() > 2 && g_samples[1].t <= now - (k_windows[2] + 30.0))
