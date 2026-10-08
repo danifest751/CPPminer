@@ -20,6 +20,18 @@ for d in $devs; do
   wmma=$(grep -E "WMMA self-test" "$OUT/pearl-align-$d.log" | tr '\n' ';')
   echo "GPU $d pearl align-test: $res | $kern | $wmma" | tee -a "$summary"
 
+  # 64x32 wave tile (sweep variants w32*): optional, a failure here reads "bad" and does not
+  # block mining with the default 64x64 tile.
+  for v in "w32:" "w32-lds:-DCASE32_WMMA_LDS=1 -DCASE32_WMMA_KUNROLL=1"; do
+    name=${v%%:*}; opts=${v#*:}
+    echo "[check] GPU $d: Pearl align-test, WMMA $name"
+    CP_OCL_WMMA_WAVE_N=32 CP_OCL_EXTRA_OPTS="$opts" timeout 900 "$BIN/cppminer" --backend opencl \
+      --devices "$d" --align-test > "$OUT/pearl-align-$name-$d.log" 2>&1
+    res=$(grep -qE "all tests passed" "$OUT/pearl-align-$name-$d.log" && echo ok || echo bad)
+    kern=$(grep -m1 -oE "GEMM kernel: .*" "$OUT/pearl-align-$name-$d.log")
+    echo "GPU $d pearl align-test $name (optional): $res | $kern" | tee -a "$summary"
+  done
+
   echo "[check] GPU $d: Pearl mock share (zk-pow verify, a few minutes)"
   timeout 1800 "$BIN/cppminer" --backend opencl --devices "$d" --mock --mock-diff 62 > "$OUT/pearl-mock-$d.log" 2>&1
   res=$(grep -qiE "verify OK" "$OUT/pearl-mock-$d.log" && echo PASS || echo FAIL)

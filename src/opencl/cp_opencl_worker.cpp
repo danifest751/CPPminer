@@ -10,6 +10,7 @@
 #include "case33_gemm_ocl.hpp"
 #include "case32_layout.hpp"
 #include "opencl_context.hpp"
+#include "cp_api.h"
 
 #include <atomic>
 #include <chrono>
@@ -140,8 +141,26 @@ static int zero_b_prepare_job_gpu(const uint8_t job_key[32], int m, int n) {
     g_zero_b.use_cpu_prep = 0;
     g_zero_b.B_noisy.clear();
 
-    pearl_b_noise_seed_from_bt(job_key, NULL, n, K_DIM, g_zero_b.salted,
-                               g_zero_b.b_noise_seed);
+    /* The keyed digest of the all-zero B^T on the GPU (~2 ms on an R9700 vs 0.78 s on the
+       CPU per job); CP_OCL_ZERO_B_CHECK=1 compares it with the CPU path. */
+    uint8_t hash_b[32];
+    if (g_gemm.zero_b_digest_gpu(n, K_DIM, job_key, hash_b)) {
+        pearl_b_noise_seed_from_root(job_key, hash_b, n, g_zero_b.salted, g_zero_b.b_noise_seed);
+        const char *chk = getenv("CP_OCL_ZERO_B_CHECK");
+        if (chk && chk[0] && chk[0] != '0') {
+            uint8_t ref[32];
+            pearl_b_noise_seed_from_bt(job_key, NULL, n, K_DIM, g_zero_b.salted, ref);
+            const bool same = memcmp(ref, g_zero_b.b_noise_seed, 32) == 0;
+            printf("[ocl] zero-B GPU digest %s the CPU path\n", same ? "matches" : "DIFFERS FROM");
+            fflush(stdout);
+            if (!same) {
+                memcpy(g_zero_b.b_noise_seed, ref, 32);
+            }
+        }
+    } else {
+        pearl_b_noise_seed_from_bt(job_key, NULL, n, K_DIM, g_zero_b.salted,
+                                   g_zero_b.b_noise_seed);
+    }
     if (!g_gemm.prepare_job_gpu(m, n, K_DIM, g_zero_b.b_noise_seed)) {
         g_zero_b.ready = 0;
         fprintf(stderr, "[ocl] prepare_job_gpu failed\n");
@@ -480,6 +499,7 @@ extern "C" void cp_opencl_worker_init(int *devices, int ndev) {
     }
 
     g_context_ready = 1;
+    cp_api_add_device(g_gemm.device_name(), g_gemm.pci_bus_id().c_str());
     printf("[ocl] device[%d]: %s (%s)\n", g_gemm.device_index(), g_gemm.device_name(),
            g_gemm.discrete_gpu() ? "discrete GPU" : "integrated GPU/CPU");
     printf("[ocl] platform: %s\n", g_gemm.platform_name());

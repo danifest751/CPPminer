@@ -1,0 +1,18 @@
+# cppminer for Intel Arc GPUs (OpenCL backend):
+#   docker run -d --device /dev/dri -e WALLET=... -e ALGO=pearl cppminer:intel
+# The compute runtime comes from Intel's kobuk-team/intel-graphics PPA: the OpenCL compiler in
+# Ubuntu 24.04's own intel-opencl-icd crashes (SIGSEGV) building the Quantus kernel.
+FROM ubuntu:24.04
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+        software-properties-common gpg-agent \
+    && add-apt-repository -y ppa:kobuk-team/intel-graphics \
+    && apt-get update && apt-get install -y --no-install-recommends libgomp1 \
+        ocl-icd-libopencl1 intel-opencl-icd \
+    && apt-get purge -y software-properties-common gpg-agent && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
+COPY pkg/ /opt/cppminer/
+COPY entrypoint.sh /opt/cppminer/entrypoint.sh
+RUN chmod 755 /opt/cppminer/cppminer /opt/cppminer/*.sh
+EXPOSE 4068
+ENTRYPOINT ["/opt/cppminer/entrypoint.sh"]

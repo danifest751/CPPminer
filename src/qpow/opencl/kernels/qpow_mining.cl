@@ -15,11 +15,18 @@
  *   -DQV_MUL=1|2|3   64x64 -> 128 product: 1 = ulong mul + mul_hi, 2 = four 32x32 products
  *                    with explicit carries, 3 = carry-free chain of 32x32 + 64 multiply-adds
  *                    (maps to one mad_u64_u32 each on AMD GCN5+/RDNA)
- *   -DQV_RED=1|2     128 -> 64 reduction: 1 = single carry fold (exact except a ~2^-64 corner),
- *                    2 = signed form with shift-derived borrows (exact; best on Intel Xe-HPG)
- *   -DQV_EXT22=0|1   linear layers in lazy 96-bit sums, or in carry-free 22-bit limbs (default)
+ *   -DQV_RED=1|2|3   128 -> 64 reduction: 1 = single carry fold (exact except a ~2^-64 corner),
+ *                    2 = signed form with shift-derived borrows (exact; best on Intel Xe-HPG),
+ *                    3 = form 1 in gfx12 inline assembly around one carry-out multiply-add
+ *                    (AMD RDNA4, with -DQV_GFX12 from the host; elsewhere it builds as form 1)
+ *   -DQV_EXT22=0|1   linear layers in lazy 96-bit sums, or in carry-free 22-bit limbs (default;
+ *                    0 on gfx12)
  *   -DQV_OVF=0|1     carry detection by compare or by __builtin_add_overflow (default 1 where
  *                    the compiler has the builtin: +3-4% on Intel and NVIDIA, same on AMD)
+ *   -DQV_WRED_FAST=0|1  exact lazy-sum reduction, or skip its ~t/2^32 carry fold (default 1)
+ *   -DQV_NPW=N       hash N consecutive nonces per work-item in lockstep (default 1; the host
+ *                    passes 2 on gfx12, reads N from CP_QPOW_OCL_OPTS and launches 1/N of the
+ *                    work-items)
  *   -DQV_TEST        also build the field-op test kernel
  */
 
@@ -166,10 +173,63 @@ void sqr128(ulong a, ulong* lo, ulong* hi)
 #ifndef QV_RED
 #define QV_RED 1
 #endif
+/* QV_GFX12: set by the host for gfx12xx devices (ROCm OpenCL defines no per-target macro). */
+#if QV_RED == 3 && defined(QV_GFX12)
+#define QV_RED_ASM 1
+/* Single gfx12 instructions. A carry is an SGPR lane mask; each reader of one first waits for
+ * outstanding VALU SGPR writes (s_wait_alu va_sdst(0)), as the compiler does for its own carries.
+ * On an R9700 a 32-bit carry op issues in ~1.7 cycles, a 64-bit shift in ~1.75, v_cndmask and
+ * other 32-bit ops in 1 and v_mad_co_u64_u32 in ~3.6 (wave32, 16 waves per SIMD). */
+ulong qv_mad_eps_co(uint a, ulong c, uint* co) /* a * 0xFFFFFFFF + c, carry mask out */
+{
+    ulong r;
+    uint k;
+    __asm__("v_mad_co_u64_u32 %0, %1, %2, -1, %3" : "=v"(r), "=s"(k) : "v"(a), "v"(c));
+    *co = k;
+    return r;
+}
+uint qv_add_ci(uint a, uint b, uint ci) /* a + b + carry */
+{
+    uint r;
+    __asm__("s_wait_alu 0xf1ff\n\tv_add_co_ci_u32_e64 %0, null, %1, %2, %3" : "=v"(r) : "v"(a), "v"(b), "s"(ci));
+    return r;
+}
+uint qv_sel_ci(uint ci, uint x) /* carry ? x : 0 */
+{
+    uint r;
+    __asm__("s_wait_alu 0xf1ff\n\tv_cndmask_b32_e64 %0, 0, %1, %2" : "=v"(r) : "v"(x), "s"(ci));
+    return r;
+}
+uint qv_sub_co(uint a, uint b, uint* co)
+{
+    uint r, k;
+    __asm__("v_sub_co_u32 %0, %1, %2, %3" : "=v"(r), "=s"(k) : "v"(a), "v"(b));
+    *co = k;
+    return r;
+}
+uint qv_sub_ci(uint a, uint b, uint ci) /* a - b - borrow */
+{
+    uint r;
+    __asm__("s_wait_alu 0xf1ff\n\tv_sub_co_ci_u32_e64 %0, null, %1, %2, %3" : "=v"(r) : "v"(a), "v"(b), "s"(ci));
+    return r;
+}
+#endif
+
 ulong red128(ulong lo, ulong hi)
 {
     const uint r2 = (uint)hi, r3 = (uint)(hi >> 32);
-#if QV_RED == 2
+#if defined(QV_RED_ASM)
+    /* Form 1 with {c, t} = r2 * EPS + lo from one multiply-add (the compiler builds r2 * EPS with
+     * one and adds lo with two more carry ops), then V = t + c*2^32 - (r3 + c) = t - w with
+     * w = {r3 + c, c ? 2^32 - 1 : 0} as 64 bits. ~20% fewer cycles per gmul on an R9700. */
+    uint c, b;
+    const ulong t = qv_mad_eps_co(r2, lo, &c);
+    const uint wl = qv_add_ci(r3, 0u, c);
+    const uint wh = qv_sel_ci(c, 0xFFFFFFFFu);
+    const uint rl = qv_sub_co((uint)t, wl, &b);
+    const uint rh = qv_sub_ci((uint)(t >> 32), wh, b);
+    return ((ulong)rh << 32) | rl;
+#elif QV_RED == 2
     /* Signed form, exact: V = (l0 - r2 - r3) + (l1 + r2) * 2^32 lies in (-2^33, 2^65). The
      * borrows and carries come from arithmetic shifts, so no carry-out test is needed; the
      * top word v2 in {-1, 0, 1} folds back as v2 * EPS without a second overflow. */
@@ -186,7 +246,15 @@ ulong red128(ulong lo, ulong hi)
 }
 
 ulong gmul(ulong a, ulong b) { ulong l, h; mul128(a, b, &l, &h); return red128(l, h); }
+/* QV_SQR_MUL=1: square through the four-product chain instead (R9700 with QV_RED=3: 1% slower). */
+#ifndef QV_SQR_MUL
+#define QV_SQR_MUL 0
+#endif
+#if QV_SQR_MUL
+ulong gsqr(ulong a) { return gmul(a, a); }
+#else
 ulong gsqr(ulong a) { ulong l, h; sqr128(a, &l, &h); return red128(l, h); }
+#endif
 
 /* Lazy sum for the linear layers: value = v + t * 2^64. */
 typedef struct { ulong v; uint t; } W;
@@ -195,26 +263,56 @@ W w2(ulong a, ulong b) { W r; r.t = ADDC(r.v, a, b); return r; }
 W wadd(W a, W b) { W r; r.t = a.t + b.t + ADDC(r.v, a.v, b.v); return r; }
 W wadd64(W a, ulong b) { W r; r.t = a.t + ADDC(r.v, a.v, b); return r; }
 
-/* v + t*EPS with small t: one carry at most, after which the sum is < 2^37, so +EPS is safe */
+/* v + t*EPS with small t: one carry at most, after which the sum is < 2^37, so +EPS is safe.
+ * QV_WRED_FAST (default) skips that fold: the carry fires with probability about t / 2^32 per
+ * call, i.e. a couple of hashes in a million come out wrong, which only matters if one of them
+ * was a share; every candidate is re-hashed on the host. */
+#ifndef QV_WRED_FAST
+#define QV_WRED_FAST 1
+#endif
 ulong wred(W a)
 {
+#if QV_WRED_FAST
+    return a.v + ((ulong)a.t << 32) - a.t;
+#else
     ulong s;
     uint c = ADDC(s, a.v, ((ulong)a.t << 32) - a.t);
     return s + (c ? EPS : 0UL);
+#endif
 }
 
 ulong gadd(ulong a, ulong b) { return wred(w2(a, b)); }
 
 ulong canon(ulong a) { return a >= 0xFFFFFFFF00000001UL ? a - 0xFFFFFFFF00000001UL : a; }
 
-/* a*b + w with w a lazy sum, reduced once */
+/* a*b + w with w a lazy sum, reduced once.
+ * QV_GFMA_CHAIN=1 (with QV_MUL=3): w rides in the 32x32+64 multiply-add chain instead of a
+ * separate 128-bit add. Bounds, with every 32-bit word <= 2^32-1:
+ *   p0 = a0*b0 + w.lo                               < 2^64
+ *   m  = a1*b0 + (p0>>32 + w.hi)  <= (2^32-1)^2 + 2(2^32-1) = 2^64-1
+ *   m2 = a0*b1 + (uint)m                            < 2^64
+ *   hi = a1*b1 + m>>32 + m2>>32 + t                 (a*b + w < 2^128 for the diagonal b)
+ * so every step maps onto one v_mad_u64_u32 with its 64-bit addend and no carry-out tests. */
+#ifndef QV_GFMA_CHAIN
+#define QV_GFMA_CHAIN 1
+#endif
 ulong gfma_w(ulong a, ulong b, W w)
 {
+#if QV_GFMA_CHAIN && QV_MUL == 3
+    const uint a0 = (uint)a, a1 = (uint)(a >> 32), b0 = (uint)b, b1 = (uint)(b >> 32);
+    const ulong p0 = (ulong)a0 * b0 + (uint)w.v;
+    const ulong m = (ulong)a1 * b0 + ((p0 >> 32) + (w.v >> 32));
+    const ulong m2 = (ulong)a0 * b1 + (uint)m;
+    const ulong hi = (ulong)a1 * b1 + ((m >> 32) + (m2 >> 32) + (ulong)w.t);
+    const ulong lo = (p0 & EPS) | (m2 << 32);
+    return red128(lo, hi);
+#else
     ulong lo, hi;
     mul128(a, b, &lo, &hi);
     ulong l2;
     hi += (ulong)w.t + ADDC(l2, lo, w.v);
     return red128(l2, hi);
+#endif
 }
 
 ulong sbox(ulong x)
@@ -228,7 +326,11 @@ ulong sbox(ulong x)
 /* ------------------------------------------------------------------ permutation */
 
 #ifndef QV_EXT22
+#if defined(QV_GFX12)
+#define QV_EXT22 0 /* R9700 with QV_RED=3 and QV_NPW=2: 211.3 vs 210.0 MH/s */
+#else
 #define QV_EXT22 1
+#endif
 #endif
 
 #if QV_EXT22
@@ -415,6 +517,85 @@ ulong hash_out0(__constant const ulong* pk, uint t)
     return out0_of(s);
 }
 
+/* QV_NPW > 1: one work-item hashes QV_NPW consecutive line positions in lockstep. The chains are
+ * independent, so the compiler can fill carry (VCC) waits and pair instructions (VOPD on RDNA)
+ * from the other nonce. Costs registers; the host launches 1/QV_NPW of the work-items. */
+#ifndef QV_NPW
+#define QV_NPW 1
+#endif
+#if QV_NPW > 1
+void internal22_n(ulong s[QV_NPW][12])
+{
+#pragma unroll 1
+    for (int r = 0; r < 22; r++) {
+        W rest[QV_NPW];
+        #pragma unroll
+        for (int n = 0; n < QV_NPW; n++) {
+            rest[n] = w2(s[n][1], s[n][2]);
+            #pragma unroll
+            for (int i = 3; i < 12; i++) rest[n] = wadd64(rest[n], s[n][i]);
+        }
+        #pragma unroll
+        for (int n = 0; n < QV_NPW; n++) s[n][0] = sbox(s[n][0]);
+        #pragma unroll
+        for (int n = 0; n < QV_NPW; n++) {
+            const W sg = wadd64(rest[n], s[n][0]);
+            s[n][0] = gfma_w(s[n][0], MDS_DIAG[0], wadd64(sg, RC_INTERNAL_NEXT[r]));
+            #pragma unroll
+            for (int i = 1; i < 12; i++) s[n][i] = gfma_w(s[n][i], MDS_DIAG[i], sg);
+        }
+    }
+    #pragma unroll
+    for (int n = 0; n < QV_NPW; n++)
+        #pragma unroll
+        for (int i = 0; i < 12; i++) s[n][i] = gadd(s[n][i], RC_TERMINAL[0][i]);
+}
+
+/* hash_out0 for positions t .. t + QV_NPW - 1 */
+void hash_out0_n(__constant const ulong* pk, uint t, ulong* o)
+{
+    ulong s[QV_NPW][12];
+    #pragma unroll
+    for (int n = 0; n < QV_NPW; n++) {
+        const ulong d = 35ul * (t + (uint)n);
+        const ulong f = sbox(gadd(pk[0], 0xFFFFFFFF00000001ul - d));
+        const ulong g = sbox(gadd(pk[1], d));
+        const W c2 = w2(f, g);
+        W c[3];
+        c[0] = wadd64(c2, f);
+        c[1] = wadd64(c2, g);
+        c[2] = c2;
+        const int m0[4] = {2, 1, 1, 3};
+        #pragma unroll
+        for (int k = 0; k < 3; k++)
+            #pragma unroll
+            for (int j = 0; j < 4; j++) {
+                W v = c[k];
+                if (m0[j] >= 2) v = wadd(v, c[k]);
+                if (m0[j] == 3) v = wadd(v, c[k]);
+                s[n][4 * k + j] = wred(wadd64(v, pk[2 + 4 * k + j]));
+            }
+    }
+#pragma unroll 1
+    for (int g = 1;; g++) {
+        #pragma unroll
+        for (int i = 0; i < 12; i++)
+            #pragma unroll
+            for (int n = 0; n < QV_NPW; n++) s[n][i] = sbox(s[n][i]);
+        if (g == 15) break;
+        #pragma unroll
+        for (int n = 0; n < QV_NPW; n++) ext_add(s[n], post_row(g));
+        if (g == 7) {
+            #pragma unroll
+            for (int n = 0; n < QV_NPW; n++) ext_add(s[n], post_row(15));
+        }
+        if ((g & 7) == 3) internal22_n(s);
+    }
+    #pragma unroll
+    for (int n = 0; n < QV_NPW; n++) o[n] = out0_of(s[n]);
+}
+#endif
+
 uint bswap32(uint v) { return as_uint(as_uchar4(v).s3210); }
 
 #if defined(QV_SG) && defined(cl_intel_subgroups)
@@ -428,6 +609,26 @@ __kernel QV_KERNEL_ATTR void qpow_scan(__global volatile uint* out, __global ulo
                         ulong t0, uint tb, uint count)
 {
     const uint stride = (uint)get_global_size(0);
+#if QV_NPW > 1
+    /* the host launches about count / QV_NPW work-items */
+    for (uint base = (uint)get_global_id(0) * QV_NPW; base < count; base += stride * QV_NPW) {
+        ulong os[QV_NPW];
+        hash_out0_n(pk, tb + base, os);
+        #pragma unroll
+        for (int n = 0; n < QV_NPW; n++) {
+            const uint idx = base + (uint)n;
+            const ulong o = os[n];
+            const ulong key = ((ulong)bswap32((uint)o) << 32) | bswap32((uint)(o >> 32));
+            if (idx < count) {
+                if (dump) dump[idx] = o;
+                if (key <= t0) {
+                    const uint slot = atomic_inc(&out[0]);
+                    if (slot < 15u) out[1 + slot] = idx;
+                }
+            }
+        }
+    }
+#else
     for (uint idx = (uint)get_global_id(0); idx < count; idx += stride) {
         const ulong o = hash_out0(pk, tb + idx);
         const ulong key = ((ulong)bswap32((uint)o) << 32) | bswap32((uint)(o >> 32));
@@ -437,6 +638,7 @@ __kernel QV_KERNEL_ATTR void qpow_scan(__global volatile uint* out, __global ulo
             if (slot < 15u) out[1 + slot] = idx;
         }
     }
+#endif
 }
 
 #ifdef QV_TEST

@@ -22,6 +22,22 @@ else
   . /etc/os-release
   apt-get update -qq
   apt-get install -y -qq wget ca-certificates clinfo pciutils >/dev/null
+  # Ubuntu 25.04+ (e.g. 26.04 "resolute", kernel 7.0) ships ROCm itself and its in-kernel amdgpu
+  # runs RDNA4; amdgpu-install has no packages for it. rocm-opencl-icd does not pull the code
+  # object manager, without which the runtime lists 0 devices ("Failed to load COMGR library").
+  if [ -e /dev/kfd ] && apt-cache show rocm-opencl-icd >/dev/null 2>&1; then
+    # the -rocm build matches rocm-opencl-icd (tested: Ubuntu 26.04, libamd-comgr3-rocm 7.1.0)
+    comgr=$(apt-cache search --names-only '^libamd-comgr[0-9]+-rocm$' | awk '{print $1}' | sort -V | tail -1)
+    [ -z "$comgr" ] && comgr=$(apt-cache search --names-only '^libamd-comgr[0-9]+$' | awk '{print $1}' | sort -V | tail -1)
+    say "installing the distribution's ROCm OpenCL: rocm-opencl-icd $comgr rocminfo llvm"
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq rocm-opencl-icd $comgr rocminfo llvm >/dev/null
+    ldconfig
+  fi
+fi
+
+if ! have_amd_cl; then
+  if [ "$(id -u)" != 0 ]; then echo "[setup] run me as root: sudo ./setup.sh"; exit 1; fi
+  . /etc/os-release
   base="https://repo.radeon.com/amdgpu-install/latest/ubuntu/${VERSION_CODENAME}/"
   deb=$(wget -qO- "$base" | grep -oE 'amdgpu-install_[^"]+_all\.deb' | sort -V | tail -1)
   if [ -z "$deb" ]; then echo "[setup] could not find amdgpu-install for ${VERSION_CODENAME} at $base"; exit 1; fi

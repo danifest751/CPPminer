@@ -1,0 +1,23 @@
+# Example: Pearl on all NVIDIA GPUs of the host, stats API on port 4068 (4069, ... for more GPUs).
+#   WALLET=YOUR_KRYPTEX_ACCOUNT_OR_PRL_ADDRESS docker compose up -d
+services:
+  cppminer:
+    image: ghcr.io/danifest751/cppminer:nvidia
+    restart: unless-stopped
+    environment:
+      WALLET: ${WALLET:?set WALLET}
+      ALGO: pearl                    # or quantus
+      # POOL: stratum+tcp://prl-ru.kryptex.network:7048
+      # WORKER: rig01
+    ports:
+      - "4068:4068"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+  # AMD instead of NVIDIA: image ghcr.io/danifest751/cppminer:amd, no deploy block, and
+  #   devices: ["/dev/kfd", "/dev/dri"]
+  # Intel Arc: image ghcr.io/danifest751/cppminer:intel, devices: ["/dev/dri"]

@@ -7,7 +7,7 @@ for log in "$LOGS"/mine-*.log; do
   name=$(basename "$log" .log)
   rate=$(grep -oE "\[qpow\] [0-9.]+ MH/s|attempt timing: .* [0-9.]+ [TG]MAC/s" "$log" | tail -1 | grep -oE "[0-9.]+ (MH/s|[TG]MAC/s)")
   ok=$(grep -cE '"status":"OK"|submit response:.*"result":true|share accepted|accepted' "$log")
-  bad=$(grep -ciE "reject|invalid share|low difficulty|stale" "$log")
+  bad=$(grep -ciE "rejected|invalid share|low difficulty|stale share" "$log")
   restarts=$(grep -c "=== exited" "$log")
   echo "$name: ${rate:-n/a}  shares ok=$ok rejected=$bad  restarts=$restarts"
 done

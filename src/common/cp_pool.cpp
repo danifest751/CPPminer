@@ -9,6 +9,8 @@
 #include "cp_state.h"
 #include "cp_util.h"
 #include "cp_tcp.h"
+#include "cp_api.h"
+#include "cp_fee.h"
 
 #ifdef _WIN32
 #include <mstcpip.h> /* SIO_KEEPALIVE_VALS, struct tcp_keepalive */
@@ -187,10 +189,12 @@ static void pool_dispatch_line(const char* line)
     if(cp_pool_on_authorize_response(line))
         return;
 
-    int response_id = 0;
-    if(cp_json_rpc_response(line, &response_id, nullptr)){
-        if(g_session.finish_submit(response_id))
+    int response_id = 0, response_ok = 0;
+    if(cp_json_rpc_response(line, &response_id, &response_ok)){
+        if(g_session.finish_submit(response_id)){
             printf("[pool] submit response: %s\n", line);
+            if(!cp_fee_session_is_dev()) cp_api_on_share(response_ok);
+        }
         else
             printf("[pool] jsonrpc: %s\n", line);
         fflush(stdout);

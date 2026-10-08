@@ -22,6 +22,9 @@ struct Case33OclPrep {
                            int K, int blocks_k, int macro_rows, int salted,
                            uint8_t a_key_out[32]);
 
+    /* Keyed digest of an all-zero n x K matrix (zero-B mining) on the GPU. */
+    bool zero_matrix_keyed_hash(int n, int K, const uint8_t job_key[32], uint8_t out[32]);
+
     /* GPU random A + keyed hash + row-major noisy A (signal from d_A_sig_). */
     bool prepare_attempt_a_rowmajor(cl_mem a_noisy_out, const uint8_t *ab_seed, int ab_seed_len,
                                     const uint8_t job_key[32], const uint8_t b_noise_seed[32],
@@ -114,6 +117,8 @@ private:
     cl_kernel k_compute_blake_mt_ = nullptr;
     cl_kernel k_reduce_roots_ = nullptr;
     cl_kernel k_fused_prepack_a_ = nullptr;
+    cl_kernel k_fused_prepack_a_wg_ = nullptr; // optional: 256-wide blocks, needs el rows
+    int fpa_split_ = 1; // work groups per block in k_fused_prepack_a_wg_ (local memory)
     cl_kernel k_fused_prepack_b_ = nullptr;
     cl_kernel k_noisy_rowmajor_ = nullptr;
     cl_kernel k_uniform_rows_ = nullptr;      // optional: work-group row-major noise path
@@ -138,6 +143,10 @@ private:
     size_t noisy_scratch_cap_ = 0;
     cl_mem d_el_rows_ = nullptr; // rows x R_RANK uniform noise for the work-group path
     size_t el_rows_cap_ = 0;
+    bool ensure_el_rows_(size_t bytes);
+    bool uniform_rows_(int rows, int is_b);
+    bool fused_prepack_a_launch_(cl_kernel k, cl_mem a_buf, int m, int K, int blocks_k,
+                                 int macro_rows);
     bool esimd_layout_ = false;  // noisy A in 8x32 blocks, B^T in 32 x esimd_es_ VNNI blocks
     int esimd_es_ = 8;
 
