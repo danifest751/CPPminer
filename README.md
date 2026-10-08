@@ -36,9 +36,9 @@ Quantus (QTC), stock power limit:
 |---|---:|---|---:|
 | RTX 3090 | 350 W | CUDA | 419 |
 | RTX 2080 Ti | 250 W | CUDA | 316 |
-| CMP 50HX | 225 W | CUDA | 300 |
+| CMP 50HX | 225 W | CUDA | 294 |
 | Radeon AI PRO R9700 | stock | OpenCL | 211 |
-| Arc A380 | stock | OpenCL | 31.6 |
+| Arc A380 | stock | OpenCL | 31.2 |
 
 More cards and CPUs: [Supported hardware and speed](#supported-hardware-and-speed).
 
@@ -73,7 +73,7 @@ More cards and CPUs: [Supported hardware and speed](#supported-hardware-and-spee
 | **AMD RDNA3** (RX 7000, Radeon 780M/760M) | WMMA matrix cores (`v_wmma_i32_16x16x16_iu8`): 780M 3.65 → 6.4 TMAC/s. Before that, `v_dot4` and work-group swizzle |
 | **AMD RDNA4** (RX 9000, Radeon AI PRO R9700) | WMMA on gfx12, the operand layout picked by a start-up self-test, half-wave milestone reduce-scatter, GPU-side job and nonce preparation: R9700 95–96 TMAC/s at the pool |
 | **Quantus on NVIDIA** | New CUDA backend (`--algo quantus --backend cuda`): Goldilocks arithmetic tuned for the integer pipes, lazy 96-bit sums in the linear layers, only two S-boxes in the first round. CMP 50HX 101 (OpenCL) → 288 MH/s |
-| **Quantus on OpenCL** | Rewritten kernel: variants probed per device, carry-free 22-bit limbs in the linear layers, carry chains through `__builtin_addc` on AMD, launch pipeline; on RDNA4 a reduction in inline assembly and two nonces per work-item. R9700 → 211 MH/s, A380 → 31.6 MH/s |
+| **Quantus on OpenCL** | Rewritten kernel: variants probed per device, carry-free 22-bit limbs in the linear layers, carry chains through `__builtin_addc` on AMD, launch pipeline; on RDNA4 a reduction in inline assembly and two nonces per work-item. R9700 → 211 MH/s, A380 → 31.2 MH/s |
 | **HiveOS, Docker, stats API** | HiveOS custom-miner package and Docker images for NVIDIA, AMD and Intel, one process per GPU; `--api-port` serves hashrate, shares and devices as JSON |
 | **AMD Polaris and older GCN** (RX 470/480/570/580, Fiji, Tonga) | Dedicated 24-bit multiply-add kernel: RX 580 1.38 → 1.84 TMAC/s |
 | **Intel Arc** (Xe-HPG) | `--backend onednn`: an ESIMD XMX kernel does the GEMM, milestone XOR and the whole jackpot in one pass, on operands the prep writes in DPAS layout (A380 3.2 → 18.8 TMAC/s); gemmstone systolic kernels as the fallback (16.7) |
@@ -109,11 +109,11 @@ Hashrate is in **MAC/s**: multiply-accumulates per second of the int8 matrix pro
 |---|---|---|---|---|
 | RTX 3090 | Ampere, sm_86 | CUDA | 419 | 350 W, `--mock` |
 | RTX 2080 Ti | Turing, sm_75 | CUDA | 316 | 250 W, `--mock` |
-| CMP 50HX | Turing, sm_75 | CUDA | 300 | 225 W; 288 with v0.5-fork.7 |
+| CMP 50HX | Turing, sm_75 | CUDA | 294 | 225 W; 286.5 with v0.5-fork.7 in the same run |
 | RTX 5070 | Blackwell, sm_120 | CUDA | ~370 | kernel benchmark, 250 W |
 | Radeon AI PRO R9700 | RDNA4, gfx1201 | OpenCL | 211 | per GPU, two GPUs mining; 162 with v0.5-fork.7 |
 | CMP 50HX | Turing, sm_75 | OpenCL | 213 | 202 with v0.5-fork.7 |
-| Arc A380 | Xe-HPG (DG2) | OpenCL | 31.6 | Linux; 29.6 with v0.5-fork.7 |
+| Arc A380 | Xe-HPG (DG2) | OpenCL | 31.2 | Linux; 30.2 with v0.5-fork.7 in the same run |
 
 Every Quantus GPU backend checks its kernel against the CPU at start-up, and every candidate share is hashed again on the CPU before it is sent.
 

@@ -4,7 +4,7 @@
 - HiveOS custom-miner package `cppminer-0.5_fork.8.tar.gz` (one miner per GPU, per-GPU hashrate, shares, temperatures and fans) and Docker images `ghcr.io/danifest751/cppminer:nvidia|amd|intel`.
 - Stats API: `--api-port N` serves `/summary` (JSON) and `/hiveos`; `--api-bind` sets the address.
 - Pearl OpenCL: 25x faster keyed matrix hash, zero-B job seed on the GPU, 256-wide fused A prepack; RDNA4 half-wave reduce-scatter. Radeon AI PRO R9700 88 -> 95-96 TMAC/s at the pool; Arc A380 prep 750 -> 70-90 ms per nonce.
-- Quantus: gfx12 inline-assembly reduction, two nonces per work-item and 64-bit linear layers on RDNA4 (R9700 162 -> 211 MH/s); multiply-chain row sums and skipped rare carry fold on OpenCL and CUDA (CMP 50HX CUDA 285.5 -> 300.5, OpenCL 202 -> 213; A380 29.6 -> 31.6 MH/s).
+- Quantus: gfx12 inline-assembly reduction, two nonces per work-item and 64-bit linear layers on RDNA4 (R9700 162 -> 211 MH/s); multiply-chain row sums and skipped rare carry fold on OpenCL and CUDA (CMP 50HX CUDA 286.5 -> 293.6, OpenCL 202 -> 213; A380 30.2 -> 31.2 MH/s).
 - Quantus is still mined without a developer fee.
 - Pool agent `cppminer/0.5-fork.8`.
 - Detailed release notes: [v0.5-fork.8](docs/releases/v0.5-fork.8.md).
