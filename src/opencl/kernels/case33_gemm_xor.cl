@@ -983,12 +983,31 @@ inline int wmma_lane_kg0(uint lane, int ksplit) {
 
 /* One lane's A or B operand for a 16-k step. p: the lane's dword for its row/column at
    k-group wmma_lane_kg0(); kg: dword stride between consecutive k-groups. */
+/* CASE32_WMMA_ABLATE (timing only, results are WRONG): 1 = one dword load per operand instead of
+   two (gfx12), 2 = no operand loads at all (register-derived values): the speed ceiling if the
+   load instruction count halved / vanished. */
+#ifndef CASE32_WMMA_ABLATE
+#define CASE32_WMMA_ABLATE 0
+#endif
 inline wmma_ab wmma_load_ab(__global const int *p, int kg, int ksplit) {
 #if CASE32_WMMA == 11
     (void)ksplit;
     return (int4)(p[0], p[kg], p[2 * kg], p[3 * kg]);
 #else
     return (int2)(p[0], p[(ksplit ? 1 : 2) * kg]);
+#endif
+}
+
+/* GEMM operand load (the self-test keeps wmma_load_ab) */
+inline wmma_ab wmma_load_ab_gemm(__global const int *p, int kg, int ksplit) {
+#if CASE32_WMMA == 12 && CASE32_WMMA_ABLATE == 1
+    const int v = p[0];
+    return (int2)(v, v ^ kg);
+#elif CASE32_WMMA == 12 && CASE32_WMMA_ABLATE == 2
+    const int v = (int)(size_t)p ^ ksplit;
+    return (int2)(v, v + kg);
+#else
+    return wmma_load_ab(p, kg, ksplit);
 #endif
 }
 
@@ -1123,12 +1142,12 @@ inline void wmma_load_step(__private wmma_ab *a, __private wmma_ab *b, __global 
                            __global const int *b_lane, int g) {
     #pragma unroll
     for (int bi = 0; bi < WMMA_BM; ++bi) {
-        a[bi] = wmma_load_ab(a_lane + g * WMMA_KG_DW_A + bi * 16, WMMA_KG_DW_A,
+        a[bi] = wmma_load_ab_gemm(a_lane + g * WMMA_KG_DW_A + bi * 16, WMMA_KG_DW_A,
                              CASE32_WMMA_G12_KSPLIT);
     }
     #pragma unroll
     for (int bj = 0; bj < WMMA_BN; ++bj) {
-        b[bj] = wmma_load_ab(b_lane + g * WMMA_KG_DW_B + bj * 16, WMMA_KG_DW_B,
+        b[bj] = wmma_load_ab_gemm(b_lane + g * WMMA_KG_DW_B + bj * 16, WMMA_KG_DW_B,
                              CASE32_WMMA_G12_KSPLIT);
     }
 }
