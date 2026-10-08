@@ -56,10 +56,14 @@ pearl_variant() { # name pipeline "extra opts"
 
 qtc_variant() { # name "env assignments" "extra opts"
   local name=$1 envs=$2 opts=$3 log="$OUT/qtc-$1.log"
-  env $envs CP_QPOW_OCL_OPTS="$opts" timeout "$SEC" "$BIN/cppminer" --algo quantus --backend opencl \
-    --devices "$DEV" --mock --mock-diff 1e15 > "$log" 2>&1
-  printf "qtc   %-14s %-24s %-22s %s | %s\n" "$name" "[$envs]" "[$opts]" "$(qtc_rate "$log")" \
-    "$(grep -m1 -oE "kernel mul=[0-9]+ red=[0-9]+ local=[0-9]+.*self-test [a-z]+" "$log")" | tee -a "$summary"
+  rm -f "$OUT/qtc-$name.co"*
+  env $envs CP_QPOW_OCL_OPTS="$opts" CP_OCL_DUMP_BIN="$OUT/qtc-$name.co" timeout "$SEC" "$BIN/cppminer" \
+    --algo quantus --backend opencl --devices "$DEV" --mock --mock-diff 1e15 > "$log" 2>&1
+  # the worker builds several variants while probing; the newest dump is the one it kept
+  local co; co=$(ls -t "$OUT"/qtc-$name.co* 2>/dev/null | head -1)
+  printf "qtc   %-14s %-24s %-28s %s | %s | %s\n" "$name" "[$envs]" "[$opts]" "$(qtc_rate "$log")" \
+    "$(grep -m1 -oE "kernel mul=[0-9]+ red=[0-9]+ local=[0-9]+.*self-test [a-z]+" "$log")" \
+    "$(code_stats "${co:-none}" qpow_scan)" | tee -a "$summary"
 }
 
 # --- Pearl (WMMA). Defaults on gfx12: pipeline 0, msg in LDS, full k unroll, no LDS staging.
@@ -79,5 +83,13 @@ qtc_variant ovf1      ""                   "-DQV_OVF=1"
 qtc_variant mul3      "CP_QPOW_OCL_MUL=3"  ""
 qtc_variant mul1      "CP_QPOW_OCL_MUL=1"  ""
 qtc_variant mul3red2  "CP_QPOW_OCL_MUL=3 CP_QPOW_OCL_RED=2" ""
+# 2026-10-08 additions: rare-carry skip in wred (default on) vs exact, two/three nonces per
+# work-item (offline gfx1201: 184/192 VGPR, no scratch), lazy 96-bit sums vs 22-bit limbs.
+qtc_variant wred-exact ""                  "-DQV_WRED_FAST=0"
+qtc_variant ext64     ""                   "-DQV_EXT22=0"
+qtc_variant npw2      ""                   "-DQV_NPW=2"
+qtc_variant npw2ext64 ""                   "-DQV_NPW=2 -DQV_EXT22=0"
+qtc_variant npw3      ""                   "-DQV_NPW=3"
+qtc_variant npw2mul1  "CP_QPOW_OCL_MUL=1"  "-DQV_NPW=2"
 
 echo "[sweep] done: $summary"
