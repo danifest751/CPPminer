@@ -127,3 +127,25 @@ python3 gen_examples.py ex.sass && python3 learn.py ex.sass   # once: dual-carry
 All within +-0.5%, as the hand-SASS bound predicts: the kernel's arithmetic is inline PTX, so the
 front end hardly changes the SASS, and no schedule removes the 18 IMAD.WIDE per S-box. CUDA 10.x
 images are no longer on Docker Hub. Script: `tools/cuda-quantus/sass-fuse/fe_build.sh`.
+
+## Open-source GPU Goldilocks vs ours (same S-box microbenchmark, CMP 50HX)
+
+Built with `-DWITH_OSS -Iossh --expt-relaxed-constexpr`, where `ossh/` holds the unmodified headers
+of era-boojum-cuda `native/` (MIT/Apache-2.0: goldilocks, common, carry_chain, memory, ptx .cuh) and
+sppark's `gl64_t.cuh` as vendored in Polygon's goldilocks repo (file header Apache-2.0; the repo
+itself is AGPL, so nothing from it should be copied into the miner). Every variant matches the host
+`x^7 mod p` on 65536 values.
+
+| S-box implementation | S-boxes per SM clock |
+|---|---|
+| **ours** (production `sbox()`) | **1.41** |
+| sppark `gl64_t`, `GL64_PARTIALLY_REDUCED` | 0.99 |
+| sppark `gl64_t` | 0.94 |
+| era-boojum-cuda (u64 mul_lo/mul_hi, ALU reduction) | 0.90 |
+| era-boojum-cuda, lazy 96-bit `field<3>` state as in its Poseidon2 | 0.89 |
+
+Our arithmetic is 1.4-1.6x faster than the public GPU state of the art on Turing. ICICLE's public
+tree has no CUDA field backend (only CPU and PQC); its Goldilocks reduction is the same identity
+with branches. One structural difference worth knowing: Boojum's Poseidon2 uses an internal
+diagonal of the form 1 + 2^k, so its internal products are shifts. Quantus fixes Plonky3's random
+64-bit diagonal, so that trick changes the hash and is not available.

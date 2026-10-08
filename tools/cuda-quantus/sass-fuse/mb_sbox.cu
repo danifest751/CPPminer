@@ -78,6 +78,73 @@ extern "C" __global__ void __launch_bounds__(TPB) k_hand(u64* io, long long* cyc
     if (threadIdx.x == 0) cyc[blockIdx.x] = (t1 - t0) + (c_eps == 7 ? 1 : 0);
 }
 
+#ifdef WITH_OSS
+/* ---- era-boojum-cuda (MIT/Apache-2.0) Goldilocks: S-box exactly as in its poseidon2 apply_non_linearity.
+ * LAZY=1 keeps the 96-bit field<3> state between S-boxes like their permutation; LAZY=0 reduces
+ * to 64 bits every time. */
+#include "goldilocks.cuh"
+template <int LAZY>
+__global__ void __launch_bounds__(TPB) k_boo(u64* io, long long* cyc, int iters)
+{
+    using bf = goldilocks::field<2>;
+    using f3t = goldilocks::field<3>;
+    const int t = blockIdx.x * blockDim.x + threadIdx.x;
+    f3t s[NCH];
+#pragma unroll
+    for (int i = 0; i < NCH; i++) s[i] = bf::into<3>(bf::from_u64(io[(size_t)t * NCH + i]));
+    __syncthreads();
+    const long long t0 = clock64();
+#pragma unroll 1
+    for (int it = 0; it < iters; it++) {
+#pragma unroll
+        for (int i = 0; i < NCH; i++) {
+            const bf f1 = bf::field3_to_field2(s[i]);
+            const bf f2 = bf::sqr(f1);
+            const bf f3 = bf::mul(f1, f2);
+            const bf f4 = bf::sqr(f2);
+            if (LAZY) {
+                s[i] = goldilocks::field<4>::field4_to_field3(bf::mul_wide(f3, f4));
+                s[i] = f3t::field3_to_field2_and_carry(s[i]);
+            } else {
+                s[i] = bf::into<3>(bf::mul(f3, f4));
+            }
+        }
+    }
+    const long long t1 = clock64();
+#pragma unroll
+    for (int i = 0; i < NCH; i++) io[(size_t)t * NCH + i] = bf::to_u64(bf::field3_to_field2(s[i]));
+    if (threadIdx.x == 0) cyc[blockIdx.x] = t1 - t0;
+}
+
+/* ---- sppark gl64_t (Apache-2.0, as vendored in Polygon's goldilocks repo). -DSPPARK_PR builds the
+ * partially reduced variant. Included last: the header redefines `inline` and `asm`. */
+#ifdef SPPARK_PR
+#define GL64_PARTIALLY_REDUCED
+#endif
+#define __USE_CUDA__
+#include "gl64_t.cuh"
+__global__ void __launch_bounds__(TPB) k_spp(u64* io, long long* cyc, int iters)
+{
+    const int t = blockIdx.x * blockDim.x + threadIdx.x;
+    gl64_t x[NCH];
+#pragma unroll
+    for (int i = 0; i < NCH; i++) x[i] = gl64_t(io[(size_t)t * NCH + i]);
+    __syncthreads();
+    const long long t0 = clock64();
+#pragma unroll 1
+    for (int it = 0; it < iters; it++) {
+#pragma unroll
+        for (int i = 0; i < NCH; i++) x[i] = x[i] ^ 7;
+    }
+    const long long t1 = clock64();
+#pragma unroll
+    for (int i = 0; i < NCH; i++) io[(size_t)t * NCH + i] = (uint64_t)x[i];
+    if (threadIdx.x == 0) cyc[blockIdx.x] = t1 - t0;
+}
+#undef inline
+#undef asm
+#endif
+
 #define CK(x) do { cudaError_t e_ = (x); if (e_ != cudaSuccess) { fprintf(stderr, "%s:%d %s\n", __FILE__, __LINE__, cudaGetErrorString(e_)); exit(1); } } while (0)
 
 static const u64 P = 0xFFFFFFFF00000001ull;
@@ -148,6 +215,15 @@ int main(int argc, char** argv)
     { u32 e = 0xFFFFFFFFu; CK(cudaMemcpyToSymbol(c_eps, &e, 4)); }
     int sms; CK(cudaDeviceGetAttribute(&sms, cudaDevAttrMultiProcessorCount, 0));
     const int op = getenv("OP") ? atoi(getenv("OP")) : 0;
+#ifdef WITH_OSS
+    if (op >= 10) {   /* 10: ours, 11: boojum full reduce, 12: boojum lazy 96-bit, 13: sppark gl64_t */
+        run("ours", k_ptx<0>, sms, bps, check_iters, time_iters);
+        if (op == 11 || op == 14) run("boojum", k_boo<0>, sms, bps, check_iters, time_iters);
+        if (op == 12 || op == 14) run("boo-lazy", k_boo<1>, sms, bps, check_iters, time_iters);
+        if (op == 13 || op == 14) run("sppark", k_spp, sms, bps, check_iters, time_iters);
+        return 0;
+    }
+#endif
     Kern kp = op == 1 ? k_ptx<1> : op == 2 ? k_ptx<2> : op == 3 ? k_ptx<3> : k_ptx<0>;
     run("ptxas", kp, sms, bps, check_iters, time_iters);
     run("hand", k_hand, sms, bps, check_iters, time_iters);
