@@ -44,6 +44,7 @@ if(BUILD_TESTING)
         src/common/cp_job_ctrl.cpp
         src/common/cp_qpow_pool.cpp
         src/common/cp_fee.cpp
+        src/common/cp_api.cpp
         src/common/cp_state.cpp)
     target_include_directories(cp_pool_protocol_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
     target_link_libraries(cp_pool_protocol_test PRIVATE Threads::Threads)
@@ -92,6 +93,7 @@ set(CP_COMMON_SOURCES
     src/common/cp_qpow_mine.cpp
     src/common/cp_share_queue.cpp
     src/common/cp_state.cpp
+    src/common/cp_api.cpp
     src/common/cp_worker.cpp
     src/common/cp_noise.c
     src/qpow/cpu/miner.cpp

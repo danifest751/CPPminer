@@ -16,6 +16,7 @@
 #include "cp_pool.h"
 #include "qpow/nonce_line.hpp"
 #include "qpow/poseidon2.hpp"
+#include "cp_api.h"
 
 #include <cuda_runtime.h>
 
@@ -630,6 +631,12 @@ extern "C" int cp_qpow_cuda_worker_init(const int* devices, int ndev)
                ordinal, prop.name, prop.major, prop.minor, d.sms, d.blocks,
                g_batch_req ? "fixed" : "auto");
         fflush(stdout);
+        {
+            char pci[32];
+            snprintf(pci, sizeof(pci), "%04x:%02x:%02x.0", prop.pciDomainID, prop.pciBusID,
+                     prop.pciDeviceID);
+            cp_api_add_device(prop.name, pci);
+        }
         g_devs.push_back(d);
     }
     g_ready = 1;
