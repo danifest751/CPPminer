@@ -2,6 +2,9 @@
 #   docker run -d --gpus all -e WALLET=... -e ALGO=pearl cppminer:nvidia
 # The CUDA runtime is bundled; the driver (libcuda, nvidia-smi) comes from the host.
 FROM ubuntu:24.04
+LABEL org.opencontainers.image.source="https://github.com/danifest751/CPPminer" \
+      org.opencontainers.image.description="cppminer (Pearl and Quantus) for NVIDIA GPUs (CUDA)" \
+      org.opencontainers.image.licenses="MIT"
 ENV NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility \
     DEBIAN_FRONTEND=noninteractive

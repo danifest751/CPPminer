@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.5-fork.8
+- HiveOS custom-miner package `cppminer-0.5_fork.8.tar.gz` (one miner per GPU, per-GPU hashrate, shares, temperatures and fans) and Docker images `ghcr.io/danifest751/cppminer:nvidia|amd|intel`.
+- Stats API: `--api-port N` serves `/summary` (JSON) and `/hiveos`; `--api-bind` sets the address.
+- Pearl OpenCL: 25x faster keyed matrix hash, zero-B job seed on the GPU, 256-wide fused A prepack; RDNA4 half-wave reduce-scatter. Radeon AI PRO R9700 88 -> 95-96 TMAC/s at the pool; Arc A380 prep 750 -> 70-90 ms per nonce.
+- Quantus: gfx12 inline-assembly reduction, two nonces per work-item and 64-bit linear layers on RDNA4 (R9700 162 -> 211 MH/s); multiply-chain row sums and skipped rare carry fold on OpenCL and CUDA (CMP 50HX CUDA 285.5 -> 300.5, OpenCL 202 -> 213; A380 29.6 -> 31.6 MH/s).
+- Quantus is still mined without a developer fee.
+- Pool agent `cppminer/0.5-fork.8`.
+- Detailed release notes: [v0.5-fork.8](docs/releases/v0.5-fork.8.md).
+
 ## v0.5-fork.7
 - Quantus CUDA backend (`--algo quantus --backend cuda`): CMP 50HX 101 (OpenCL) → 288 MH/s on Kryptex, RTX 2080 Ti 316, RTX 3090 419. Start-up self-test against the CPU reference; every candidate is re-hashed on the CPU.
 - Quantus OpenCL kernel rewritten: per-device variant probe, carry-free 22-bit limbs in the linear layers, `__builtin_addc` carry chains on AMD, registers instead of scratch on AMD, two launches in flight. Arc A380 30 MH/s, Radeon AI PRO R9700 162 MH/s.

@@ -3,6 +3,9 @@
 # The compute runtime comes from Intel's kobuk-team/intel-graphics PPA: the OpenCL compiler in
 # Ubuntu 24.04's own intel-opencl-icd crashes (SIGSEGV) building the Quantus kernel.
 FROM ubuntu:24.04
+LABEL org.opencontainers.image.source="https://github.com/danifest751/CPPminer" \
+      org.opencontainers.image.description="cppminer (Pearl and Quantus) for Intel Arc GPUs (OpenCL)" \
+      org.opencontainers.image.licenses="MIT"
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
         software-properties-common gpg-agent \

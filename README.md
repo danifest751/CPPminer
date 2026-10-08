@@ -13,7 +13,7 @@ This is a fork of [1640675651/CPPminer](https://github.com/1640675651/CPPminer) 
 
 Changes are developed in this fork. Selected changes are offered upstream as [pull requests](https://github.com/1640675651/CPPminer/pulls?q=is%3Apr+author%3Adanifest751).
 
-**Download:** [latest release](https://github.com/danifest751/CPPminer/releases/latest) — Windows x64 zip, Linux x64 tar.gz.
+**Download:** [latest release](https://github.com/danifest751/CPPminer/releases/latest) — Windows x64 zip, Linux x64 tar.gz, HiveOS custom miner. **Docker:** `ghcr.io/danifest751/cppminer` (`nvidia`, `amd`, `intel`).
 
 ### Hashrate at a glance
 
@@ -25,7 +25,7 @@ Pearl, full pool size, default settings, stock power limit (1 TMAC/s = 1 TH/s on
 | RTX 5070 | 250 W | 115–117 |
 | RTX 3090 | 350 W | 108–113 |
 | CMP 50HX | 225 W | 68–69 |
-| Radeon AI PRO R9700 | stock | 88.5 |
+| Radeon AI PRO R9700 | stock | 95–96 |
 | Arc A380 | stock | 18.8 |
 | Radeon 780M (iGPU) | laptop | 6.4 |
 | RX 580 4 GB | stock | 1.84 |
@@ -36,9 +36,9 @@ Quantus (QTC), stock power limit:
 |---|---:|---|---:|
 | RTX 3090 | 350 W | CUDA | 419 |
 | RTX 2080 Ti | 250 W | CUDA | 316 |
-| CMP 50HX | 225 W | CUDA | 288 |
-| Radeon AI PRO R9700 | stock | OpenCL | 162 |
-| Arc A380 | stock | OpenCL | 30 |
+| CMP 50HX | 225 W | CUDA | 300 |
+| Radeon AI PRO R9700 | stock | OpenCL | 211 |
+| Arc A380 | stock | OpenCL | 31.6 |
 
 More cards and CPUs: [Supported hardware and speed](#supported-hardware-and-speed).
 
@@ -49,6 +49,7 @@ More cards and CPUs: [Supported hardware and speed](#supported-hardware-and-spee
 - [What this fork adds](#what-this-fork-adds)
 - [Supported hardware and speed](#supported-hardware-and-speed)
 - [Quick start](#quick-start)
+- [HiveOS and Docker](#hiveos-and-docker)
 - [Pools](#pools)
 - [Usage examples](#usage-examples)
 - [Command-line options](#command-line-options)
@@ -70,9 +71,10 @@ More cards and CPUs: [Supported hardware and speed](#supported-hardware-and-spee
 | **NVIDIA Ampere / Ada / Blackwell** (RTX 30xx, 40xx, 50xx, A-series) | Own `mma.m16n8k32` kernel with a 4-stage `cp.async` ring on packed operands: RTX 3090 31 → 113 TMAC/s, RTX 4090 244 → 273, RTX 5070 107 → 115. It also runs on cards where upstream did not start |
 | **All CUDA** | Noisy matrices stored in a packed layout, so every k-tile of a threadblock is one contiguous read (less L2/DRAM traffic, higher power-limited clocks); lighter milestone code; the next attempt's matrix is prepared while the current one is scanned |
 | **AMD RDNA3** (RX 7000, Radeon 780M/760M) | WMMA matrix cores (`v_wmma_i32_16x16x16_iu8`): 780M 3.65 → 6.4 TMAC/s. Before that, `v_dot4` and work-group swizzle |
-| **AMD RDNA4** (RX 9000, Radeon AI PRO R9700) | WMMA on gfx12, the operand layout picked by a start-up self-test: R9700 88.5 TMAC/s |
+| **AMD RDNA4** (RX 9000, Radeon AI PRO R9700) | WMMA on gfx12, the operand layout picked by a start-up self-test, half-wave milestone reduce-scatter, GPU-side job and nonce preparation: R9700 95–96 TMAC/s at the pool |
 | **Quantus on NVIDIA** | New CUDA backend (`--algo quantus --backend cuda`): Goldilocks arithmetic tuned for the integer pipes, lazy 96-bit sums in the linear layers, only two S-boxes in the first round. CMP 50HX 101 (OpenCL) → 288 MH/s |
-| **Quantus on OpenCL** | Rewritten kernel: variants probed per device, carry-free 22-bit limbs in the linear layers, carry chains through `__builtin_addc` on AMD, launch pipeline. A380 → 30 MH/s |
+| **Quantus on OpenCL** | Rewritten kernel: variants probed per device, carry-free 22-bit limbs in the linear layers, carry chains through `__builtin_addc` on AMD, launch pipeline; on RDNA4 a reduction in inline assembly and two nonces per work-item. R9700 → 211 MH/s, A380 → 31.6 MH/s |
+| **HiveOS, Docker, stats API** | HiveOS custom-miner package and Docker images for NVIDIA, AMD and Intel, one process per GPU; `--api-port` serves hashrate, shares and devices as JSON |
 | **AMD Polaris and older GCN** (RX 470/480/570/580, Fiji, Tonga) | Dedicated 24-bit multiply-add kernel: RX 580 1.38 → 1.84 TMAC/s |
 | **Intel Arc** (Xe-HPG) | `--backend onednn`: an ESIMD XMX kernel does the GEMM, milestone XOR and the whole jackpot in one pass, on operands the prep writes in DPAS layout (A380 3.2 → 18.8 TMAC/s); gemmstone systolic kernels as the fallback (16.7) |
 | **Qualcomm Adreno** | The prep program compiles now, and a 4x4 register tile is used: ~15 → ~700 GMAC/s |
@@ -107,10 +109,11 @@ Hashrate is in **MAC/s**: multiply-accumulates per second of the int8 matrix pro
 |---|---|---|---|---|
 | RTX 3090 | Ampere, sm_86 | CUDA | 419 | 350 W, `--mock` |
 | RTX 2080 Ti | Turing, sm_75 | CUDA | 316 | 250 W, `--mock` |
-| CMP 50HX | Turing, sm_75 | CUDA | 288 | 225 W, Kryptex, all shares accepted |
+| CMP 50HX | Turing, sm_75 | CUDA | 300 | 225 W; 288 with v0.5-fork.7 |
 | RTX 5070 | Blackwell, sm_120 | CUDA | ~370 | kernel benchmark, 250 W |
-| Radeon AI PRO R9700 | RDNA4, gfx1201 | OpenCL | 162 | per GPU; before the `__builtin_addc` carry chains |
-| Arc A380 | Xe-HPG (DG2) | OpenCL | 30 | Linux, Kryptex |
+| Radeon AI PRO R9700 | RDNA4, gfx1201 | OpenCL | 211 | per GPU, two GPUs mining; 162 with v0.5-fork.7 |
+| CMP 50HX | Turing, sm_75 | OpenCL | 213 | 202 with v0.5-fork.7 |
+| Arc A380 | Xe-HPG (DG2) | OpenCL | 31.6 | Linux; 29.6 with v0.5-fork.7 |
 
 Every Quantus GPU backend checks its kernel against the CPU at start-up, and every candidate share is hashed again on the CPU before it is sent.
 
@@ -196,6 +199,46 @@ cppminer --backend cuda --mock              # mines offline until the first shar
 ```
 
 `--mock` prints the kernel that was picked and `attempt timing: ... TMAC/s`. Seeing `verify OK` means the whole pipeline works on your machine.
+
+---
+
+## HiveOS and Docker
+
+### HiveOS
+
+Flight sheet with **Miner: Custom**, then **Setup Miner Config**:
+
+| Field | Value |
+|---|---|
+| Installation URL | `https://github.com/danifest751/CPPminer/releases/download/v0.5-fork.8/cppminer-0.5_fork.8.tar.gz` |
+| Hash algorithm | `pearl` or `quantus` |
+| Wallet and worker template | `%WAL%.%WORKER_NAME%` |
+| Pool URL | `stratum+tcp://prl-ru.kryptex.network:7048` (Pearl) or `stratum+tcp://qtc-ru.kryptex.network:7049` (Quantus) |
+| Pass | `x` |
+| Extra config arguments | optional cppminer options, e.g. `--backend opencl` |
+
+The package starts one miner per GPU (CUDA on NVIDIA, OpenCL on AMD) and shows hashrate, shares,
+temperatures and fans per GPU in the dashboard. It needs HiveOS on Ubuntu 20.04 or newer.
+Details: [packaging/hiveos/README.md](packaging/hiveos/README.md).
+
+### Docker
+
+```sh
+# NVIDIA (needs the NVIDIA Container Toolkit)
+docker run -d --name cppminer --restart unless-stopped --gpus all -p 4068:4068 \
+  -e WALLET=YOUR_KRYPTEX_ACCOUNT_OR_PRL_ADDRESS -e ALGO=pearl ghcr.io/danifest751/cppminer:nvidia
+# AMD:   --device /dev/kfd --device /dev/dri ... ghcr.io/danifest751/cppminer:amd
+# Intel: --device /dev/dri ... ghcr.io/danifest751/cppminer:intel
+```
+
+`ALGO=quantus` mines Quantus; `POOL`, `WORKER`, `PASS`, `EXTRA_ARGS` change the rest.
+Stats: `curl http://localhost:4068/summary`. Details: [packaging/docker/README.md](packaging/docker/README.md).
+
+### Stats API
+
+`--api-port N` serves `/summary` (JSON: hashrate over 10 s / 60 s / 15 min, accepted and rejected
+shares, every device with its PCI address) and `/hiveos` on `127.0.0.1:N`; `--api-bind 0.0.0.0`
+listens on all interfaces. See [docs/api.md](docs/api.md).
 
 ---
 
@@ -294,6 +337,8 @@ Run Intel and NVIDIA in separate processes with distinct workers.
 | `--worker NAME` | Worker name (default `rig01`) |
 | `--pool-pass STR` | `mining.authorize` password (default `x`). Kryptex: `d=N` sets the share difficulty (default 2097152) |
 | `--agent NAME` | Agent string sent to the pool (default: the miner version) |
+| `--api-port N` | Serve the stats API on port N (`/summary`, `/hiveos`); off by default |
+| `--api-bind ADDR` | API listen address (default `127.0.0.1`; `0.0.0.0` for all interfaces) |
 
 ### Matrix and scan
 

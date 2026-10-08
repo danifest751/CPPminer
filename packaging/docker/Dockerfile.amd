@@ -3,6 +3,9 @@
 #   docker run -d --device /dev/kfd --device /dev/dri \
 #     -e WALLET=... -e ALGO=pearl cppminer:amd
 FROM ubuntu:24.04
+LABEL org.opencontainers.image.source="https://github.com/danifest751/CPPminer" \
+      org.opencontainers.image.description="cppminer (Pearl and Quantus) for AMD GPUs (OpenCL, ROCm)" \
+      org.opencontainers.image.licenses="MIT"
 ARG ROCM_VERSION=7.2.4
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
