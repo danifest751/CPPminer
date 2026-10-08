@@ -47,6 +47,14 @@ arg_value() {
     done
 }
 
+# one-shot commands (device list, help, self-tests, profiling) run once, without the restart loop
+for a in "${ARGS[@]}"; do
+    case "$a" in
+        --list-devices|--help|-h|--align-test*|--simd-test|--prepack-test|--profile-*|--qpow-selftest*)
+            exec ./cppminer "${ARGS[@]}" ;;
+    esac
+done
+
 BACKEND=$(arg_value --backend)
 WANT_CUDA=1
 WANT_OCL=1

@@ -20,5 +20,4 @@ services:
               capabilities: [gpu]
   # AMD instead of NVIDIA: image ghcr.io/danifest751/cppminer:amd, no deploy block, and
   #   devices: ["/dev/kfd", "/dev/dri"]
-  #   group_add: ["video", "render"]
-  # Intel Arc: image ghcr.io/danifest751/cppminer:intel, devices: ["/dev/dri"], group_add: ["render"]
+  # Intel Arc: image ghcr.io/danifest751/cppminer:intel, devices: ["/dev/dri"]
