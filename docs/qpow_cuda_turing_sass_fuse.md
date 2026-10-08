@@ -114,3 +114,16 @@ python3 $CUASM/bin/cuasm.py q_base.orig.cubin -o base.cuasm
 python3 gen_examples.py ex.sass && python3 learn.py ex.sass   # once: dual-carry IADD3.X encodings
 ./run_fuse.sh f4                                              # fuse -> assemble -> build -> checksum
 ```
+
+## Other inputs to ptxas (same production kernel, CMP, cycles/hash, checksum identical everywhere)
+
+| front end / ptxas | SASS | regs | cycles/hash |
+|---|---|---|---|
+| nvcc 12.6 (production) | 1960 | 74 | 328.0 |
+| clang 18 (LLVM NVPTX PTX) -O2 / -O3 -> ptxas 12.6 | 1952 | 76 | 329.3 / 329.2 |
+| nvcc + ptxas 11.8 | 1960 | 74 | 328.0 |
+| nvcc + ptxas 11.0.3 (carries via IMAD.X, 4 SEL instead of 99) | 1960 | 74 | 326.5 |
+
+All within +-0.5%, as the hand-SASS bound predicts: the kernel's arithmetic is inline PTX, so the
+front end hardly changes the SASS, and no schedule removes the 18 IMAD.WIDE per S-box. CUDA 10.x
+images are no longer on Docker Hub. Script: `tools/cuda-quantus/sass-fuse/fe_build.sh`.
