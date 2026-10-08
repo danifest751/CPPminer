@@ -35,6 +35,7 @@ jobs:
           cargo --version
 
       - name: Intel ESIMD compiler and runtime
+        timeout-minutes: 45
         shell: pwsh
         run: |
           $prefix = Join-Path $env:RUNNER_TEMP 'oneapi-esimd'
