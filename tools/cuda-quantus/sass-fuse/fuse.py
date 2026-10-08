@@ -247,6 +247,9 @@ def main():
                 i2_writes = set(i2.wregs + i2.wpreds)
                 okB = not any(set(y.wregs + y.wpreds) & i2_reads for y in between)
                 okB = okB and not any((set(y.rregs + y.rpreds) | set(y.wregs + y.wpreds)) & i2_writes for y in between)
+                # Hoisting i2's reads above a scoreboard wait (e.g. for an LDC result) would read the
+                # register before the load lands: no wait mask on i2 or anything between.
+                okB = okB and all(y.bar == "B------" for y in between + [i2])
                 if not okA and not okB:
                     why["operands clobbered between"] += 1
                     continue

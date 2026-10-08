@@ -42,6 +42,23 @@ used twice (ptxas shares `t01`, `t23`, `t0123` across the M4 outputs), 53 becaus
 Moving carry materializations onto the FMA pipe does not help (slightly worse), consistent with the
 earlier source-level finding that ptxas's pipe balance is already right.
 
+## Follow-up on the fast-reduction kernel (`CP_QPOW_WRED_FAST`, 1960 SASS)
+
+- **Scoreboard waits.** On this kernel two placement-B fusions (fused instruction hoisted to the
+  first add's slot) hashed nondeterministically: the hoisted read of the second add's operand moved
+  above a scoreboard wait for an `LDC.64` result. The pass now refuses placement B when the second
+  add or anything between the two carries a wait mask. Third hardware rule after the carry and
+  register-bank ones.
+- **CuAssembler encodings.** The fast kernel uses an `IMAD.WIDE.U32 ..., R.reuse` accumulator form
+  that was missing from the repository; even the unmodified listing failed to assemble until
+  `learn.py` was run on the kernel's own `cuobjdump -sass` output. Run it on every new baseline.
+- **Result.** 18 fusions, checksum stable over 5 runs, 328.0 -> 325.1 cycles/hash (-0.9%).
+- **SEL folding is not possible.** `sel_scan.py` classifies the 99 carry materializations
+  (`SEL R, RZ, 0x1, !P`): about 65 feed an `IADD3.X R, A, RZ, Rsel, Pa, Pb` that already uses both
+  carry-in slots (the SEL is a third carry), 14 feed `IMAD.WIDE` as the `t` of a lazy sum, and the
+  remaining `IMAD.X` consumers mostly have the predicate overwritten before the use. About three are
+  foldable, so this lever is closed.
+
 ## Conclusion
 
 The dual-carry peephole is correct and reusable but worth under 1% on this kernel; the sums would
