@@ -389,6 +389,22 @@ bool Case33GemmOcl::build_kernel_(const char *kernel_cl_path) {
                     wmma_ksplit_forced = true;
                 }
             }
+            /* Wave sub-tile width: 64 (64x64, 4 waves per 128x128 block) or 32 (64x32, 8 waves,
+               half the accumulator VGPRs). CP_OCL_WMMA_WAVE_N=32 selects the narrow one. */
+            wmma_wave_n_ = 64;
+            if (const char *wn = std::getenv("CP_OCL_WMMA_WAVE_N")) {
+                if (wn[0] && std::atoi(wn) == 32) {
+                    wmma_wave_n_ = 32;
+                }
+            }
+            wmma_wg_size_ = (case32::kMacroM / 64) * (case32::kMacroN / wmma_wave_n_) * 32;
+            if (static_cast<size_t>(wmma_wg_size_) > ocl_.max_work_group_size) {
+                std::fprintf(stderr, "[ocl] WMMA 64x%d wave tile needs %d WIs per group (device max %zu); "
+                                     "using 64x64\n",
+                             wmma_wave_n_, wmma_wg_size_, ocl_.max_work_group_size);
+                wmma_wave_n_ = 64;
+                wmma_wg_size_ = (case32::kMacroM / 64) * (case32::kMacroN / 64) * 32;
+            }
         }
 
         std::string build_opts = "-cl-std=CL1.2";
@@ -405,7 +421,7 @@ bool Case33GemmOcl::build_kernel_(const char *kernel_cl_path) {
                       std::to_string(case32::wi_row_major() ? 1 : 0);
         build_opts += use_lds_ ? " -DCASE32_USE_LDS=1" : " -DCASE32_USE_LDS=0";
         /* DPAS launches its own work-group shape (sub-groups x sub-group size). */
-        const int reqd_wg = use_dpas ? dpas_wg_size_ : reqd_wg_size_;
+        const int reqd_wg = use_dpas ? dpas_wg_size_ : (use_wmma ? wmma_wg_size_ : reqd_wg_size_);
         if (reqd_wg > 0) {
             build_opts += " -DCASE32_REQD_WG=" + std::to_string(reqd_wg);
         }
@@ -455,6 +471,9 @@ bool Case33GemmOcl::build_kernel_(const char *kernel_cl_path) {
                 wmma_pipeline_ = std::atoi(pipe) != 0 ? 1 : 0;
             }
             build_opts += " -DCASE32_WMMA_PIPELINE=" + std::to_string(wmma_pipeline_);
+            if (wmma_wave_n_ != 64) {
+                build_opts += " -DCASE32_WMMA_WAVE_COLS=" + std::to_string(wmma_wave_n_);
+            }
             if (wmma_emu) {
                 build_opts += " -DCASE32_WMMA_EMU=1";
             }
@@ -642,11 +661,11 @@ bool Case33GemmOcl::build_kernel_(const char *kernel_cl_path) {
                     return false;
                 }
             }
-            char wl[96];
-            std::snprintf(wl, sizeof(wl), "%s (gfx%d layout%s%s)", label, wmma_arch_,
+            char wl[160];
+            std::snprintf(wl, sizeof(wl), "%s (gfx%d layout%s%s, wave 64x%d, %d WIs)", label, wmma_arch_,
                           wmma_arch_ == 12 ? (wmma_g12_ksplit_ ? ", ksplit=1" : ", ksplit=0")
                                            : "",
-                          wmma_pipeline_ ? ", pipelined" : "");
+                          wmma_pipeline_ ? ", pipelined" : "", wmma_wave_n_, wmma_wg_size_);
             return adopt_kernel(wl);
         }
         return adopt_kernel(label);
@@ -1370,6 +1389,7 @@ bool Case33GemmOcl::run_macro_batch_(int mb_begin, int batch_count, cl_mem tile_
 
     int slice_m = micro_m;
     const bool dpas = adopted_backend_ == Case32OclDotBackend::Dpas;
+    const bool wmma = adopted_backend_ == Case32OclDotBackend::Wmma;
     if (dpas) {
         /* One macro block per work-group of dpas_wg_size_ WIs (checked at build time). */
     } else if (reqd_wg_size_ > 0) {
@@ -1420,8 +1440,9 @@ bool Case33GemmOcl::run_macro_batch_(int mb_begin, int batch_count, cl_mem tile_
         const int micro_m_begin = m0;
         const int micro_m_count = (m0 + slice_m <= micro_m) ? slice_m : (micro_m - m0);
         const size_t local =
-                dpas ? static_cast<size_t>(dpas_wg_size_)
-                     : static_cast<size_t>(micro_m_count) * static_cast<size_t>(micro_n);
+                dpas   ? static_cast<size_t>(dpas_wg_size_)
+                : wmma ? static_cast<size_t>(wmma_wg_size_)
+                       : static_cast<size_t>(micro_m_count) * static_cast<size_t>(micro_n);
         const size_t global = static_cast<size_t>(batch_count) * local;
 
         err = CL_SUCCESS;

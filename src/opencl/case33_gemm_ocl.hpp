@@ -168,6 +168,8 @@ private:
     int wmma_arch_ = 0;       /* Wmma backend: 11 (gfx11) or 12 (gfx12) */
     int wmma_g12_ksplit_ = 0; /* gfx12 A/B k mapping (CP_OCL_WMMA_G12_KSPLIT) */
     int wmma_pipeline_ = 0;   /* register double buffer (CP_OCL_WMMA_PIPELINE) */
+    int wmma_wave_n_ = 64;    /* wave sub-tile width: 64 or 32 (CP_OCL_WMMA_WAVE_N) */
+    int wmma_wg_size_ = 0;    /* WIs per macro-block work-group on the Wmma backend */
     bool gcn_mad24_ = false;  /* scalar backend uses the GCN mad24 nest (CP_OCL_GCN) */
     int dpas_sg_ = 0;         /* Dpas backend: sub-group size 8 (Xe-HPG) or 16 (Xe2) */
     int dpas_ak_ = 0;         /* SG 16 A packing variant (CP_OCL_DPAS_AK) */

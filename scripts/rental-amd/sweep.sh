@@ -43,14 +43,15 @@ code_stats() {
   echo "$meta $isa"
 }
 
-pearl_variant() { # name pipeline "extra opts"
-  local name=$1 pipe=$2 opts=$3 log="$OUT/pearl-$1.log"
+pearl_variant() { # name pipeline "extra opts" [wave tile width: 64 (default) or 32]
+  local name=$1 pipe=$2 opts=$3 wave=${4:-64} log="$OUT/pearl-$1.log"
   rm -f "$OUT/pearl-$name.co"*
-  CP_OCL_WMMA_PIPELINE=$pipe CP_OCL_EXTRA_OPTS="$opts" CP_OCL_DUMP_BIN="$OUT/pearl-$name.co" \
+  CP_OCL_WMMA_WAVE_N=$wave CP_OCL_WMMA_PIPELINE=$pipe CP_OCL_EXTRA_OPTS="$opts" \
+    CP_OCL_DUMP_BIN="$OUT/pearl-$name.co" \
     timeout "$SEC" "$BIN/cppminer" --backend opencl --devices "$DEV" --mock --mock-diff 1e12 \
     --ocl-dot wmma > "$log" 2>&1
   local co; co=$(grep -l "case33_macro_gemm_xor" "$OUT"/pearl-$name.co* 2>/dev/null | head -1)
-  printf "pearl %-14s pipe=%s %-46s %s | %s\n" "$name" "$pipe" "[$opts]" "$(pearl_rate "$log")" \
+  printf "pearl %-14s pipe=%s w=%-2s %-46s %s | %s\n" "$name" "$pipe" "$wave" "[$opts]" "$(pearl_rate "$log")" \
     "$(code_stats "${co:-none}" case33_macro_gemm_xor)" | tee -a "$summary"
 }
 
@@ -76,6 +77,15 @@ pearl_variant lds-k1      0 "-DCASE32_WMMA_LDS=1 -DCASE32_WMMA_KUNROLL=1"
 pearl_variant lds-k2      0 "-DCASE32_WMMA_LDS=1 -DCASE32_WMMA_KUNROLL=2"
 pearl_variant lds-k4      0 "-DCASE32_WMMA_LDS=1 -DCASE32_WMMA_KUNROLL=4"
 pearl_variant pipe        1 ""
+# 2026-10-08: 64x32 wave tile (CP_OCL_WMMA_WAVE_N=32, 8 waves = 256 WIs per 128x128 block).
+# Offline gfx1201: 203 VGPR and no scratch (64x64: 256 VGPR + 176 B); with LDS staging and k unroll 1
+# 235 VGPR, no scratch (64x64 + LDS always spills). Emulated align-test + mock verify pass.
+pearl_variant w32         0 "" 32
+pearl_variant w32-pipe    1 "" 32
+pearl_variant w32-k2      0 "-DCASE32_WMMA_KUNROLL=2" 32
+pearl_variant w32-lds     0 "-DCASE32_WMMA_LDS=1" 32
+pearl_variant w32-lds-k1  0 "-DCASE32_WMMA_LDS=1 -DCASE32_WMMA_KUNROLL=1" 32
+pearl_variant w32-lds-k2  0 "-DCASE32_WMMA_LDS=1 -DCASE32_WMMA_KUNROLL=2" 32
 
 # --- Quantus. Default on AMD: QV_OVF=2 (5ac910f); the worker probes mul 3/1 x local 64/256.
 qtc_variant auto      ""                   ""
