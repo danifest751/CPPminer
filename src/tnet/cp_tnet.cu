@@ -378,15 +378,13 @@ extern "C" int cp_tnet_cuda_selftest(int device) {
     int count = 0;
     const cudaError_t ce = cudaGetDeviceCount(&count);
     if (ce != cudaSuccess || count == 0 || device >= count || cudaSetDevice(device) != cudaSuccess) {
-        printf("[tnet] selftest: no usable NVIDIA GPU %d (%s); install a current NVIDIA driver (R528 or newer)
-", device,
-               ce != cudaSuccess ? cudaGetErrorString(ce) : "device not found");
+        printf("[tnet] selftest: no usable NVIDIA GPU %d (%s); install a current NVIDIA driver (R528 or newer)\n",
+               device, ce != cudaSuccess ? cudaGetErrorString(ce) : "device not found");
         return 1;
     }
     cudaDeviceProp prop;
     cudaGetDeviceProperties(&prop, device);
-    printf("[tnet] selftest on %s (compute %d.%d)
-", prop.name, prop.major, prop.minor);
+    printf("[tnet] selftest on %s (compute %d.%d)\n", prop.name, prop.major, prop.minor);
     cudaMemcpyToSymbol(rq_dK, rq_hK, sizeof(rq_hK));
     // host SHA-256("abc")
     uint8_t d[32];
