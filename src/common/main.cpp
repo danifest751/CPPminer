@@ -1,6 +1,7 @@
 ﻿/*
  * CPminer 鈥?cross-platform LuckyPool plain_proof miner (CPU / CUDA / 鈥?.
  */
+#include "cp_tnet.h"
 #include "cp_config.h"
 #include "cp_cli.h"
 #include "cp_algo.h"
@@ -331,6 +332,12 @@ reconnect:
 
 int main(int argc, char** argv)
 {
+    /* Early dispatch: --algo tnet (Requant) has its own options; handle it before the shared parser. */
+    for(int i = 1; i + 1 < argc; ++i){
+        if(!strcmp(argv[i], "--algo") && (!strcmp(argv[i + 1], "tnet") || !strcmp(argv[i + 1], "requant")))
+            return cp_tnet_main(argc, argv);
+    }
+
 #ifdef __MINGW32__
     /* MinGW/MSYS2 only: buffer stdout before anything prints.
      *
