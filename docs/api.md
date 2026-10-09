@@ -12,7 +12,7 @@ Example `/summary`:
 
 ```json
 {
-  "miner": "cppminer", "version": "0.5-fork.8", "algo": "quantus", "backend": "cuda",
+  "miner": "cppminer", "version": "0.5-fork.9", "algo": "quantus", "backend": "cuda",
   "worker": "rig01", "pool": "qtc-ru.kryptex.network:7049", "pool_connected": true,
   "uptime": 200,
   "hashrate": {"unit": "H/s", "windows": [10, 60, 900], "total": [133824333.9, 134612016.4, 134497562.2]},

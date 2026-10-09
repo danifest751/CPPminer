@@ -1,5 +1,6 @@
-// TNet v1 miner for the Requant coin (github.com/danifest751/requant, SPEC.md) on CUDA tensor cores via cuBLAS int8 GEMM,
-// solo mining against a requantd node's JSON-RPC (getwork / submitwork).
+// TNet v1 miner for the Requant coin (github.com/danifest751/requant, SPEC.md) on CUDA tensor cores: CUTLASS int8 GEMM
+// compiled into the miner (cp_tnet_gemm.cu; cuBLAS only as an optional cross-check), mining against a requantd node's or
+// pool's JSON-RPC (getwork / submitwork).
 //
 // Per nonce the input X_0 has B rows (B = 65536 on the test network); rows are independent, so they are
 // processed in batches of --batch rows: expand the batch's rows of X_0, run L layers of int8 GEMM + integer
@@ -8,7 +9,7 @@
 
 #include "cp_tnet.h"
 
-#if defined(CP_ENABLE_CUBLAS) && CP_ENABLE_CUBLAS
+#if defined(CP_ENABLE_CUDA) && CP_ENABLE_CUDA
 
 #include <atomic>
 #include <chrono>
@@ -23,8 +24,11 @@
 #include <string>
 #include <thread>
 #include <vector>
-#include <cublas_v2.h>
 #include <cuda_runtime.h>
+#include "cp_tnet_gemm.h"
+#if defined(CP_ENABLE_CUBLAS) && CP_ENABLE_CUBLAS
+#include <cublas_v2.h>
+#endif
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -383,6 +387,53 @@ struct RqNet {
 
 // ---------------------------------------------------------------- engine
 
+// A tensor-core GEMM kernel against a CPU product on random int8 matrices (rows not a multiple of the tile, so
+// the edges are covered too): it must agree exactly, or the miner would only find invalid tickets.
+static bool gemm_check(int kind, int rows, int n) {
+    if (kind == CP_TNET_GEMM_NONE) return false;
+    std::mt19937 rng(12345);
+    std::vector<int8_t> x((size_t)rows * n), wt((size_t)n * n);
+    for (auto& v : x) v = (int8_t)(rng() & 0xff);
+    for (auto& v : wt) v = (int8_t)(rng() & 0xff);
+    int8_t *dx = nullptr, *dw = nullptr;
+    int32_t* dy = nullptr;
+    std::vector<int32_t> y((size_t)rows * n);
+    bool ok = cudaMalloc(&dx, x.size()) == cudaSuccess && cudaMalloc(&dw, wt.size()) == cudaSuccess &&
+              cudaMalloc(&dy, y.size() * 4) == cudaSuccess;
+    if (ok) {
+        cudaMemcpy(dx, x.data(), x.size(), cudaMemcpyHostToDevice);
+        cudaMemcpy(dw, wt.data(), wt.size(), cudaMemcpyHostToDevice);
+        ok = cp_tnet_gemm(kind, dx, dw, dy, rows, n, 0) == 0 &&
+             cudaMemcpy(y.data(), dy, y.size() * 4, cudaMemcpyDeviceToHost) == cudaSuccess;
+    }
+    cudaFree(dx);
+    cudaFree(dw);
+    cudaFree(dy);
+    for (int r = 0; ok && r < rows; ++r)
+        for (int j = 0; ok && j < n; ++j) {
+            int32_t s = 0;
+            for (int k = 0; k < n; ++k) s += (int32_t)x[(size_t)r * n + k] * wt[(size_t)j * n + k];
+            ok = s == y[(size_t)r * n + j];
+        }
+    cudaGetLastError();
+    return ok;
+}
+
+// The GEMM kernel for `device`: the best for its architecture (CP_TNET_GEMM=sm75|sm80 overrides), checked against
+// the CPU; if the sm80 kernel disagrees, the sm75 one (mma.m8n8k16 runs on every GPU since Turing).
+static int pick_gemm(int device) {
+    int kind = cp_tnet_gemm_kind(device);
+    const char* force = getenv("CP_TNET_GEMM");
+    if (force && !strcmp(force, "sm75")) kind = CP_TNET_GEMM_SM75;
+    if (force && !strcmp(force, "sm80")) kind = CP_TNET_GEMM_SM80;
+    if (kind != CP_TNET_GEMM_NONE && gemm_check(kind, 200, 512)) return kind;
+    if (kind == CP_TNET_GEMM_SM80 && gemm_check(CP_TNET_GEMM_SM75, 200, 512)) {
+        fprintf(stderr, "[tnet] the sm80 GEMM disagrees with the CPU on this GPU; using the sm75 kernel\n");
+        return CP_TNET_GEMM_SM75;
+    }
+    return CP_TNET_GEMM_NONE;
+}
+
 struct RqEngine {
     int n = 0, L = 0, w = 0, mult = 0, batch = 0;
     std::vector<int8_t*> WT;
@@ -392,13 +443,24 @@ struct RqEngine {
     unsigned int* dfound = nullptr;
     unsigned long long* dhits = nullptr;
     std::vector<uint8_t> seed;
-    cublasHandle_t cb = nullptr;
+    int gemm = CP_TNET_GEMM_NONE;
+#if defined(CP_ENABLE_CUBLAS) && CP_ENABLE_CUBLAS
+    cublasHandle_t cb = nullptr;  // CP_TNET_CUBLAS=1: cuBLAS instead of CUTLASS, for comparisons
+#endif
 
-    bool init(const RqWork& wk, int rows) {
+    bool init(const RqWork& wk, int rows, int device) {
         n = wk.n; L = wk.L; w = wk.w; mult = wk.mult; batch = rows;
         if (n % 64 || w % 64 || n % w) { fprintf(stderr, "[tnet] unsupported parameters n=%d w=%d\n", n, w); return false; }
         const size_t nn = (size_t)n * n, bn = (size_t)batch * n;
-        cublasCreate(&cb);
+        gemm = pick_gemm(device);
+        if (gemm == CP_TNET_GEMM_NONE) {
+            fprintf(stderr, "[tnet] no working int8 GEMM: needs an NVIDIA GPU of compute 7.5 (Turing) or newer\n");
+            return false;
+        }
+#if defined(CP_ENABLE_CUBLAS) && CP_ENABLE_CUBLAS
+        const char* use_cublas = getenv("CP_TNET_CUBLAS");
+        if (use_cublas && !strcmp(use_cublas, "1")) cublasCreate(&cb);
+#endif
         WT.assign(L, nullptr);
         for (auto& p : WT) if (cudaMalloc(&p, nn) != cudaSuccess) return false;
         return cudaMalloc(&tmp, (nn + 31) / 32 * 32) == cudaSuccess && cudaMalloc(&X, (bn + 31) / 32 * 32 + 32) == cudaSuccess &&
@@ -437,12 +499,17 @@ struct RqEngine {
         cudaMemcpy(dhd, wk.digest.data(), 32, cudaMemcpyHostToDevice);
         cudaMemset(dfound, 0, 4);
         rq_expand<<<(unsigned)((hashes + 255) / 256), 256>>>(rq_prefix(xs), c0, hashes, (uint8_t*)X);
-        const int32_t alpha = 1, beta = 0;
         int8_t *cur = X, *nxt = X2;
         for (int l = 0; l < L; ++l) {
-            // row-major (rows x n) = cur * W_l ; column-major: D(n x rows) = WT^T-op * cur
-            cublasGemmEx(cb, CUBLAS_OP_T, CUBLAS_OP_N, n, rows, n, &alpha, WT[l], CUDA_R_8I, n, cur, CUDA_R_8I, n, &beta, Y,
-                         CUDA_R_32I, n, CUBLAS_COMPUTE_32I, CUBLAS_GEMM_DEFAULT);
+            // row-major (rows x n) = cur * W_l, with W_l given transposed (WT, row-major)
+#if defined(CP_ENABLE_CUBLAS) && CP_ENABLE_CUBLAS
+            if (cb) {
+                const int32_t alpha = 1, beta = 0;
+                cublasGemmEx(cb, CUBLAS_OP_T, CUBLAS_OP_N, n, rows, n, &alpha, WT[l], CUDA_R_8I, n, cur, CUDA_R_8I, n, &beta,
+                             Y, CUDA_R_32I, n, CUBLAS_COMPUTE_32I, CUBLAS_GEMM_DEFAULT);
+            } else
+#endif
+                cp_tnet_gemm(gemm, cur, WT[l], Y, rows, n, 0);
             rq_requant<<<(unsigned)((bn / 4 + 255) / 256), 256>>>(Y, nxt, bn, mult);
             std::swap(cur, nxt);
         }
@@ -502,9 +569,11 @@ extern "C" int cp_tnet_cuda_selftest(int device) {
         host_sha256(m, d);
         exp = exp && memcmp(d, got + 32 * k, 32) == 0;
     }
-    printf("[tnet] selftest: sha256 %s, expansion %s, cuda %s\n", abc ? "ok" : "FAIL", exp ? "ok" : "FAIL",
-           cudaGetErrorString(cudaGetLastError()));
-    return abc && exp ? 0 : 1;
+    const int kind = pick_gemm(device);
+    const bool mm = kind != CP_TNET_GEMM_NONE;
+    printf("[tnet] selftest: sha256 %s, expansion %s, int8 GEMM %s (%s), cuda %s\n", abc ? "ok" : "FAIL", exp ? "ok" : "FAIL",
+           mm ? "ok" : "FAIL", cp_tnet_gemm_name(kind), cudaGetErrorString(cudaGetLastError()));
+    return abc && exp && mm ? 0 : 1;
 }
 
 extern "C" int cp_tnet_cuda_solo(const char* rpc, const char* payee_hex, const char* worker, int device, int batch, double seconds,
@@ -524,7 +593,8 @@ extern "C" int cp_tnet_cuda_solo(const char* rpc, const char* payee_hex, const c
     const int rows = batch < wk.b ? batch : wk.b;
     printf("[tnet] %s | node %s | TNet n=%d B=%d L=%d w=%d | batch %d rows\n", prop.name, rpc, wk.n, wk.b, wk.L, wk.w, rows);
     RqEngine eng;
-    if (!eng.init(wk, rows)) { fprintf(stderr, "[tnet] GPU allocation failed (try a smaller --batch)\n"); return 1; }
+    if (!eng.init(wk, rows, device)) { fprintf(stderr, "[tnet] GPU set-up failed (try a smaller --batch)\n"); return 1; }
+    printf("[tnet] GEMM: %s\n", cp_tnet_gemm_name(eng.gemm));
     std::mt19937_64 rng(std::random_device{}() ^ ((uint64_t)device << 48) ^ (uint64_t)time(nullptr));
     const auto start = std::chrono::steady_clock::now();
     auto last_stat = start, last_work = start;

@@ -9,7 +9,7 @@ extern "C" {
  * Handles its own arguments and returns a process exit code. */
 int cp_tnet_main(int argc, char** argv);
 
-#if defined(CP_ENABLE_CUDA) && CP_ENABLE_CUDA && defined(CP_ENABLE_CUBLAS) && CP_ENABLE_CUBLAS
+#if defined(CP_ENABLE_CUDA) && CP_ENABLE_CUDA
 /* Solo mining against a requantd node's JSON-RPC (getwork/submitwork). Defined in cp_tnet.cu. */
 int cp_tnet_cuda_solo(const char* rpc, const char* payee_hex, const char* worker, int device, int batch, double seconds,
                       long long blocks);

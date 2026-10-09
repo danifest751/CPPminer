@@ -63,7 +63,7 @@ static void print_usage(void)
     printf("  --pool URI         stratum+tcp://host:port (required for quantus unless --mock)\n");
     printf("  --wallet ADDR      wallet address\n");
     printf("  --worker NAME      worker name (default: rig01)\n");
-    printf("  --agent NAME       agent string (default: cppminer/0.5-fork.8)\n");
+    printf("  --agent NAME       agent string (default: cppminer/0.5-fork.9)\n");
     printf("  --api-port N       HTTP stats API on this port: /summary (JSON) and /hiveos\n");
     printf("  --api-bind ADDR    API listen address (default: 127.0.0.1; 0.0.0.0 for all)\n");
     printf("  --pool-pass STR    mining.authorize password (default: x); Kryptex custom\n");

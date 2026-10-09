@@ -9,7 +9,7 @@ Three images, one per GPU vendor. Each runs one miner process per GPU and serves
 | `ghcr.io/danifest751/cppminer:amd` | AMD, OpenCL via ROCm 7.2 (RDNA2/3/4, CDNA) | amdgpu kernel driver (RDNA4: Linux 6.12+ or DKMS) |
 | `ghcr.io/danifest751/cppminer:intel` | Intel Arc, OpenCL | i915/xe kernel driver |
 
-Tags `nvidia`, `amd`, `intel` follow the latest release; `nvidia-0.5-fork.8` etc. pin a version.
+Tags `nvidia`, `amd`, `intel` follow the latest release; `nvidia-0.5-fork.9` etc. pin a version.
 
 ## Run
 
@@ -58,7 +58,7 @@ Instead of variables you can pass cppminer options as the container command:
 From an unpacked Linux package (for example the HiveOS archive's `cppminer/` directory):
 
 ```bash
-packaging/docker/build.sh /path/to/cppminer 0.5-fork.8 nvidia amd intel
+packaging/docker/build.sh /path/to/cppminer 0.5-fork.9 nvidia amd intel
 ```
 
 ## Fee

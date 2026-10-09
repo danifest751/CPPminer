@@ -269,6 +269,7 @@ if(CP_ENABLE_CUDA)
         src/cuda/cp_cuda_worker.cpp
         src/qpow/cuda/cp_qpow_cuda.cu
         src/tnet/cp_tnet.cu
+        src/tnet/cp_tnet_gemm.cu
     )
     list(APPEND CP_INCLUDE_DIRS
         ${CMAKE_SOURCE_DIR}/src/cuda/cutlass

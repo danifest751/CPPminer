@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.5-fork.9
+- TNet v1 for the Requant coin (`--algo tnet`, alias `requant`) on NVIDIA tensor cores, in the Windows and Linux packages: CUTLASS int8 GEMM built in (no cuBLAS), Turing and Ampere+ kernels checked against the CPU at start-up, pool mode (`--payee`, `--worker`), network on its own thread. CMP 50HX 3.61 M tickets/s. No miner fee. [docs/tnet.md](docs/tnet.md).
+- Pearl and Quantus unchanged; Quantus still without a developer fee.
+- Pool agent `cppminer/0.5-fork.9`.
+- Detailed release notes: [v0.5-fork.9](docs/releases/v0.5-fork.9.md).
+
 ## v0.5-fork.8
 - HiveOS custom-miner package `cppminer-0.5_fork.8.tar.gz` (one miner per GPU, per-GPU hashrate, shares, temperatures and fans) and Docker images `ghcr.io/danifest751/cppminer:nvidia|amd|intel`.
 - Stats API: `--api-port N` serves `/summary` (JSON) and `/hiveos`; `--api-bind` sets the address.

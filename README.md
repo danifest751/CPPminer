@@ -4,7 +4,7 @@
 [![Windows build](https://github.com/danifest751/CPPminer/actions/workflows/windows-cuda.yml/badge.svg?branch=release%2Ffork)](https://github.com/danifest751/CPPminer/actions/workflows/windows-cuda.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A C++ miner for **Pearl (PRL)**, with **Quantus** as a second algorithm. It mines on NVIDIA GPUs (CUDA), on AMD, Intel and mobile GPUs (OpenCL) and on CPUs (x86 and ARM).
+A C++ miner for **Pearl (PRL)**, with **Quantus** and **TNet ([Requant](https://github.com/danifest751/requant))** as further algorithms. It mines on NVIDIA GPUs (CUDA), on AMD, Intel and mobile GPUs (OpenCL) and on CPUs (x86 and ARM).
 
 This is a fork of [1640675651/CPPminer](https://github.com/1640675651/CPPminer) by @foolzhz. It adds:
 - faster kernels for most hardware;
@@ -74,6 +74,7 @@ More cards and CPUs: [Supported hardware and speed](#supported-hardware-and-spee
 | **AMD RDNA4** (RX 9000, Radeon AI PRO R9700) | WMMA on gfx12, the operand layout picked by a start-up self-test, half-wave milestone reduce-scatter, GPU-side job and nonce preparation: R9700 95–96 TMAC/s at the pool |
 | **Quantus on NVIDIA** | New CUDA backend (`--algo quantus --backend cuda`): Goldilocks arithmetic tuned for the integer pipes, lazy 96-bit sums in the linear layers, only two S-boxes in the first round. CMP 50HX 101 (OpenCL) → 288 MH/s |
 | **Quantus on OpenCL** | Rewritten kernel: variants probed per device, carry-free 22-bit limbs in the linear layers, carry chains through `__builtin_addc` on AMD, launch pipeline; on RDNA4 a reduction in inline assembly and two nonces per work-item. R9700 → 211 MH/s, A380 → 31.2 MH/s |
+| **TNet (Requant)** | `--algo tnet`: TNet v1, a header-seeded int8 network on NVIDIA tensor cores (CUTLASS GEMM built in, no extra libraries), mining into a Requant pool or node. CMP 50HX 3.6 M tickets/s. [Details](docs/tnet.md) |
 | **HiveOS, Docker, stats API** | HiveOS custom-miner package and Docker images for NVIDIA, AMD and Intel, one process per GPU; `--api-port` serves hashrate, shares and devices as JSON |
 | **AMD Polaris and older GCN** (RX 470/480/570/580, Fiji, Tonga) | Dedicated 24-bit multiply-add kernel: RX 580 1.38 → 1.84 TMAC/s |
 | **Intel Arc** (Xe-HPG) | `--backend onednn`: an ESIMD XMX kernel does the GEMM, milestone XOR and the whole jackpot in one pass, on operands the prep writes in DPAS layout (A380 3.2 → 18.8 TMAC/s); gemmstone systolic kernels as the fallback (16.7) |
@@ -210,7 +211,7 @@ Flight sheet with **Miner: Custom**, then **Setup Miner Config**:
 
 | Field | Value |
 |---|---|
-| Installation URL | `https://github.com/danifest751/CPPminer/releases/download/v0.5-fork.8/cppminer-0.5_fork.8.tar.gz` |
+| Installation URL | `https://github.com/danifest751/CPPminer/releases/download/v0.5-fork.9/cppminer-0.5_fork.9.tar.gz` |
 | Hash algorithm | `pearl` or `quantus` |
 | Wallet and worker template | `%WAL%.%WORKER_NAME%` |
 | Pool URL | `stratum+tcp://prl-ru.kryptex.network:7048` (Pearl) or `stratum+tcp://qtc-ru.kryptex.network:7049` (Quantus) |
@@ -251,6 +252,7 @@ listens on all interfaces. See [docs/api.md](docs/api.md).
 | **Kryptex (Russia)** | `stratum+tcp://prl-ru.kryptex.network:7048` | same | Use this one from Russia (see below) |
 | **Kryptex Quantus** | `stratum+tcp://qtc.kryptex.network:7049`, from Russia `stratum+tcp://qtc-ru.kryptex.network:7049` | Kryptex account `krx...` | `--algo quantus` |
 | **LuckyPool** | `stratum+tcp://pearl-eu1.luckypool.io:3360` (GPU), `stratum+tcp://pearl-cpu-eu1.luckypool.io:3370` (CPU) | Pearl address | Plain (uncompressed) proofs |
+| **Requant test-network pool** | `193.187.93.29:19340` (JSON-RPC, not stratum) | Requant key hash (64 hex) | `--algo tnet --rpc ... --payee ...`; [pool page](http://193.187.93.29:19380/pool) |
 
 **Proof compression.** Kryptex and HeroMiners speak the gzip stratum v2 ([spec](https://gist.github.com/maxmalysh/eaaf4332dbc5ca99d0a78f24a733fffe)), and the miner enables it automatically when the pool answers `"type":"v2"`. A GPU share then takes ~40 KB instead of ~130 KB.
 
@@ -301,6 +303,9 @@ cppminer --algo quantus --backend opencl --devices 0 --pool stratum+tcp://qtc.kr
 
 # Quantus on CPU
 cppminer --algo quantus --backend cpu --threads 8 --pool stratum+tcp://HOST:PORT --wallet qzpp... --worker rig1
+
+# TNet (Requant test network) on an NVIDIA GPU, in the pool
+cppminer --algo tnet --rpc 193.187.93.29:19340 --payee <64-hex key hash> --worker rig1
 ```
 
 OpenCL uses one device per process. For several AMD/Intel GPUs, start one miner per GPU with different `--devices` and `--worker`.

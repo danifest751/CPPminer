@@ -39,7 +39,7 @@ int cp_tnet_main(int argc, char** argv)
         else if(!strcmp(a, "--selftest")){ selftest = 1; }
         else { tnet_usage(); return 2; }
     }
-#if defined(CP_ENABLE_CUDA) && CP_ENABLE_CUDA && defined(CP_ENABLE_CUBLAS) && CP_ENABLE_CUBLAS
+#if defined(CP_ENABLE_CUDA) && CP_ENABLE_CUDA
     if(selftest) return cp_tnet_cuda_selftest(device);
     if(!payee || strlen(payee) != 64){
         fprintf(stderr, "[tnet] --payee must be a 64-digit hex key hash\n");
@@ -53,7 +53,7 @@ int cp_tnet_main(int argc, char** argv)
     return cp_tnet_cuda_solo(rpc, payee, worker, device, batch, seconds, blocks);
 #else
     (void)rpc; (void)payee; (void)device; (void)batch; (void)seconds; (void)blocks; (void)selftest;
-    fprintf(stderr, "[tnet] this build has no CUDA + cuBLAS; rebuild with -DCP_ENABLE_CUDA=ON -DCP_ENABLE_CUBLAS=ON\n");
+    fprintf(stderr, "[tnet] this build has no CUDA backend; TNet needs an NVIDIA GPU and a build with -DCP_ENABLE_CUDA=ON\n");
     return 1;
 #endif
 }

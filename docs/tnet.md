@@ -1,37 +1,49 @@
 # `--algo tnet` — TNet v1 (Requant)
 
-Solo mining of [Requant](https://github.com/danifest751/requant) against a `requantd` node. The work
-function is TNet v1 (`SPEC.md` there): a header-seeded int8 network on tensor cores; every 256-byte piece
-of an output row is a lottery ticket. `requant` is accepted as an alias of `tnet`.
+Mining of [Requant](https://github.com/danifest751/requant) in a Requant pool or against a `requantd` node.
+The work function is TNet v1 (`SPEC.md` there): a header-seeded int8 network on tensor cores; every
+256-byte piece of an output row is a lottery ticket. `requant` is accepted as an alias of `tnet`.
 
 ## Build
 
-The backend needs CUDA and cuBLAS (int8 GEMM):
+Any CUDA build includes it; the int8 GEMM is CUTLASS, compiled into the miner (no cuBLAS or other
+libraries to ship):
 
 ```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCP_ENABLE_CUDA=ON -DCP_ENABLE_CUBLAS=ON -DCP_CUDA_ARCH="75;86;89"
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCP_ENABLE_CUDA=ON -DCP_CUDA_ARCH="75;86;89"
 cmake --build build --target cppminer
 ```
 
-Without cuBLAS the option is present but reports that the build cannot mine TNet.
+Two GEMM kernels: `mma.m8n8k16` for Turing (RTX 20xx, CMP 30HX–90HX) and `mma.m16n8k32` with `cp.async`
+stages for Ampere, Ada and Blackwell. At start-up the miner checks the kernel against the CPU on random
+matrices; if the newer one disagrees it takes the Turing kernel, which runs on every GPU since Turing.
+`CP_TNET_GEMM=sm75|sm80` chooses by hand. A build with `-DCP_ENABLE_CUBLAS=ON` can also run cuBLAS
+(`CP_TNET_CUBLAS=1`) for comparisons.
 
 ## Run
 
 ```sh
-requant-wallet keygen miner.key --network test          # prints the key hash
-requantd --network test                                  # JSON-RPC on 127.0.0.1:19334
+# in the test-network pool (no node needed); rewards to the key hash, statistics per --worker
+cppminer --algo tnet --rpc 193.187.93.29:19340 --payee <key hash> --worker rig1
+
+# solo, against your own node
+requant-wallet keygen miner.key                    # prints the address and the key hash
+requantd --network test                            # JSON-RPC on 127.0.0.1:19334
 cppminer --algo tnet --rpc 127.0.0.1:19334 --payee <key hash> [--device 0] [--batch 8192]
-cppminer --algo tnet --selftest                          # device SHA-256 and expansion vs host
+
+cppminer --algo tnet --selftest                    # SHA-256, expansion and the int8 GEMM vs the CPU
 ```
 
 - `--batch` is the number of rows per GPU pass (default 8192). Memory: 512 MiB of weights plus about
   `6 * batch * 8192` bytes; lower it on small GPUs. Rows are independent, so any batch is valid.
-- The miner asks the node for work (`getwork`), polls the tip every second, refreshes work every 60 s and
-  submits winning tickets (`submitwork`). The node re-verifies every claim.
+- A network thread polls the tip every second and submits winning tickets (all of them, up to 16 per
+  pass), so the GPU never waits for the network. Work is refreshed on a new tip and every 60 s; a share
+  found on a tip the miner has left is counted as `stale` and not sent. The pool or node re-verifies
+  every claim.
 - No miner fee: Requant funds development in its consensus rules (CHAIN.md §8 of the Requant repository).
 
 ## Measured
 
-On a CMP 50HX (Turing) and an RTX 3090 (Ampere) the kernels match the Rust reference byte for byte; the
-attempt costs 292 and 159.5 ns per ticket (Requant `RATIONALE.md`). End to end, the miner mined 20 regtest
-blocks and 15 blocks at the TNet v1 parameters into `requantd`, every claim accepted by the node.
+CMP 50HX (Turing, 225 W): 3.61 M tickets/s (277 ns per ticket) with the CUTLASS GEMM, 3.42 with cuBLAS,
+in the test-network pool, every share accepted. The kernels match the Rust reference byte for byte on
+Turing and Ampere. Ampere, Ada and Blackwell use the second kernel, not yet measured against cuBLAS.

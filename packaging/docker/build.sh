@@ -3,7 +3,7 @@
 #
 # Build the cppminer images from an unpacked Linux package directory (cppminer, kernels/,
 # bundled .so files, cppminer-multi.sh), e.g. the HiveOS archive's cppminer/ directory.
-#   ./build.sh /tmp/cppminer 0.5-fork.8            -> cppminer:nvidia-0.5-fork.8, :amd-..., :intel-...
+#   ./build.sh /tmp/cppminer 0.5-fork.9            -> cppminer:nvidia-0.5-fork.9, :amd-..., :intel-...
 set -euo pipefail
 PKG=$1
 TAG=$2
