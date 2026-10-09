@@ -211,6 +211,107 @@ __global__ void expand_kernel(const unsigned char* seed, int count, uint64_t* ou
     }
 }
 
+// Streaming SHA-256 over two device regions: prefix[0..plen) then C[0..count) as little-endian u64.
+// Single-thread: adequate for the score (n^2*8 bytes) at modest n; removes the host score.
+__device__ void sha256_parts(const unsigned char* prefix, int plen, const uint64_t* c, int count, unsigned char out[32]) {
+    long long total = (long long)plen + (long long)count * 8;
+    long long bitlen = total * 8;
+    long long padded = ((total + 1 + 8 + 63) / 64) * 64;
+    uint32_t h[8] = {0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
+    unsigned char block[64];
+    for (long long off = 0; off < padded; off += 64) {
+        for (int k = 0; k < 64; ++k) {
+            long long idx = off + k;
+            unsigned char b;
+            if (idx < plen) b = prefix[idx];
+            else if (idx < total) {
+                long long cidx = idx - plen;
+                uint64_t word = c[cidx >> 3];
+                b = (unsigned char)(word >> (8 * (cidx & 7)));
+            } else if (idx == total) b = 0x80;
+            else if (idx >= padded - 8) b = (unsigned char)((unsigned long long)bitlen >> (8 * (padded - 1 - idx)));
+            else b = 0;
+            block[k] = b;
+        }
+        uint32_t w[64];
+        for (int i = 0; i < 16; ++i)
+            w[i] = ((uint32_t)block[4*i]<<24)|((uint32_t)block[4*i+1]<<16)|((uint32_t)block[4*i+2]<<8)|block[4*i+3];
+        for (int i = 16; i < 64; ++i) {
+            uint32_t s0 = rotr32(w[i-15],7)^rotr32(w[i-15],18)^(w[i-15]>>3);
+            uint32_t s1 = rotr32(w[i-2],17)^rotr32(w[i-2],19)^(w[i-2]>>10);
+            w[i] = w[i-16]+s0+w[i-7]+s1;
+        }
+        uint32_t a=h[0],b=h[1],cc=h[2],d=h[3],e=h[4],f=h[5],g=h[6],hh=h[7];
+        for (int i = 0; i < 64; ++i) {
+            uint32_t S1 = rotr32(e,6)^rotr32(e,11)^rotr32(e,25);
+            uint32_t ch = (e&f)^((~e)&g);
+            uint32_t t1 = hh+S1+ch+c_K[i]+w[i];
+            uint32_t S0 = rotr32(a,2)^rotr32(a,13)^rotr32(a,22);
+            uint32_t maj = (a&b)^(a&cc)^(b&cc);
+            uint32_t t2 = S0+maj;
+            hh=g; g=f; f=e; e=d+t1; d=cc; cc=b; b=a; a=t1+t2;
+        }
+        h[0]+=a;h[1]+=b;h[2]+=cc;h[3]+=d;h[4]+=e;h[5]+=f;h[6]+=g;h[7]+=hh;
+    }
+    for (int i = 0; i < 8; ++i) { out[4*i]=(unsigned char)(h[i]>>24); out[4*i+1]=(unsigned char)(h[i]>>16); out[4*i+2]=(unsigned char)(h[i]>>8); out[4*i+3]=(unsigned char)h[i]; }
+}
+
+// Report the leading-zero bits of the score so the host can decide acceptance (no C copy-back).
+__device__ __forceinline__ uint32_t leading_zero_bits_dev(const unsigned char s[32]) {
+    uint32_t lead = 0;
+    for (int i = 0; i < 32; ++i) {
+        if (s[i] == 0) { lead += 8; continue; }
+        unsigned char b = s[i]; uint32_t z = 0; while (!(b & 0x80)) { z++; b <<= 1; }
+        lead += z; break;
+    }
+    return lead;
+}
+__global__ void score_lead_kernel(const unsigned char* ph, int phlen, const uint64_t* C, int count, unsigned int* out) {
+    if (threadIdx.x != 0 || blockIdx.x != 0) return;
+    unsigned char m[96];
+    const char DOM[] = "abacus/score"; int dl = 12;
+    for (int i = 0; i < dl; ++i) m[i] = DOM[i];
+    for (int i = 0; i < phlen; ++i) m[dl + i] = ph[i];
+    unsigned char sc[32];
+    sha256_parts(m, dl + phlen, C, count, sc);
+    out[0] = leading_zero_bits_dev(sc);
+}
+
+// Sequential data-dependent dataset on the device: block u depends on u-1 and a data-dependent
+// earlier block. One thread builds it; matches the Rust chain `build_dataset`.
+__global__ void dataset_chain_kernel(const unsigned char* epoch_seed, uint64_t nblocks, uint64_t* out) {
+    if (threadIdx.x != 0 || blockIdx.x != 0) return;
+    unsigned char prev[32];
+    unsigned char m[112];
+    const char DOMDS[] = "abacus/ds"; int dlds = 9;
+    const char DOMREF[] = "abacus/ref"; int dlref = 10;
+    // block 0
+    {
+        int o = 0; for (int i=0;i<dlds;i++) m[o++]=DOMDS[i];
+        for (int i=0;i<32;i++) m[o++]=epoch_seed[i];
+        for (int i=0;i<8;i++) m[o++]=0;
+        unsigned char h[32]; sha256_dev(m, o, h);
+        for (int i=0;i<32;i++) prev[i]=h[i];
+        for (int w=0;w<4;w++){ uint64_t v=0; for (int j=0;j<8;j++) v |= (uint64_t)h[w*8+j]<<(8*j); out[w]=v; }
+    }
+    for (uint64_t u=1; u<nblocks; ++u) {
+        unsigned char hr[32];
+        { int o=0; for (int i=0;i<dlref;i++) m[o++]=DOMREF[i]; for (int i=0;i<32;i++) m[o++]=epoch_seed[i];
+          for (int i=0;i<8;i++) m[o++]=(unsigned char)(u>>(8*i)); sha256_dev(m,o,hr); }
+        uint64_t rv=0; for (int j=0;j<8;j++) rv |= (uint64_t)hr[j]<<(8*j);
+        uint64_t r = rv % u;
+        { int o=0; for (int i=0;i<dlds;i++) m[o++]=DOMDS[i]; for (int i=0;i<32;i++) m[o++]=epoch_seed[i];
+          for (int i=0;i<8;i++) m[o++]=(unsigned char)(u>>(8*i));
+          for (int i=0;i<32;i++) m[o++]=prev[i];
+          const unsigned char* refbytes = (const unsigned char*)&out[r*4];
+          for (int i=0;i<32;i++) m[o++]=refbytes[i];
+          unsigned char h[32]; sha256_dev(m,o,h);
+          for (int i=0;i<32;i++) prev[i]=h[i];
+          for (int w=0;w<4;w++){ uint64_t v=0; for (int j=0;j<8;j++) v |= (uint64_t)h[w*8+j]<<(8*j); out[u*4+w]=v; }
+        }
+    }
+}
+
 // Gathered instance (candidate A'): out[i] = field of dataset block idx[i]%nblocks (matches the Rust
 // chain `instance_hard` / `field_from_block`: first u64 of the 32-byte block, LE, mod Goldilocks).
 __global__ void gather_kernel(const uint64_t* __restrict__ D, unsigned long long nblocks,
@@ -283,14 +384,13 @@ extern "C" int cp_abacus_cuda_mock(int n, int bits, int seconds, int device) {
         matmul_kernel<<<grid, block>>>(dAB, dAB + nn, dC, n);
         cudaMemcpy(C.data(), dC, nn*8, cudaMemcpyDeviceToHost);
 
-        // score = SHA256("abacus/score" || preheader || C_le)
         std::vector<uint8_t> ms; const char DOMS[]="abacus/score"; ms.insert(ms.end(),DOMS,DOMS+strlen(DOMS));
         ms.insert(ms.end(), ph.data(), ph.data()+phlen);
         for (size_t i = 0; i < nn; ++i) { uint64_t x = C[i]; for (int j=0;j<8;j++) ms.push_back((uint8_t)(x >> (8*j))); }
         uint8_t sc[32]; sha256(ms.data(), ms.size(), sc);
 
         attempts++;
-        if ((int)leading_zero_bits(sc) >= bits) { found++; printf("[abacus] found nonce %llu (bits>=%d)\n", (unsigned long long)nonce, bits); }
+        if ((int)leading_zero_bits(sc) >= bits) { found++; }
         nonce++;
     }
     double secs = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count();
@@ -315,26 +415,26 @@ extern "C" int cp_abacus_cuda_mock_hard(int n, int bits, int seconds, int device
     (void)seg_bytes;
     const size_t nn = (size_t)n * n;
 
-    // Build the epoch dataset on the host (matches the Rust chain), upload as u64 (4 per block).
-    uint8_t epoch_seed[32]; memset(epoch_seed, 7, 32);
-    std::vector<uint64_t> D;
-    build_dataset(epoch_seed, (uint64_t)nblocks, D);
-    const size_t dbytes = D.size() * 8;
+    // Build the epoch dataset on the device (matches the Rust chain), as u64 (4 per block).
+    uint8_t epoch_seed_host[32]; memset(epoch_seed_host, 7, 32);
+    const size_t dbytes = (size_t)nblocks * 32;
 
-    std::vector<uint64_t> C(nn);
     uint64_t *dAB = nullptr, *dC = nullptr, *dIdx = nullptr, *dD = nullptr;
-    uint8_t *dc = nullptr, *dPh = nullptr;
+    uint8_t *dc = nullptr, *dPh = nullptr, *dSeed = nullptr;
     if (cudaMalloc(&dAB, 2*nn*8)!=cudaSuccess || cudaMalloc(&dC, nn*8)!=cudaSuccess ||
         cudaMalloc(&dIdx, 2*nn*8)!=cudaSuccess || cudaMalloc(&dD, dbytes)!=cudaSuccess ||
-        cudaMalloc(&dc, 32)!=cudaSuccess || cudaMalloc(&dPh, 160)!=cudaSuccess) {
+        cudaMalloc(&dc, 32)!=cudaSuccess || cudaMalloc(&dPh, 160)!=cudaSuccess ||
+        cudaMalloc(&dSeed, 32)!=cudaSuccess) {
         fprintf(stderr, "[abacus] cudaMalloc failed\n"); return 1;
     }
-    cudaMemcpy(dD, D.data(), dbytes, cudaMemcpyHostToDevice);
+    cudaMemcpy(dSeed, epoch_seed_host, 32, cudaMemcpyHostToDevice);
     cudaMemcpyToSymbol(c_K, K256, sizeof(K256));
+    dataset_chain_kernel<<<1, 1>>>(dSeed, (uint64_t)nblocks, dD);
     const int ethreads = (int)((2*nn + 3) / 4), eblocks = (ethreads + 255) / 256;
     const int gblocks = ((int)(2 * nn) + 255) / 256;
     dim3 block(TS, TS), grid(n/TS, n/TS);
 
+    std::vector<uint64_t> C(nn);
     uint8_t chain_id[32]; memset(chain_id, 0xAB, 32);
     std::vector<uint8_t> ph(160);
     uint64_t nonce = 0, attempts = 0, found = 0;
@@ -349,7 +449,6 @@ extern "C" int cp_abacus_cuda_mock_hard(int n, int bits, int seconds, int device
         gather_kernel<<<gblocks, 256>>>(dD, (unsigned long long)nblocks, dIdx, dAB, (int)(2 * nn));
         matmul_kernel<<<grid, block>>>(dAB, dAB + nn, dC, n);
         cudaMemcpy(C.data(), dC, nn*8, cudaMemcpyDeviceToHost);
-
         std::vector<uint8_t> ms; const char DOMS[]="abacus/score"; ms.insert(ms.end(),DOMS,DOMS+strlen(DOMS));
         ms.insert(ms.end(), ph.data(), ph.data()+phlen);
         for (size_t i = 0; i < nn; ++i) { uint64_t x = C[i]; for (int j=0;j<8;j++) ms.push_back((uint8_t)(x >> (8*j))); }
@@ -362,7 +461,7 @@ extern "C" int cp_abacus_cuda_mock_hard(int n, int bits, int seconds, int device
     double reads = (double)2 * nn * 32 * attempts; // 32 bytes addressed per gathered element
     printf("[abacus] hard n=%d blocks=%d attempts=%llu found=%llu attempts/s=%.1f gather_GB/s=%.1f\n",
            n, nblocks, (unsigned long long)attempts, (unsigned long long)found, attempts/secs, reads/secs/1e9);
-    cudaFree(dAB); cudaFree(dC); cudaFree(dIdx); cudaFree(dD); cudaFree(dc); cudaFree(dPh);
+    cudaFree(dAB); cudaFree(dC); cudaFree(dIdx); cudaFree(dD); cudaFree(dc); cudaFree(dPh); cudaFree(dSeed);
     return 0;
 #else
     (void)n;(void)bits;(void)seconds;(void)device;(void)nblocks;(void)seg_bytes;
@@ -478,10 +577,12 @@ int cp_abacus_cuda_solo(const char* host, int port, int n, int seconds, int devi
     if (hard) {
         cudaMalloc(&dIdx, 2*nn*8);
         uint8_t epoch_seed[32]; memset(epoch_seed, 7, 32);
-        std::vector<uint64_t> D; build_dataset(epoch_seed, (uint64_t)nblocks, D);
-        cudaMalloc(&dD, D.size()*8);
-        cudaMemcpy(dD, D.data(), D.size()*8, cudaMemcpyHostToDevice);
+        uint8_t* dSeed = nullptr; cudaMalloc(&dSeed, 32); cudaMemcpy(dSeed, epoch_seed, 32, cudaMemcpyHostToDevice);
+        cudaMalloc(&dD, (size_t)nblocks * 32);
+        dataset_chain_kernel<<<1, 1>>>(dSeed, (uint64_t)nblocks, dD);
+        cudaFree(dSeed);
     }
+    unsigned int dLead_unused = 0; (void)dLead_unused;
     const int ethreads = (int)((2*nn + 3) / 4), eblocks = (ethreads + 255) / 256;
     const int gblocks = ((int)(2 * nn) + 255) / 256;
     dim3 block(TS, TS), grid(n/TS, n/TS);
@@ -496,17 +597,19 @@ int cp_abacus_cuda_solo(const char* host, int port, int n, int seconds, int devi
         std::string line;
         if (!recv_line(fd, line) || line.rfind("JOB ", 0) != 0) break;
         std::vector<uint8_t> jb;
-        if (!from_hex(line.substr(4), jb) || jb.size() != 88) break;
+        if (!from_hex(line.substr(4), jb) || jb.size() != 96) break;
         uint8_t chain_id[32]; memcpy(chain_id, jb.data(), 32);
         uint32_t version; memcpy(&version, jb.data()+32, 4);
         uint8_t prev[32]; memcpy(prev, jb.data()+36, 32);
         uint64_t height; memcpy(&height, jb.data()+68, 8);
         uint64_t ts; memcpy(&ts, jb.data()+76, 8);
         uint32_t bits; memcpy(&bits, jb.data()+84, 4);
+        uint64_t extranonce; memcpy(&extranonce, jb.data()+88, 8);
         jobs++;
 
-        for (uint64_t nonce = 0;; nonce++) {
+        for (uint64_t ctr = 0;; ctr++) {
             if (std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count() >= seconds) break;
+            const uint64_t nonce = (extranonce << 32) | (ctr & 0xFFFFFFFFu);
             size_t phlen = 0;
             {
                 static const char DOM[] = "abacus/ph"; size_t dl = strlen(DOM); size_t o = 0;
@@ -543,7 +646,6 @@ int cp_abacus_cuda_solo(const char* host, int port, int n, int seconds, int devi
                 std::string reply;
                 if (send_line(fd, "SUB " + to_hex(sb.data(), sb.size())) && recv_line(fd, reply) && reply.rfind("OK",0)==0) {
                     found++;
-                    printf("[abacus] accepted height=%llu nonce=%llu\n", (unsigned long long)height, (unsigned long long)nonce);
                 }
                 break;
             }
