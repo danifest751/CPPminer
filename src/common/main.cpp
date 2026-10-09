@@ -327,6 +327,13 @@ reconnect:
 
 int main(int argc, char** argv)
 {
+    /* Early dispatch: --algo abacus uses its own options; handle it before the shared parser,
+     * which would reject abacus-specific flags. */
+    for(int i = 1; i + 1 < argc; ++i){
+        if(!strcmp(argv[i], "--algo") && !strcmp(argv[i + 1], "abacus"))
+            return cp_abacus_main(argc, argv);
+    }
+
 #ifdef __MINGW32__
     /* MinGW/MSYS2 only: buffer stdout before anything prints.
      *
