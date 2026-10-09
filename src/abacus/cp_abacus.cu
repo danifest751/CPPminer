@@ -108,6 +108,79 @@ uint32_t leading_zero_bits(const uint8_t s[32]) {
     return lead;
 }
 
+__constant__ uint32_t c_K[64];
+
+__device__ __forceinline__ uint32_t rotr32(uint32_t x, int n) { return (x >> n) | (x << (32 - n)); }
+
+__device__ void sha256_dev(const unsigned char* msg, int len, unsigned char out[32]) {
+    uint32_t h[8] = {0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
+    const long long bitlen = (long long)len * 8;
+    const int padded = ((len + 1 + 8 + 63) / 64) * 64;
+    unsigned char block[64];
+    for (int off = 0; off < padded; off += 64) {
+        for (int k = 0; k < 64; ++k) {
+            const int idx = off + k;
+            unsigned char b;
+            if (idx < len) b = msg[idx];
+            else if (idx == len) b = 0x80;
+            else if (idx >= padded - 8) b = (unsigned char)((unsigned long long)bitlen >> (8 * (padded - 1 - idx)));
+            else b = 0;
+            block[k] = b;
+        }
+        uint32_t w[64];
+        for (int i = 0; i < 16; ++i)
+            w[i] = ((uint32_t)block[4*i]<<24)|((uint32_t)block[4*i+1]<<16)|((uint32_t)block[4*i+2]<<8)|block[4*i+3];
+        for (int i = 16; i < 64; ++i) {
+            uint32_t s0 = rotr32(w[i-15],7)^rotr32(w[i-15],18)^(w[i-15]>>3);
+            uint32_t s1 = rotr32(w[i-2],17)^rotr32(w[i-2],19)^(w[i-2]>>10);
+            w[i] = w[i-16]+s0+w[i-7]+s1;
+        }
+        uint32_t a=h[0],b=h[1],c=h[2],d=h[3],e=h[4],f=h[5],g=h[6],hh=h[7];
+        for (int i = 0; i < 64; ++i) {
+            uint32_t S1 = rotr32(e,6)^rotr32(e,11)^rotr32(e,25);
+            uint32_t ch = (e&f)^((~e)&g);
+            uint32_t t1 = hh+S1+ch+c_K[i]+w[i];
+            uint32_t S0 = rotr32(a,2)^rotr32(a,13)^rotr32(a,22);
+            uint32_t maj = (a&b)^(a&c)^(b&c);
+            uint32_t t2 = S0+maj;
+            hh=g; g=f; f=e; e=d+t1; d=c; c=b; b=a; a=t1+t2;
+        }
+        h[0]+=a;h[1]+=b;h[2]+=c;h[3]+=d;h[4]+=e;h[5]+=f;h[6]+=g;h[7]+=hh;
+    }
+    for (int i = 0; i < 8; ++i) { out[4*i]=(unsigned char)(h[i]>>24); out[4*i+1]=(unsigned char)(h[i]>>16); out[4*i+2]=(unsigned char)(h[i]>>8); out[4*i+3]=(unsigned char)h[i]; }
+}
+
+// seed = SHA256("abacus/instance" || preheader)
+__global__ void seed_kernel(const unsigned char* ph, int phlen, unsigned char* seed) {
+    unsigned char m[160];
+    const char DOM[] = "abacus/instance";
+    int dl = 15;
+    for (int i = 0; i < dl; ++i) m[i] = DOM[i];
+    for (int i = 0; i < phlen; ++i) m[dl + i] = ph[i];
+    unsigned char h[32];
+    sha256_dev(m, dl + phlen, h);
+    for (int i = 0; i < 32; ++i) seed[i] = h[i];
+}
+
+// out[4*t + k] = expand elements (SHA256("abacus/expand" || seed || t))
+__global__ void expand_kernel(const unsigned char* seed, int count, uint64_t* out) {
+    const int t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t * 4 >= count) return;
+    unsigned char m[49];
+    const char DOM[] = "abacus/expand";
+    int dl = 13;
+    for (int i = 0; i < dl; ++i) m[i] = DOM[i];
+    for (int i = 0; i < 32; ++i) m[dl + i] = seed[i];
+    m[45] = (unsigned char)t; m[46] = (unsigned char)(t >> 8); m[47] = (unsigned char)(t >> 16); m[48] = (unsigned char)(t >> 24);
+    unsigned char h[32];
+    sha256_dev(m, 49, h);
+    for (int k = 0; k < 4 && t * 4 + k < count; ++k) {
+        uint64_t v = 0;
+        for (int j = 0; j < 8; ++j) v |= (uint64_t)h[k * 8 + j] << (8 * j);
+        out[t * 4 + k] = v % GOLDI;
+    }
+}
+
 __host__ __device__ __forceinline__ uint64_t gl_add(uint64_t a, uint64_t b) {
     uint64_t s = a + b; if (s < a) s += EPS; if (s >= GOLDI) s -= GOLDI; return s;
 }
@@ -143,15 +216,18 @@ extern "C" int cp_abacus_cuda_mock(int n, int bits, int seconds, int device) {
     if (cudaSetDevice(device) != cudaSuccess) { fprintf(stderr, "[abacus] cudaSetDevice(%d) failed\n", device); return 1; }
 
     const size_t nn = (size_t)n * n;
-    std::vector<uint64_t> AB(2 * nn), C(nn);
-    uint64_t *dA = nullptr, *dB = nullptr, *dC = nullptr;
-    if (cudaMalloc(&dA, nn*8)!=cudaSuccess || cudaMalloc(&dB, nn*8)!=cudaSuccess || cudaMalloc(&dC, nn*8)!=cudaSuccess) {
+    std::vector<uint64_t> C(nn);
+    uint64_t *dAB = nullptr, *dC = nullptr; uint8_t *dc = nullptr, *dPh = nullptr;
+    if (cudaMalloc(&dAB, 2*nn*8)!=cudaSuccess || cudaMalloc(&dC, nn*8)!=cudaSuccess ||
+        cudaMalloc(&dc, 32)!=cudaSuccess || cudaMalloc(&dPh, 160)!=cudaSuccess) {
         fprintf(stderr, "[abacus] cudaMalloc failed\n"); return 1;
     }
+    cudaMemcpyToSymbol(c_K, K256, sizeof(K256));
+    const int ethreads = (int)((2*nn + 3) / 4), eblocks = (ethreads + 255) / 256;
     dim3 block(TS, TS), grid(n/TS, n/TS);
 
     uint8_t chain_id[32]; memset(chain_id, 0xAB, 32);
-    std::vector<uint8_t> ph(128), seedbuf;
+    std::vector<uint8_t> ph(160);
     uint64_t nonce = 0, attempts = 0, found = 0;
 
     auto t0 = std::chrono::high_resolution_clock::now();
@@ -161,13 +237,10 @@ extern "C" int cp_abacus_cuda_mock(int n, int bits, int seconds, int device) {
 
         size_t phlen = 0;
         make_preheader(ph.data(), &phlen, chain_id, 1, 0, 0, nonce);
-        // seed = SHA256("abacus/instance" || preheader)
-        { std::vector<uint8_t> m; const char DOM[]="abacus/instance"; m.insert(m.end(),DOM,DOM+strlen(DOM)); m.insert(m.end(),ph.data(),ph.data()+phlen); uint8_t hh[32]; sha256(m.data(),m.size(),hh); seedbuf.assign(hh,hh+32); }
-        expand(seedbuf.data(), 32, AB.data(), 2 * nn);
-
-        cudaMemcpy(dA, AB.data(), nn*8, cudaMemcpyHostToDevice);
-        cudaMemcpy(dB, AB.data() + nn, nn*8, cudaMemcpyHostToDevice);
-        matmul_kernel<<<grid, block>>>(dA, dB, dC, n);
+        cudaMemcpy(dPh, ph.data(), phlen, cudaMemcpyHostToDevice);
+        seed_kernel<<<1, 1>>>(dPh, (int)phlen, dc);
+        expand_kernel<<<eblocks, 256>>>(dc, (int)(2 * nn), dAB);
+        matmul_kernel<<<grid, block>>>(dAB, dAB + nn, dC, n);
         cudaMemcpy(C.data(), dC, nn*8, cudaMemcpyDeviceToHost);
 
         // score = SHA256("abacus/score" || preheader || C_le)
@@ -184,7 +257,7 @@ extern "C" int cp_abacus_cuda_mock(int n, int bits, int seconds, int device) {
     printf("[abacus] n=%d bits=%d device=%d attempts=%llu found=%llu attempts/s=%.1f\n",
            n, bits, device, (unsigned long long)attempts, (unsigned long long)found, attempts/secs);
 
-    cudaFree(dA); cudaFree(dB); cudaFree(dC);
+    cudaFree(dAB); cudaFree(dC); cudaFree(dc); cudaFree(dPh);
     return 0;
 #else
     (void)n; (void)bits; (void)seconds; (void)device;
@@ -212,6 +285,17 @@ extern "C" int cp_abacus_cuda_selftest(void) {
     printf("expand0=%llu %llu %llu %llu\n",
            (unsigned long long)vals[0], (unsigned long long)vals[1],
            (unsigned long long)vals[2], (unsigned long long)vals[3]);
+    // device expand (same seed) for parity
+    cudaMemcpyToSymbol(c_K, K256, sizeof(K256));
+    uint8_t* ds = nullptr; uint64_t* dv = nullptr;
+    cudaMalloc(&ds, 32); cudaMalloc(&dv, 4 * 8);
+    cudaMemcpy(ds, seed, 32, cudaMemcpyHostToDevice);
+    expand_kernel<<<1, 256>>>(ds, 4, dv);
+    uint64_t dvh[4]; cudaMemcpy(dvh, dv, 32, cudaMemcpyDeviceToHost);
+    printf("expand_dev=%llu %llu %llu %llu\n",
+           (unsigned long long)dvh[0], (unsigned long long)dvh[1],
+           (unsigned long long)dvh[2], (unsigned long long)dvh[3]);
+    cudaFree(ds); cudaFree(dv);
     return 0;
 #else
     return 1;
@@ -282,12 +366,14 @@ int cp_abacus_cuda_solo(const char* host, int port, int n, int seconds, int devi
     if (cudaSetDevice(device) != cudaSuccess) { fprintf(stderr, "[abacus] cudaSetDevice(%d) failed\n", device); close(fd); return 1; }
 
     const size_t nn = (size_t)n * n;
-    std::vector<uint64_t> AB(2 * nn), C(nn);
-    uint64_t *dA = nullptr, *dB = nullptr, *dC = nullptr;
-    cudaMalloc(&dA, nn*8); cudaMalloc(&dB, nn*8); cudaMalloc(&dC, nn*8);
+    std::vector<uint64_t> C(nn);
+    uint64_t *dAB = nullptr, *dC = nullptr; uint8_t *dc = nullptr, *dPh = nullptr;
+    cudaMalloc(&dAB, 2*nn*8); cudaMalloc(&dC, nn*8); cudaMalloc(&dc, 32); cudaMalloc(&dPh, 160);
+    cudaMemcpyToSymbol(c_K, K256, sizeof(K256));
+    const int ethreads = (int)((2*nn + 3) / 4), eblocks = (ethreads + 255) / 256;
     dim3 block(TS, TS), grid(n/TS, n/TS);
 
-    std::vector<uint8_t> ph(128), seedbuf;
+    std::vector<uint8_t> ph(160);
     auto t0 = std::chrono::high_resolution_clock::now();
     uint64_t found = 0, jobs = 0;
 
@@ -320,11 +406,10 @@ int cp_abacus_cuda_solo(const char* host, int port, int n, int seconds, int devi
                 for (int i=0;i<8;i++) ph[o++] = (uint8_t)(nonce >> (8*i));
                 phlen = o;
             }
-            { std::vector<uint8_t> m; const char DOM[]="abacus/instance"; m.insert(m.end(),DOM,DOM+strlen(DOM)); m.insert(m.end(),ph.data(),ph.data()+phlen); uint8_t hh[32]; sha256(m.data(),m.size(),hh); seedbuf.assign(hh,hh+32); }
-            expand(seedbuf.data(), 32, AB.data(), 2 * nn);
-            cudaMemcpy(dA, AB.data(), nn*8, cudaMemcpyHostToDevice);
-            cudaMemcpy(dB, AB.data() + nn, nn*8, cudaMemcpyHostToDevice);
-            matmul_kernel<<<grid, block>>>(dA, dB, dC, n);
+            cudaMemcpy(dPh, ph.data(), phlen, cudaMemcpyHostToDevice);
+            seed_kernel<<<1, 1>>>(dPh, (int)phlen, dc);
+            expand_kernel<<<eblocks, 256>>>(dc, (int)(2 * nn), dAB);
+            matmul_kernel<<<grid, block>>>(dAB, dAB + nn, dC, n);
             cudaMemcpy(C.data(), dC, nn*8, cudaMemcpyDeviceToHost);
             std::vector<uint8_t> ms; const char DOMS[]="abacus/score"; ms.insert(ms.end(),DOMS,DOMS+strlen(DOMS));
             ms.insert(ms.end(), ph.data(), ph.data()+phlen);
@@ -350,7 +435,7 @@ int cp_abacus_cuda_solo(const char* host, int port, int n, int seconds, int devi
     printf("[abacus] solo n=%d node=%s:%d jobs=%llu found=%llu time=%.1fs\n", n, host, port,
            (unsigned long long)jobs, (unsigned long long)found, secs);
     close(fd);
-    cudaFree(dA); cudaFree(dB); cudaFree(dC);
+    cudaFree(dAB); cudaFree(dC); cudaFree(dc); cudaFree(dPh);
     return 0;
 #else
     (void)host; (void)port; (void)n; (void)seconds; (void)device;
