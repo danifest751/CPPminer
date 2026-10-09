@@ -13,6 +13,13 @@ int cp_abacus_main(int argc, char** argv);
 /* CUDA mock mine loop: search `seconds` for nonces with `bits` leading zero score bits.
  * Returns 0 on success, non-zero on error. Defined in cp_abacus.cu. */
 int cp_abacus_cuda_mock(int n, int bits, int seconds, int device);
+
+/* Solo client: connect to an Abacus node, request jobs, mine and submit blocks.
+ * Defined in cp_abacus.cu (POSIX only). */
+int cp_abacus_cuda_solo(const char* host, int port, int n, int seconds, int device);
+
+/* Print SHA-256 known-vector self-test; returns 0 on success. */
+int cp_abacus_cuda_selftest(void);
 #endif
 
 #ifdef __cplusplus

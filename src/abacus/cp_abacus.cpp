@@ -1,16 +1,17 @@
-// Abacus backend entry point: argument handling and dispatch to the CUDA mock loop.
+// Abacus backend entry point: argument handling and dispatch to the CUDA mock / solo loop.
 //
 // Usage (subset parsed here; the rest of CPPminer's args are ignored for abacus):
 //   cppminer --algo abacus --backend cuda [-d DEVICE] --mock [--n 64] [--bits 4] [--seconds 5]
+//   cppminer --algo abacus --backend cuda [-d DEVICE] --node HOST:PORT [--n 64] [--seconds 30]
 //
-// Network (solo/pool) mining is not implemented yet: the Abacus chain prototype does not expose a
-// job/submit protocol. Only --mock is accepted for now.
+// Solo mode connects to an Abacus node (abacus-node), requests jobs and submits blocks.
 
 #include "cp_abacus.h"
 
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 static const char* getval(int argc, char** argv, const char* name) {
     for (int i = 1; i + 1 < argc; ++i)
@@ -25,7 +26,16 @@ static bool hasflag(int argc, char** argv, const char* name) {
 }
 
 extern "C" int cp_abacus_main(int argc, char** argv) {
+    if (hasflag(argc, argv, "--selftest")) {
+#if defined(CP_ENABLE_CUDA) && CP_ENABLE_CUDA
+        return cp_abacus_cuda_selftest();
+#else
+        fprintf(stderr, "[abacus] no CUDA\n");
+        return 1;
+#endif
+    }
     const bool mock = hasflag(argc, argv, "--mock");
+    const char* node = getval(argc, argv, "--node");
     const char* n_s = getval(argc, argv, "--n");
     const char* b_s = getval(argc, argv, "--bits");
     const char* s_s = getval(argc, argv, "--seconds");
@@ -34,13 +44,30 @@ extern "C" int cp_abacus_main(int argc, char** argv) {
 
     const int n = n_s ? atoi(n_s) : 64;
     const int bits = b_s ? atoi(b_s) : 4;
-    const int seconds = s_s ? atoi(s_s) : 5;
+    const int seconds = s_s ? atoi(s_s) : (node ? 30 : 5);
     const int device = d_s ? atoi(d_s) : 0;
 
-    printf("[mode] algo=abacus backend=cuda%s\n", mock ? " (mock)" : "");
+    printf("[mode] algo=abacus backend=cuda%s%s\n", mock ? " (mock)" : "", node ? " (solo)" : "");
+
+    if (node) {
+        std::string s(node);
+        const auto pos = s.rfind(':');
+        if (pos == std::string::npos) {
+            fprintf(stderr, "[abacus] --node expects HOST:PORT\n");
+            return 1;
+        }
+        const std::string host = s.substr(0, pos);
+        const int port = atoi(s.substr(pos + 1).c_str());
+#if defined(CP_ENABLE_CUDA) && CP_ENABLE_CUDA
+        return cp_abacus_cuda_solo(host.c_str(), port, n, seconds, device);
+#else
+        fprintf(stderr, "[abacus] this build has no CUDA backend\n");
+        return 1;
+#endif
+    }
 
     if (!mock) {
-        fprintf(stderr, "[abacus] network solo mining is not implemented yet; use --mock\n");
+        fprintf(stderr, "[abacus] pass --mock (benchmark) or --node HOST:PORT (solo)\n");
         return 1;
     }
 

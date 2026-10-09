@@ -143,7 +143,7 @@ extern "C" int cp_abacus_cuda_mock(int n, int bits, int seconds, int device) {
     if (cudaSetDevice(device) != cudaSuccess) { fprintf(stderr, "[abacus] cudaSetDevice(%d) failed\n", device); return 1; }
 
     const size_t nn = (size_t)n * n;
-    std::vector<uint64_t> A(nn), B(nn), C(nn);
+    std::vector<uint64_t> AB(2 * nn), C(nn);
     uint64_t *dA = nullptr, *dB = nullptr, *dC = nullptr;
     if (cudaMalloc(&dA, nn*8)!=cudaSuccess || cudaMalloc(&dB, nn*8)!=cudaSuccess || cudaMalloc(&dC, nn*8)!=cudaSuccess) {
         fprintf(stderr, "[abacus] cudaMalloc failed\n"); return 1;
@@ -163,11 +163,10 @@ extern "C" int cp_abacus_cuda_mock(int n, int bits, int seconds, int device) {
         make_preheader(ph.data(), &phlen, chain_id, 1, 0, 0, nonce);
         // seed = SHA256("abacus/instance" || preheader)
         { std::vector<uint8_t> m; const char DOM[]="abacus/instance"; m.insert(m.end(),DOM,DOM+strlen(DOM)); m.insert(m.end(),ph.data(),ph.data()+phlen); uint8_t hh[32]; sha256(m.data(),m.size(),hh); seedbuf.assign(hh,hh+32); }
-        expand(seedbuf.data(), 32, A.data(), nn);
-        expand(seedbuf.data(), 32, B.data(), nn);
+        expand(seedbuf.data(), 32, AB.data(), 2 * nn);
 
-        cudaMemcpy(dA, A.data(), nn*8, cudaMemcpyHostToDevice);
-        cudaMemcpy(dB, B.data(), nn*8, cudaMemcpyHostToDevice);
+        cudaMemcpy(dA, AB.data(), nn*8, cudaMemcpyHostToDevice);
+        cudaMemcpy(dB, AB.data() + nn, nn*8, cudaMemcpyHostToDevice);
         matmul_kernel<<<grid, block>>>(dA, dB, dC, n);
         cudaMemcpy(C.data(), dC, nn*8, cudaMemcpyDeviceToHost);
 
@@ -190,6 +189,172 @@ extern "C" int cp_abacus_cuda_mock(int n, int bits, int seconds, int device) {
 #else
     (void)n; (void)bits; (void)seconds; (void)device;
     fprintf(stderr, "[abacus] built without CUDA\n");
+    return 1;
+#endif
+}
+
+extern "C" int cp_abacus_cuda_selftest(void) {
+#if defined(CP_ENABLE_CUDA) && CP_ENABLE_CUDA
+    uint8_t h[32];
+    sha256((const uint8_t*)"abc", 3, h);
+    printf("sha256(abc)=");
+    for (int i = 0; i < 32; ++i) printf("%02x", h[i]);
+    printf("\n");
+    uint8_t h2[32];
+    sha256((const uint8_t*)"", 0, h2);
+    printf("sha256(empty)=");
+    for (int i = 0; i < 32; ++i) printf("%02x", h2[i]);
+    printf("\n");
+    uint8_t seed[32];
+    memset(seed, 0, 32);
+    uint64_t vals[4];
+    expand(seed, 32, vals, 4);
+    printf("expand0=%llu %llu %llu %llu\n",
+           (unsigned long long)vals[0], (unsigned long long)vals[1],
+           (unsigned long long)vals[2], (unsigned long long)vals[3]);
+    return 0;
+#else
+    return 1;
+#endif
+}
+
+// ---------------- solo client (JOB/SUB) ----------------
+
+#if defined(CP_ENABLE_CUDA) && CP_ENABLE_CUDA && !defined(_WIN32)
+#include <sys/socket.h>
+#include <netdb.h>
+#include <unistd.h>
+#include <string>
+
+namespace {
+std::string to_hex(const uint8_t* p, size_t n) {
+    static const char* H = "0123456789abcdef";
+    std::string s; s.reserve(n * 2);
+    for (size_t i = 0; i < n; ++i) { s.push_back(H[p[i] >> 4]); s.push_back(H[p[i] & 15]); }
+    return s;
+}
+int hexv(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+bool from_hex(const std::string& s, std::vector<uint8_t>& out) {
+    if (s.size() % 2) return false;
+    out.clear();
+    for (size_t i = 0; i < s.size(); i += 2) {
+        int hi = hexv(s[i]), lo = hexv(s[i + 1]);
+        if (hi < 0 || lo < 0) return false;
+        out.push_back((uint8_t)((hi << 4) | lo));
+    }
+    return true;
+}
+bool send_line(int fd, const std::string& s) {
+    std::string m = s + "\n";
+    size_t off = 0;
+    while (off < m.size()) { ssize_t r = ::send(fd, m.data() + off, m.size() - off, 0); if (r <= 0) return false; off += (size_t)r; }
+    return true;
+}
+bool recv_line(int fd, std::string& out) {
+    out.clear(); char c;
+    while (true) { ssize_t r = ::recv(fd, &c, 1, 0); if (r <= 0) return false; if (c == '\n') return true; out.push_back(c); }
+}
+} // namespace
+#endif
+
+int cp_abacus_cuda_solo(const char* host, int port, int n, int seconds, int device) {
+#if defined(CP_ENABLE_CUDA) && CP_ENABLE_CUDA && !defined(_WIN32)
+    if (n <= 0 || (n % TS) != 0) { fprintf(stderr, "[abacus] n must be a positive multiple of %d\n", TS); return 1; }
+    struct addrinfo hints; memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC; hints.ai_socktype = SOCK_STREAM;
+    char portstr[16]; snprintf(portstr, sizeof(portstr), "%d", port);
+    struct addrinfo* res = nullptr;
+    if (getaddrinfo(host, portstr, &hints, &res) != 0) { fprintf(stderr, "[abacus] resolve %s failed\n", host); return 1; }
+    int fd = -1;
+    for (struct addrinfo* p = res; p; p = p->ai_next) {
+        fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+        if (fd < 0) continue;
+        if (connect(fd, p->ai_addr, p->ai_addrlen) == 0) break;
+        close(fd); fd = -1;
+    }
+    freeaddrinfo(res);
+    if (fd < 0) { fprintf(stderr, "[abacus] connect %s:%d failed\n", host, port); return 1; }
+    if (cudaSetDevice(device) != cudaSuccess) { fprintf(stderr, "[abacus] cudaSetDevice(%d) failed\n", device); close(fd); return 1; }
+
+    const size_t nn = (size_t)n * n;
+    std::vector<uint64_t> AB(2 * nn), C(nn);
+    uint64_t *dA = nullptr, *dB = nullptr, *dC = nullptr;
+    cudaMalloc(&dA, nn*8); cudaMalloc(&dB, nn*8); cudaMalloc(&dC, nn*8);
+    dim3 block(TS, TS), grid(n/TS, n/TS);
+
+    std::vector<uint8_t> ph(128), seedbuf;
+    auto t0 = std::chrono::high_resolution_clock::now();
+    uint64_t found = 0, jobs = 0;
+
+    for (;;) {
+        if (std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count() >= seconds) break;
+        if (!send_line(fd, "JOB")) break;
+        std::string line;
+        if (!recv_line(fd, line) || line.rfind("JOB ", 0) != 0) break;
+        std::vector<uint8_t> jb;
+        if (!from_hex(line.substr(4), jb) || jb.size() != 88) break;
+        uint8_t chain_id[32]; memcpy(chain_id, jb.data(), 32);
+        uint32_t version; memcpy(&version, jb.data()+32, 4);
+        uint8_t prev[32]; memcpy(prev, jb.data()+36, 32);
+        uint64_t height; memcpy(&height, jb.data()+68, 8);
+        uint64_t ts; memcpy(&ts, jb.data()+76, 8);
+        uint32_t bits; memcpy(&bits, jb.data()+84, 4);
+        jobs++;
+
+        for (uint64_t nonce = 0;; nonce++) {
+            if (std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count() >= seconds) break;
+            size_t phlen = 0;
+            {
+                static const char DOM[] = "abacus/ph"; size_t dl = strlen(DOM); size_t o = 0;
+                memcpy(ph.data()+o, DOM, dl); o += dl;
+                memcpy(ph.data()+o, chain_id, 32); o += 32;
+                for (int i=0;i<4;i++) ph[o++] = (uint8_t)(version >> (8*i));
+                memcpy(ph.data()+o, prev, 32); o += 32;
+                for (int i=0;i<8;i++) ph[o++] = (uint8_t)(height >> (8*i));
+                for (int i=0;i<8;i++) ph[o++] = (uint8_t)(ts >> (8*i));
+                for (int i=0;i<8;i++) ph[o++] = (uint8_t)(nonce >> (8*i));
+                phlen = o;
+            }
+            { std::vector<uint8_t> m; const char DOM[]="abacus/instance"; m.insert(m.end(),DOM,DOM+strlen(DOM)); m.insert(m.end(),ph.data(),ph.data()+phlen); uint8_t hh[32]; sha256(m.data(),m.size(),hh); seedbuf.assign(hh,hh+32); }
+            expand(seedbuf.data(), 32, AB.data(), 2 * nn);
+            cudaMemcpy(dA, AB.data(), nn*8, cudaMemcpyHostToDevice);
+            cudaMemcpy(dB, AB.data() + nn, nn*8, cudaMemcpyHostToDevice);
+            matmul_kernel<<<grid, block>>>(dA, dB, dC, n);
+            cudaMemcpy(C.data(), dC, nn*8, cudaMemcpyDeviceToHost);
+            std::vector<uint8_t> ms; const char DOMS[]="abacus/score"; ms.insert(ms.end(),DOMS,DOMS+strlen(DOMS));
+            ms.insert(ms.end(), ph.data(), ph.data()+phlen);
+            for (size_t i = 0; i < nn; ++i) { uint64_t x = C[i]; for (int j=0;j<8;j++) ms.push_back((uint8_t)(x >> (8*j))); }
+            uint8_t sc[32]; sha256(ms.data(), ms.size(), sc);
+            if ((int)leading_zero_bits(sc) >= bits) {
+                // SUB = nonce(u64) || ts(u64) || clen(u32) || C
+                std::vector<uint8_t> sb; sb.resize(8+8+4);
+                for (int i=0;i<8;i++) sb[i] = (uint8_t)(nonce >> (8*i));
+                for (int i=0;i<8;i++) sb[8+i] = (uint8_t)(ts >> (8*i));
+                uint32_t cl = (uint32_t)nn; memcpy(&sb[16], &cl, 4);
+                for (size_t i = 0; i < nn; ++i) { uint64_t x = C[i]; for (int j=0;j<8;j++) sb.push_back((uint8_t)(x >> (8*j))); }
+                std::string reply;
+                if (send_line(fd, "SUB " + to_hex(sb.data(), sb.size())) && recv_line(fd, reply) && reply.rfind("OK",0)==0) {
+                    found++;
+                    printf("[abacus] accepted height=%llu nonce=%llu\n", (unsigned long long)height, (unsigned long long)nonce);
+                }
+                break;
+            }
+        }
+    }
+    double secs = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count();
+    printf("[abacus] solo n=%d node=%s:%d jobs=%llu found=%llu time=%.1fs\n", n, host, port,
+           (unsigned long long)jobs, (unsigned long long)found, secs);
+    close(fd);
+    cudaFree(dA); cudaFree(dB); cudaFree(dC);
+    return 0;
+#else
+    (void)host; (void)port; (void)n; (void)seconds; (void)device;
+    fprintf(stderr, "[abacus] solo not supported in this build\n");
     return 1;
 #endif
 }
