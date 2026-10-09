@@ -20,6 +20,9 @@ int cp_abacus_cuda_solo(const char* host, int port, int n, int seconds, int devi
 
 /* Print SHA-256 known-vector self-test; returns 0 on success. */
 int cp_abacus_cuda_selftest(void);
+
+/* Candidate A' memory-hard mock: gather operands from a device dataset. */
+int cp_abacus_cuda_mock_hard(int n, int bits, int seconds, int device, int dataset_mib, int seg_bytes);
 #endif
 
 #ifdef __cplusplus

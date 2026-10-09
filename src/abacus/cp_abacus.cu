@@ -181,6 +181,19 @@ __global__ void expand_kernel(const unsigned char* seed, int count, uint64_t* ou
     }
 }
 
+// Gathered instance (candidate A'): out[i] = fold of a header-random dataset segment.
+__global__ void gather_kernel(const uint64_t* __restrict__ D, unsigned long long dwords,
+                              const uint64_t* __restrict__ idx, unsigned seg_words, uint64_t* __restrict__ out, int count) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= count) return;
+    const unsigned long long span = dwords - seg_words;
+    const unsigned long long off = span ? (idx[i] % span) : 0;
+    const uint64_t* p = D + off;
+    uint64_t acc = 0;
+    for (unsigned s = 0; s < seg_words; ++s) acc += p[s];
+    out[i] = acc % GOLDI;
+}
+
 __host__ __device__ __forceinline__ uint64_t gl_add(uint64_t a, uint64_t b) {
     uint64_t s = a + b; if (s < a) s += EPS; if (s >= GOLDI) s -= GOLDI; return s;
 }
@@ -263,6 +276,67 @@ extern "C" int cp_abacus_cuda_mock(int n, int bits, int seconds, int device) {
     (void)n; (void)bits; (void)seconds; (void)device;
     fprintf(stderr, "[abacus] built without CUDA\n");
     return 1;
+#endif
+}
+
+// Candidate A' memory-hard mock: gather operands from a device dataset instead of expanding.
+extern "C" int cp_abacus_cuda_mock_hard(int n, int bits, int seconds, int device, int dataset_mib, int seg_bytes) {
+#if defined(CP_ENABLE_CUDA) && CP_ENABLE_CUDA
+    if (n <= 0 || (n % TS) != 0) { fprintf(stderr, "[abacus] n must be a positive multiple of %d\n", TS); return 1; }
+    if (cudaSetDevice(device) != cudaSuccess) { fprintf(stderr, "[abacus] cudaSetDevice(%d) failed\n", device); return 1; }
+    const size_t nn = (size_t)n * n;
+    const unsigned long long db = (unsigned long long)dataset_mib << 20;
+    const unsigned seg_words = (unsigned)seg_bytes / 8;
+    if (db < (unsigned long long)seg_words * 8 * 2) { fprintf(stderr, "[abacus] dataset too small\n"); return 1; }
+
+    std::vector<uint64_t> C(nn);
+    uint64_t *dAB = nullptr, *dC = nullptr, *dIdx = nullptr, *dD = nullptr;
+    uint8_t *dc = nullptr, *dPh = nullptr;
+    if (cudaMalloc(&dAB, 2*nn*8)!=cudaSuccess || cudaMalloc(&dC, nn*8)!=cudaSuccess ||
+        cudaMalloc(&dIdx, 2*nn*8)!=cudaSuccess || cudaMalloc(&dD, db)!=cudaSuccess ||
+        cudaMalloc(&dc, 32)!=cudaSuccess || cudaMalloc(&dPh, 160)!=cudaSuccess) {
+        fprintf(stderr, "[abacus] cudaMalloc failed\n"); return 1;
+    }
+    cudaMemset(dD, 0xA5, db);
+    cudaMemcpyToSymbol(c_K, K256, sizeof(K256));
+    const unsigned long long dwords = db / 8;
+    const int ethreads = (int)((2*nn + 3) / 4), eblocks = (ethreads + 255) / 256;
+    const int gthreads = (int)(2 * nn), gblocks = (gthreads + 255) / 256;
+    dim3 block(TS, TS), grid(n/TS, n/TS);
+
+    uint8_t chain_id[32]; memset(chain_id, 0xAB, 32);
+    std::vector<uint8_t> ph(160);
+    uint64_t nonce = 0, attempts = 0, found = 0;
+    auto t0 = std::chrono::high_resolution_clock::now();
+    for (;;) {
+        if (std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count() >= seconds) break;
+        size_t phlen = 0;
+        make_preheader(ph.data(), &phlen, chain_id, 1, 0, 0, nonce);
+        cudaMemcpy(dPh, ph.data(), phlen, cudaMemcpyHostToDevice);
+        seed_kernel<<<1, 1>>>(dPh, (int)phlen, dc);
+        // index stream for 2*n*n gathered elements (reuse expand)
+        expand_kernel<<<eblocks, 256>>>(dc, (int)(2 * nn), dIdx);
+        gather_kernel<<<gblocks, 256>>>(dD, dwords, dIdx, seg_words, dAB, (int)(2 * nn));
+        matmul_kernel<<<grid, block>>>(dAB, dAB + nn, dC, n);
+        cudaMemcpy(C.data(), dC, nn*8, cudaMemcpyDeviceToHost);
+
+        std::vector<uint8_t> ms; const char DOMS[]="abacus/score"; ms.insert(ms.end(),DOMS,DOMS+strlen(DOMS));
+        ms.insert(ms.end(), ph.data(), ph.data()+phlen);
+        for (size_t i = 0; i < nn; ++i) { uint64_t x = C[i]; for (int j=0;j<8;j++) ms.push_back((uint8_t)(x >> (8*j))); }
+        uint8_t sc[32]; sha256(ms.data(), ms.size(), sc);
+        attempts++;
+        if ((int)leading_zero_bits(sc) >= bits) { found++; }
+        nonce++;
+    }
+    double secs = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count();
+    double gbytes = (double)2 * nn * seg_bytes * attempts;
+    printf("[abacus] hard n=%d dataset=%dMiB seg=%dB attempts=%llu found=%llu attempts/s=%.1f gather_GB/s=%.1f\n",
+           n, dataset_mib, seg_bytes, (unsigned long long)attempts, (unsigned long long)found, attempts/secs, gbytes/secs/1e9);
+    cudaFree(dAB); cudaFree(dC); cudaFree(dIdx); cudaFree(dD); cudaFree(dc); cudaFree(dPh);
+    return 0;
+#else
+    (void)n;(void)bits;(void)seconds;(void)device;(void)dataset_mib;(void)seg_bytes;
+    fprintf(stderr, "[abacus] built without CUDA\n"); return 1;
 #endif
 }
 

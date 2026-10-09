@@ -41,13 +41,17 @@ extern "C" int cp_abacus_main(int argc, char** argv) {
     const char* s_s = getval(argc, argv, "--seconds");
     const char* d_s = getval(argc, argv, "-d");
     if (!d_s) d_s = getval(argc, argv, "--devices");
+    const char* ds_s = getval(argc, argv, "--dataset");
+    const char* seg_s = getval(argc, argv, "--seg");
 
     const int n = n_s ? atoi(n_s) : 64;
     const int bits = b_s ? atoi(b_s) : 4;
     const int seconds = s_s ? atoi(s_s) : (node ? 30 : 5);
     const int device = d_s ? atoi(d_s) : 0;
+    const int dataset_mib = ds_s ? atoi(ds_s) : 0;
+    const int seg_bytes = seg_s ? atoi(seg_s) : 4096;
 
-    printf("[mode] algo=abacus backend=cuda%s%s\n", mock ? " (mock)" : "", node ? " (solo)" : "");
+    printf("[mode] algo=abacus backend=cuda%s%s%s\n", mock ? " (mock)" : "", node ? " (solo)" : "", dataset_mib ? " (hard)" : "");
 
     if (node) {
         std::string s(node);
@@ -72,6 +76,8 @@ extern "C" int cp_abacus_main(int argc, char** argv) {
     }
 
 #if defined(CP_ENABLE_CUDA) && CP_ENABLE_CUDA
+    if (dataset_mib > 0)
+        return cp_abacus_cuda_mock_hard(n, bits, seconds, device, dataset_mib, seg_bytes);
     return cp_abacus_cuda_mock(n, bits, seconds, device);
 #else
     fprintf(stderr, "[abacus] this build has no CUDA backend\n");
