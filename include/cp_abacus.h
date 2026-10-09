@@ -16,13 +16,13 @@ int cp_abacus_cuda_mock(int n, int bits, int seconds, int device);
 
 /* Solo client: connect to an Abacus node, request jobs, mine and submit blocks.
  * Defined in cp_abacus.cu (POSIX only). */
-int cp_abacus_cuda_solo(const char* host, int port, int n, int seconds, int device, int nblocks);
+int cp_abacus_cuda_solo(const char* host, int port, int n, int seconds, int device, long long nblocks);
 
 /* Print SHA-256 known-vector self-test; returns 0 on success. */
 int cp_abacus_cuda_selftest(void);
 
-/* Candidate A' memory-hard mock: gather operands from a device dataset. */
-int cp_abacus_cuda_mock_hard(int n, int bits, int seconds, int device, int dataset_mib, int seg_bytes);
+/* Candidate A' mock: gather operands from a device dataset of `nblocks` 32-byte blocks. */
+int cp_abacus_cuda_mock_hard(int n, int bits, int seconds, int device, long long nblocks);
 #endif
 
 #ifdef __cplusplus

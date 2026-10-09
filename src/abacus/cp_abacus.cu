@@ -1,15 +1,16 @@
 // Abacus backend (candidate A) for CPPminer: CUDA nonce search over the verifiable-algebra PoW.
 //
-// Encoding matches the Abacus prototype exactly (byte-for-byte), so a future solo miner can submit
-// directly:
+// Encoding v2 matches the Abacus prototype exactly (byte-for-byte; Abacus ADR 0010):
 //   preheader = "abacus/ph" || chain_id(32) || version(u32 LE) || prev(32) || height(u64 LE)
-//               || timestamp(u64 LE) || nonce(u64 LE)
+//               || timestamp(u64 LE) || bits(u32 LE) || nonce(u64 LE)
 //   seed      = SHA256("abacus/instance" || preheader)
 //   A,B       = expand(seed, 2*n*n)   (SHA256 counter mode, 4 goldilocks elements per hash)
 //   C         = A*B over Goldilocks (P = 2^64 - 2^32 + 1)
 //   score     = SHA256("abacus/score" || preheader || C_le)   (accept: leading_zero_bits(score) >= bits)
+//   dataset   (A') blk[u] = SHA256("abacus/ds" || seed || u || blk[u-1] || blk[ref(u)]),
+//               ref(u) = LE64(blk[u-1][0..8]) mod u   (data-dependent)
 //
-// This is a mock/benchmark loop (no pool yet). It exercises the full attempt on the GPU matmul.
+// Modes: a mock/benchmark loop, an A' mock, and a solo/pool client (JOB/SUB) for abacus-node.
 
 #include "cp_abacus.h"
 
@@ -97,12 +98,8 @@ void build_dataset(const uint8_t epoch_seed[32], uint64_t nblocks, std::vector<u
         for (int w=0; w<4; ++w) { uint64_t v=0; for (int j=0;j<8;j++) v |= (uint64_t)h[w*8+j] << (8*j); out[w]=v; }
     }
     for (uint64_t u = 1; u < nblocks; ++u) {
-        std::vector<uint8_t> mr; const char DOMR[]="abacus/ref"; mr.insert(mr.end(),DOMR,DOMR+strlen(DOMR));
-        mr.insert(mr.end(), epoch_seed, epoch_seed+32);
-        for (int i=0;i<8;i++) mr.push_back((uint8_t)(u>>(8*i)));
-        uint8_t hr[32]; sha256(mr.data(), mr.size(), hr);
-        uint64_t rv=0; for (int j=0;j<8;j++) rv |= (uint64_t)hr[j] << (8*j);
-        uint64_t r = rv % u;
+        uint64_t rv=0; for (int j=0;j<8;j++) rv |= (uint64_t)prev32[j] << (8*j);
+        uint64_t r = rv % u; // data-dependent reference (ADR 0010)
         std::vector<uint8_t> m; const char DOM[]="abacus/ds"; m.insert(m.end(),DOM,DOM+strlen(DOM));
         m.insert(m.end(), epoch_seed, epoch_seed+32);
         for (int i=0;i<8;i++) m.push_back((uint8_t)(u>>(8*i)));
@@ -115,15 +112,18 @@ void build_dataset(const uint8_t epoch_seed[32], uint64_t nblocks, std::vector<u
     }
 }
 
-void make_preheader(uint8_t* ph, size_t* ph_len, const uint8_t chain_id[32], uint32_t version, uint64_t height, uint64_t ts, uint64_t nonce) {
+// Preheader v2 (bits committed between timestamp and nonce).
+void make_preheader(uint8_t* ph, size_t* ph_len, const uint8_t chain_id[32], uint32_t version, const uint8_t prev[32],
+                    uint64_t height, uint64_t ts, uint32_t bits, uint64_t nonce) {
     static const char DOM[] = "abacus/ph";
     size_t o = 0; size_t dl = strlen(DOM);
     memcpy(ph+o, DOM, dl); o += dl;
     memcpy(ph+o, chain_id, 32); o += 32;
     for (int i=0;i<4;i++) ph[o++] = (uint8_t)(version >> (8*i));
-    for (int i=0;i<32;i++) ph[o++] = 0;
+    memcpy(ph+o, prev, 32); o += 32;
     for (int i=0;i<8;i++) ph[o++] = (uint8_t)(height >> (8*i));
     for (int i=0;i<8;i++) ph[o++] = (uint8_t)(ts >> (8*i));
+    for (int i=0;i<4;i++) ph[o++] = (uint8_t)(bits >> (8*i));
     for (int i=0;i<8;i++) ph[o++] = (uint8_t)(nonce >> (8*i));
     *ph_len = o;
 }
@@ -277,14 +277,13 @@ __global__ void score_lead_kernel(const unsigned char* ph, int phlen, const uint
     out[0] = leading_zero_bits_dev(sc);
 }
 
-// Sequential data-dependent dataset on the device: block u depends on u-1 and a data-dependent
-// earlier block. One thread builds it; matches the Rust chain `build_dataset`.
+// Sequential data-dependent dataset on the device: block u depends on u-1 and on the earlier block
+// ref(u) = LE64(blk[u-1][0..8]) mod u. One thread builds it; matches the Rust chain `build_dataset`.
 __global__ void dataset_chain_kernel(const unsigned char* epoch_seed, uint64_t nblocks, uint64_t* out) {
     if (threadIdx.x != 0 || blockIdx.x != 0) return;
     unsigned char prev[32];
     unsigned char m[112];
     const char DOMDS[] = "abacus/ds"; int dlds = 9;
-    const char DOMREF[] = "abacus/ref"; int dlref = 10;
     // block 0
     {
         int o = 0; for (int i=0;i<dlds;i++) m[o++]=DOMDS[i];
@@ -295,10 +294,7 @@ __global__ void dataset_chain_kernel(const unsigned char* epoch_seed, uint64_t n
         for (int w=0;w<4;w++){ uint64_t v=0; for (int j=0;j<8;j++) v |= (uint64_t)h[w*8+j]<<(8*j); out[w]=v; }
     }
     for (uint64_t u=1; u<nblocks; ++u) {
-        unsigned char hr[32];
-        { int o=0; for (int i=0;i<dlref;i++) m[o++]=DOMREF[i]; for (int i=0;i<32;i++) m[o++]=epoch_seed[i];
-          for (int i=0;i<8;i++) m[o++]=(unsigned char)(u>>(8*i)); sha256_dev(m,o,hr); }
-        uint64_t rv=0; for (int j=0;j<8;j++) rv |= (uint64_t)hr[j]<<(8*j);
+        uint64_t rv=0; for (int j=0;j<8;j++) rv |= (uint64_t)prev[j]<<(8*j);
         uint64_t r = rv % u;
         { int o=0; for (int i=0;i<dlds;i++) m[o++]=DOMDS[i]; for (int i=0;i<32;i++) m[o++]=epoch_seed[i];
           for (int i=0;i<8;i++) m[o++]=(unsigned char)(u>>(8*i));
@@ -368,6 +364,7 @@ extern "C" int cp_abacus_cuda_mock(int n, int bits, int seconds, int device) {
     dim3 block(TS, TS), grid(n/TS, n/TS);
 
     uint8_t chain_id[32]; memset(chain_id, 0xAB, 32);
+    uint8_t prev0[32]; memset(prev0, 0, 32);
     std::vector<uint8_t> ph(160);
     uint64_t nonce = 0, attempts = 0, found = 0;
 
@@ -377,7 +374,7 @@ extern "C" int cp_abacus_cuda_mock(int n, int bits, int seconds, int device) {
         if (std::chrono::duration<double>(now - t0).count() >= seconds) break;
 
         size_t phlen = 0;
-        make_preheader(ph.data(), &phlen, chain_id, 1, 0, 0, nonce);
+        make_preheader(ph.data(), &phlen, chain_id, 2, prev0, 0, 0, (uint32_t)bits, nonce);
         cudaMemcpy(dPh, ph.data(), phlen, cudaMemcpyHostToDevice);
         seed_kernel<<<1, 1>>>(dPh, (int)phlen, dc);
         expand_kernel<<<eblocks, 256>>>(dc, (int)(2 * nn), dAB);
@@ -407,12 +404,11 @@ extern "C" int cp_abacus_cuda_mock(int n, int bits, int seconds, int device) {
 }
 
 // Candidate A' memory-hard mock: gather operands from a device dataset instead of expanding.
-extern "C" int cp_abacus_cuda_mock_hard(int n, int bits, int seconds, int device, int nblocks, int seg_bytes) {
+extern "C" int cp_abacus_cuda_mock_hard(int n, int bits, int seconds, int device, long long nblocks) {
 #if defined(CP_ENABLE_CUDA) && CP_ENABLE_CUDA
     if (n <= 0 || (n % TS) != 0) { fprintf(stderr, "[abacus] n must be a positive multiple of %d\n", TS); return 1; }
     if (cudaSetDevice(device) != cudaSuccess) { fprintf(stderr, "[abacus] cudaSetDevice(%d) failed\n", device); return 1; }
     if (nblocks < 2) { fprintf(stderr, "[abacus] --dataset needs >= 2 blocks\n"); return 1; }
-    (void)seg_bytes;
     const size_t nn = (size_t)n * n;
 
     // Build the epoch dataset on the device (matches the Rust chain), as u64 (4 per block).
@@ -436,13 +432,14 @@ extern "C" int cp_abacus_cuda_mock_hard(int n, int bits, int seconds, int device
 
     std::vector<uint64_t> C(nn);
     uint8_t chain_id[32]; memset(chain_id, 0xAB, 32);
+    uint8_t prev0[32]; memset(prev0, 0, 32);
     std::vector<uint8_t> ph(160);
     uint64_t nonce = 0, attempts = 0, found = 0;
     auto t0 = std::chrono::high_resolution_clock::now();
     for (;;) {
         if (std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count() >= seconds) break;
         size_t phlen = 0;
-        make_preheader(ph.data(), &phlen, chain_id, 1, 0, 0, nonce);
+        make_preheader(ph.data(), &phlen, chain_id, 2, prev0, 0, 0, (uint32_t)bits, nonce);
         cudaMemcpy(dPh, ph.data(), phlen, cudaMemcpyHostToDevice);
         seed_kernel<<<1, 1>>>(dPh, (int)phlen, dc);
         expand_kernel<<<eblocks, 256>>>(dc, (int)(2 * nn), dIdx);
@@ -458,13 +455,13 @@ extern "C" int cp_abacus_cuda_mock_hard(int n, int bits, int seconds, int device
         nonce++;
     }
     double secs = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count();
-    double reads = (double)2 * nn * 32 * attempts; // 32 bytes addressed per gathered element
-    printf("[abacus] hard n=%d blocks=%d attempts=%llu found=%llu attempts/s=%.1f gather_GB/s=%.1f\n",
+    double reads = (double)2 * nn * 8 * attempts; // 8 bytes consumed per gathered element (field_from_block)
+    printf("[abacus] hard n=%d blocks=%lld attempts=%llu found=%llu attempts/s=%.1f gather_GB/s=%.1f\n",
            n, nblocks, (unsigned long long)attempts, (unsigned long long)found, attempts/secs, reads/secs/1e9);
     cudaFree(dAB); cudaFree(dC); cudaFree(dIdx); cudaFree(dD); cudaFree(dc); cudaFree(dPh); cudaFree(dSeed);
     return 0;
 #else
-    (void)n;(void)bits;(void)seconds;(void)device;(void)nblocks;(void)seg_bytes;
+    (void)n;(void)bits;(void)seconds;(void)device;(void)nblocks;
     fprintf(stderr, "[abacus] built without CUDA\n"); return 1;
 #endif
 }
@@ -549,7 +546,7 @@ bool recv_line(int fd, std::string& out) {
 } // namespace
 #endif
 
-int cp_abacus_cuda_solo(const char* host, int port, int n, int seconds, int device, int nblocks) {
+int cp_abacus_cuda_solo(const char* host, int port, int n, int seconds, int device, long long nblocks) {
 #if defined(CP_ENABLE_CUDA) && CP_ENABLE_CUDA && !defined(_WIN32)
     if (n <= 0 || (n % TS) != 0) { fprintf(stderr, "[abacus] n must be a positive multiple of %d\n", TS); return 1; }
     struct addrinfo hints; memset(&hints, 0, sizeof(hints));
@@ -619,6 +616,7 @@ int cp_abacus_cuda_solo(const char* host, int port, int n, int seconds, int devi
                 memcpy(ph.data()+o, prev, 32); o += 32;
                 for (int i=0;i<8;i++) ph[o++] = (uint8_t)(height >> (8*i));
                 for (int i=0;i<8;i++) ph[o++] = (uint8_t)(ts >> (8*i));
+                for (int i=0;i<4;i++) ph[o++] = (uint8_t)(bits >> (8*i));
                 for (int i=0;i<8;i++) ph[o++] = (uint8_t)(nonce >> (8*i));
                 phlen = o;
             }
