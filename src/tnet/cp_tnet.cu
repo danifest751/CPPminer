@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cctype>
 #include <cstring>
 #include <random>
 #include <string>
@@ -412,12 +413,18 @@ extern "C" int cp_tnet_cuda_selftest(int device) {
     return abc && exp ? 0 : 1;
 }
 
-extern "C" int cp_tnet_cuda_solo(const char* rpc, const char* payee_hex, int device, int batch, double seconds, long long blocks) {
+extern "C" int cp_tnet_cuda_solo(const char* rpc, const char* payee_hex, const char* worker, int device, int batch, double seconds,
+                                 long long blocks) {
     if (cudaSetDevice(device) != cudaSuccess) { fprintf(stderr, "[tnet] no CUDA device %d\n", device); return 1; }
     cudaMemcpyToSymbol(rq_dK, rq_hK, sizeof(rq_hK));
     cudaDeviceProp prop;
     cudaGetDeviceProperties(&prop, device);
     const std::string ep = rpc, payee = payee_hex;
+    // device name for a pool's statistics: letters, digits, '.', '_', '-' (the pool applies the same filter)
+    std::string worker_name;
+    for (const char* q = worker ? worker : ""; *q && worker_name.size() < 32; ++q)
+        if (isalnum((unsigned char)*q) || *q == '.' || *q == '_' || *q == '-') worker_name += *q;
+    if (worker_name.empty()) worker_name = "default";
     RqWork wk;
     if (!get_work(ep, payee, wk)) { fprintf(stderr, "[tnet] getwork from %s failed\n", rpc); return 1; }
     const int rows = batch < wk.b ? batch : wk.b;
@@ -448,7 +455,7 @@ extern "C" int cp_tnet_cuda_solo(const char* rpc, const char* payee_hex, int dev
                 // the payee (6th parameter) identifies the miner to a pool; a node ignores it
                 const std::string params = "[\"" + to_hex(wk.digest.data(), 32) + "\"," + std::to_string(nonce) + "," +
                                            std::to_string(row) + "," + std::to_string(c) + ",\"" + to_hex(piece.data(), piece.size()) +
-                                           "\",\"" + payee + "\"]";
+                                           "\",\"" + payee + "\",\"" + worker_name + "\"]";
                 const bool ok = rpc_call(ep, "submitwork", params, r) && json_get(r, "accepted", acc) && acc == "true";
                 // a pool answers "block": false for a share that is not a block; a node has no such field
                 const bool is_block = !(json_get(r, "block", blk) && blk == "false");

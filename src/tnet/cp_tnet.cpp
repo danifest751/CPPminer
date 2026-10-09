@@ -8,11 +8,12 @@
 static void tnet_usage(void)
 {
     fprintf(stderr,
-            "usage: cppminer --algo tnet --rpc HOST:PORT --payee KEY_HASH_HEX [--device N] [--batch ROWS]\n"
+            "usage: cppminer --algo tnet --rpc HOST:PORT --payee KEY_HASH_HEX [--worker NAME] [--device N] [--batch ROWS]\n"
             "                [--seconds S] [--blocks K]\n"
             "       cppminer --algo tnet --selftest [--device N]\n"
-            "  --rpc     requantd JSON-RPC address (default 127.0.0.1:19445, regtest)\n"
+            "  --rpc     requantd JSON-RPC or pool address (default 127.0.0.1:19445, regtest)\n"
             "  --payee   32-byte key hash to pay (requant-wallet address KEYFILE prints it)\n"
+            "  --worker  name of this device in a pool's statistics (rewards still go to the payee)\n"
             "  --batch   rows per GPU pass (default 8192; lower it on GPUs with little memory)\n");
 }
 
@@ -20,6 +21,7 @@ int cp_tnet_main(int argc, char** argv)
 {
     const char* rpc = "127.0.0.1:19445";
     const char* payee = NULL;
+    const char* worker = "default";
     int device = 0, batch = 8192, selftest = 0;
     double seconds = 0;
     long long blocks = 0;
@@ -29,6 +31,7 @@ int cp_tnet_main(int argc, char** argv)
         if(!strcmp(a, "--algo") && v){ ++i; }
         else if(!strcmp(a, "--rpc") && v){ rpc = v; ++i; }
         else if(!strcmp(a, "--payee") && v){ payee = v; ++i; }
+        else if(!strcmp(a, "--worker") && v){ worker = v; ++i; }
         else if(!strcmp(a, "--device") && v){ device = atoi(v); ++i; }
         else if(!strcmp(a, "--batch") && v){ batch = atoi(v); ++i; }
         else if(!strcmp(a, "--seconds") && v){ seconds = atof(v); ++i; }
@@ -47,7 +50,7 @@ int cp_tnet_main(int argc, char** argv)
         fprintf(stderr, "[tnet] --batch must be a positive multiple of 4\n");
         return 2;
     }
-    return cp_tnet_cuda_solo(rpc, payee, device, batch, seconds, blocks);
+    return cp_tnet_cuda_solo(rpc, payee, worker, device, batch, seconds, blocks);
 #else
     (void)rpc; (void)payee; (void)device; (void)batch; (void)seconds; (void)blocks; (void)selftest;
     fprintf(stderr, "[tnet] this build has no CUDA + cuBLAS; rebuild with -DCP_ENABLE_CUDA=ON -DCP_ENABLE_CUBLAS=ON\n");

@@ -11,7 +11,8 @@ int cp_tnet_main(int argc, char** argv);
 
 #if defined(CP_ENABLE_CUDA) && CP_ENABLE_CUDA && defined(CP_ENABLE_CUBLAS) && CP_ENABLE_CUBLAS
 /* Solo mining against a requantd node's JSON-RPC (getwork/submitwork). Defined in cp_tnet.cu. */
-int cp_tnet_cuda_solo(const char* rpc, const char* payee_hex, int device, int batch, double seconds, long long blocks);
+int cp_tnet_cuda_solo(const char* rpc, const char* payee_hex, const char* worker, int device, int batch, double seconds,
+                      long long blocks);
 /* Known-answer self-test of the device SHA-256 and expansion. */
 int cp_tnet_cuda_selftest(int device);
 #endif
