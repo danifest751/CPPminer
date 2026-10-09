@@ -41,9 +41,9 @@
 #define CP_QPOW_OCL_CANCELLED    CP_QPOW_CUDA_CANCELLED
 #endif
 #endif
+#include "cp_api.h"  /* cp_api_add_work is used by every backend */
 #if defined(CP_ENABLE_CPU) && CP_ENABLE_CPU
 #include "cp_cpu_affinity.h"
-#include "cp_api.h"
 #endif
 /* Fee reconnect quantum: ~40s at 0.25 MH/s per thread. */
 static const uint64_t k_qpow_fee_hashes_per_unit = 10000000ull;
