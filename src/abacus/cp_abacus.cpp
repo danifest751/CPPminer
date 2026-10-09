@@ -63,7 +63,7 @@ extern "C" int cp_abacus_main(int argc, char** argv) {
         const std::string host = s.substr(0, pos);
         const int port = atoi(s.substr(pos + 1).c_str());
 #if defined(CP_ENABLE_CUDA) && CP_ENABLE_CUDA
-        return cp_abacus_cuda_solo(host.c_str(), port, n, seconds, device);
+        return cp_abacus_cuda_solo(host.c_str(), port, n, seconds, device, dataset_mib);
 #else
         fprintf(stderr, "[abacus] this build has no CUDA backend\n");
         return 1;
