@@ -425,7 +425,11 @@ extern "C" int cp_abacus_cuda_mock_hard(int n, int bits, int seconds, int device
     }
     cudaMemcpy(dSeed, epoch_seed_host, 32, cudaMemcpyHostToDevice);
     cudaMemcpyToSymbol(c_K, K256, sizeof(K256));
+    // The dataset is built sequentially (one thread); time it separately and exclude it from the rate.
+    auto tb0 = std::chrono::high_resolution_clock::now();
     dataset_chain_kernel<<<1, 1>>>(dSeed, (uint64_t)nblocks, dD);
+    cudaDeviceSynchronize();
+    const double build_s = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - tb0).count();
     const int ethreads = (int)((2*nn + 3) / 4), eblocks = (ethreads + 255) / 256;
     const int gblocks = ((int)(2 * nn) + 255) / 256;
     dim3 block(TS, TS), grid(n/TS, n/TS);
@@ -456,8 +460,8 @@ extern "C" int cp_abacus_cuda_mock_hard(int n, int bits, int seconds, int device
     }
     double secs = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count();
     double reads = (double)2 * nn * 8 * attempts; // 8 bytes consumed per gathered element (field_from_block)
-    printf("[abacus] hard n=%d blocks=%lld attempts=%llu found=%llu attempts/s=%.1f gather_GB/s=%.1f\n",
-           n, nblocks, (unsigned long long)attempts, (unsigned long long)found, attempts/secs, reads/secs/1e9);
+    printf("[abacus] hard n=%d blocks=%lld dataset_build_s=%.2f attempts=%llu found=%llu attempts/s=%.1f gather_GB/s=%.2f\n",
+           n, nblocks, build_s, (unsigned long long)attempts, (unsigned long long)found, attempts/secs, reads/secs/1e9);
     cudaFree(dAB); cudaFree(dC); cudaFree(dIdx); cudaFree(dD); cudaFree(dc); cudaFree(dPh); cudaFree(dSeed);
     return 0;
 #else
