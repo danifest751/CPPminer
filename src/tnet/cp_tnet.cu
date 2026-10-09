@@ -10,12 +10,15 @@
 
 #if defined(CP_ENABLE_CUBLAS) && CP_ENABLE_CUBLAS
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cctype>
 #include <cstring>
+#include <deque>
+#include <mutex>
 #include <random>
 #include <string>
 #include <thread>
@@ -149,10 +152,13 @@ __global__ void rq_requant(const int32_t* __restrict__ Y, int8_t* __restrict__ X
 
 struct RqTarget { uint32_t t[8]; };  // big-endian words
 
+// Winning tickets kept per scan (a pool's easy share target can give several in one batch).
+#define RQ_MAX_HITS 16
+
 // Ticket (r0 + i, c): SHA256(piece || 0x54 || hd || LE64 nonce || LE32 row || LE32 c) <= target; w % 64 == 0.
 __global__ void rq_tickets(const int8_t* __restrict__ X, int n, int rows, int w, uint32_t r0, uint64_t nonce,
                            const uint8_t* __restrict__ hd, RqTarget tg, unsigned int* __restrict__ found,
-                           unsigned long long* __restrict__ first) {
+                           unsigned long long* __restrict__ hits) {
     const int per_row = n / w;
     const size_t t = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (t >= (size_t)rows * per_row) return;
@@ -181,8 +187,8 @@ __global__ void rq_tickets(const int8_t* __restrict__ X, int n, int rows, int w,
         if (h[q] < tg.t[q]) break;
         if (h[q] > tg.t[q]) return;
     }
-    atomicAdd(found, 1u);
-    atomicCAS(first, 0xFFFFFFFFFFFFFFFFULL, ((unsigned long long)i << 32) | (unsigned)c);
+    const unsigned k = atomicAdd(found, 1u);
+    if (k < RQ_MAX_HITS) hits[k] = ((unsigned long long)i << 32) | (unsigned)c;
 }
 
 // ---------------------------------------------------------------- JSON-RPC client
@@ -293,6 +299,88 @@ static bool get_tip(const std::string& ep, std::string& tip) {
     return rpc_call(ep, "getinfo", "[]", r) && json_get(r, "tip", tip);
 }
 
+struct RqHit {
+    uint64_t nonce = 0;
+    uint32_t row = 0, c = 0;
+    std::vector<uint8_t> piece;
+};
+
+// Talks to the node or pool on its own thread (tip polling, submissions), so a slow link never stalls the GPU.
+struct RqNet {
+    struct Item { std::string params, tip; };
+    std::string ep;
+    bool pool_mode = false;
+    std::mutex mu;
+    std::deque<Item> queue;
+    std::string tip_seen;              // tip of the work being mined (set by the mining loop)
+    std::atomic<bool> restart{false};  // new tip, found block or rejection: fetch new work
+    std::atomic<bool> stop{false};
+    std::atomic<long long> shares{0}, rejected{0}, blocks{0}, stale{0};
+    std::thread th;
+
+    void start() { th = std::thread([this] { run(); }); }
+    void submit(const RqWork& wk, const RqHit& h, const std::string& payee, const std::string& worker, const std::string& tip) {
+        // the payee (6th parameter) identifies the miner to a pool and the worker (7th) the device; a node ignores both
+        Item it;
+        it.params = "[\"" + to_hex(wk.digest.data(), 32) + "\"," + std::to_string(h.nonce) + "," + std::to_string(h.row) + "," +
+                    std::to_string(h.c) + ",\"" + to_hex(h.piece.data(), h.piece.size()) + "\",\"" + payee + "\",\"" + worker + "\"]";
+        it.tip = tip;
+        std::lock_guard<std::mutex> g(mu);
+        queue.push_back(std::move(it));
+    }
+    void set_tip(const std::string& tip) { std::lock_guard<std::mutex> g(mu); tip_seen = tip; }
+    // Waits (a few seconds at most) for queued submissions, then ends the thread.
+    void finish() {
+        for (int k = 0; k < 100; ++k) {
+            { std::lock_guard<std::mutex> g(mu); if (queue.empty()) break; }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+        stop = true;
+        if (th.joinable()) th.join();
+    }
+    void run() {
+        auto last_poll = std::chrono::steady_clock::now() - std::chrono::seconds(10);
+        while (!stop) {
+            Item it;
+            bool have = false;
+            std::string tip_now;
+            {
+                std::lock_guard<std::mutex> g(mu);
+                if (!queue.empty()) { it = std::move(queue.front()); queue.pop_front(); have = true; }
+                tip_now = tip_seen;
+            }
+            if (have) {
+                // found on a tip the miner has since left: certainly stale, not worth a round trip
+                if (it.tip != tip_now) { ++stale; continue; }
+                std::string r, acc, blk;
+                const bool ok = rpc_call(ep, "submitwork", it.params, r) && json_get(r, "accepted", acc) && acc == "true";
+                // a pool answers "block": false for a share that is not a block; a node has no such field
+                const bool is_block = !(json_get(r, "block", blk) && blk == "false");
+                if (ok && is_block) {
+                    std::string h;
+                    ++blocks;
+                    printf("[tnet] block accepted%s\n", json_get(r, "height", h) ? (" at height " + h).c_str() : "");
+                    restart = true;
+                } else if (ok) {
+                    ++shares;
+                } else {
+                    ++rejected;
+                    printf("[tnet] %s rejected: %s\n", pool_mode ? "share" : "block", r.c_str());
+                    restart = true;
+                }
+                continue;
+            }
+            const auto now = std::chrono::steady_clock::now();
+            if (std::chrono::duration<double>(now - last_poll).count() >= 1.0) {
+                last_poll = now;
+                std::string tip;
+                if (get_tip(ep, tip) && !tip_now.empty() && tip != tip_now) restart = true;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+    }
+};
+
 // ---------------------------------------------------------------- engine
 
 struct RqEngine {
@@ -302,7 +390,7 @@ struct RqEngine {
     int32_t* Y = nullptr;
     uint8_t *dhd = nullptr, *tmp = nullptr;
     unsigned int* dfound = nullptr;
-    unsigned long long* dfirst = nullptr;
+    unsigned long long* dhits = nullptr;
     std::vector<uint8_t> seed;
     cublasHandle_t cb = nullptr;
 
@@ -315,7 +403,7 @@ struct RqEngine {
         for (auto& p : WT) if (cudaMalloc(&p, nn) != cudaSuccess) return false;
         return cudaMalloc(&tmp, (nn + 31) / 32 * 32) == cudaSuccess && cudaMalloc(&X, (bn + 31) / 32 * 32 + 32) == cudaSuccess &&
                cudaMalloc(&X2, bn) == cudaSuccess && cudaMalloc(&Y, bn * 4) == cudaSuccess && cudaMalloc(&dhd, 32) == cudaSuccess &&
-               cudaMalloc(&dfound, 4) == cudaSuccess && cudaMalloc(&dfirst, 8) == cudaSuccess;
+               cudaMalloc(&dfound, 4) == cudaSuccess && cudaMalloc(&dhits, 8 * RQ_MAX_HITS) == cudaSuccess;
     }
 
     // W_l = expand(SHA256("abacus/tnet-w" || seed || LE32(l)), n^2), stored transposed.
@@ -337,8 +425,8 @@ struct RqEngine {
         printf("[tnet] epoch weights ready (%.2f s)\n", std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
     }
 
-    // Rows [r0, r0 + rows) of nonce; returns true and the first winning (row, c) and piece if any.
-    bool scan(const RqWork& wk, uint64_t nonce, uint32_t r0, int rows, uint32_t& row, uint32_t& c, std::vector<uint8_t>& piece) {
+    // Rows [r0, r0 + rows) of nonce; appends the winning tickets (at most RQ_MAX_HITS) to `hits`.
+    void scan(const RqWork& wk, uint64_t nonce, uint32_t r0, int rows, std::vector<RqHit>& hits) {
         std::vector<uint8_t> m((const uint8_t*)"abacus/tnet-x0", (const uint8_t*)"abacus/tnet-x0" + 14);
         m.insert(m.end(), wk.digest.begin(), wk.digest.end());
         for (int q = 0; q < 8; ++q) m.push_back((uint8_t)(nonce >> (8 * q)));
@@ -348,7 +436,6 @@ struct RqEngine {
         const uint32_t c0 = (uint32_t)((size_t)r0 * n / 32);
         cudaMemcpy(dhd, wk.digest.data(), 32, cudaMemcpyHostToDevice);
         cudaMemset(dfound, 0, 4);
-        cudaMemset(dfirst, 0xFF, 8);
         rq_expand<<<(unsigned)((hashes + 255) / 256), 256>>>(rq_prefix(xs), c0, hashes, (uint8_t*)X);
         const int32_t alpha = 1, beta = 0;
         int8_t *cur = X, *nxt = X2;
@@ -362,16 +449,23 @@ struct RqEngine {
         RqTarget tg;
         for (int q = 0; q < 8; ++q) tg.t[q] = rq_be(wk.target.data() + 4 * q);
         const size_t tickets = (size_t)rows * (n / w);
-        rq_tickets<<<(unsigned)((tickets + 127) / 128), 128>>>(cur, n, rows, w, r0, nonce, dhd, tg, dfound, dfirst);
-        unsigned long long fi;
-        cudaMemcpy(&fi, dfirst, 8, cudaMemcpyDeviceToHost);
-        if (fi == 0xFFFFFFFFFFFFFFFFULL) return false;
-        const uint32_t i = (uint32_t)(fi >> 32);
-        c = (uint32_t)(fi & 0xFFFFFFFF);
-        row = r0 + i;
-        piece.resize(w);
-        cudaMemcpy(piece.data(), cur + (size_t)i * n + (size_t)c * w, w, cudaMemcpyDeviceToHost);
-        return true;
+        rq_tickets<<<(unsigned)((tickets + 127) / 128), 128>>>(cur, n, rows, w, r0, nonce, dhd, tg, dfound, dhits);
+        unsigned int found = 0;
+        cudaMemcpy(&found, dfound, 4, cudaMemcpyDeviceToHost);
+        if (found == 0) return;
+        const unsigned k = found < RQ_MAX_HITS ? found : RQ_MAX_HITS;
+        unsigned long long packed[RQ_MAX_HITS];
+        cudaMemcpy(packed, dhits, 8 * k, cudaMemcpyDeviceToHost);
+        for (unsigned q = 0; q < k; ++q) {
+            const uint32_t i = (uint32_t)(packed[q] >> 32);
+            RqHit h;
+            h.nonce = nonce;
+            h.row = r0 + i;
+            h.c = (uint32_t)(packed[q] & 0xFFFFFFFF);
+            h.piece.resize(w);
+            cudaMemcpy(h.piece.data(), cur + (size_t)i * n + (size_t)h.c * w, w, cudaMemcpyDeviceToHost);
+            hits.push_back(std::move(h));
+        }
     }
 };
 
@@ -433,79 +527,61 @@ extern "C" int cp_tnet_cuda_solo(const char* rpc, const char* payee_hex, const c
     if (!eng.init(wk, rows)) { fprintf(stderr, "[tnet] GPU allocation failed (try a smaller --batch)\n"); return 1; }
     std::mt19937_64 rng(std::random_device{}() ^ ((uint64_t)device << 48) ^ (uint64_t)time(nullptr));
     const auto start = std::chrono::steady_clock::now();
-    auto last_poll = start, last_stat = start, last_work = start;
+    auto last_stat = start, last_work = start;
     unsigned long long tickets = 0, tickets_stat = 0;
-    long long found_blocks = 0, shares = 0, rejected = 0;
     std::string pool_flag;
-    const bool pool_mode = rpc_call(ep, "getwork", "[\"" + payee + "\"]", pool_flag) && pool_flag.find("\"pool\":true") != std::string::npos;
-    if (pool_mode) printf("[tnet] pool mode: shares at 2^%s tickets\n", json_get(pool_flag, "share_bits", pool_flag) ? pool_flag.c_str() : "?");
+    RqNet net;
+    net.ep = ep;
+    net.pool_mode = rpc_call(ep, "getwork", "[\"" + payee + "\"]", pool_flag) && pool_flag.find("\"pool\":true") != std::string::npos;
+    if (net.pool_mode) printf("[tnet] pool mode: shares at 2^%s tickets\n", json_get(pool_flag, "share_bits", pool_flag) ? pool_flag.c_str() : "?");
     std::string tip_seen = to_hex(wk.header.data() + 12, 32);
-    for (;;) {
+    net.set_tip(tip_seen);
+    net.start();
+    std::vector<RqHit> hits;
+    bool done = false;
+    while (!done) {
         eng.set_epoch(wk.seed);
         const uint64_t nonce = rng();
         bool restart = false;
         for (uint32_t r0 = 0; r0 < (uint32_t)wk.b && !restart; r0 += (uint32_t)rows) {
             const int nrows = (int)((uint32_t)wk.b - r0 < (uint32_t)rows ? (uint32_t)wk.b - r0 : (uint32_t)rows);
-            uint32_t row, c;
-            std::vector<uint8_t> piece;
-            const bool hit = eng.scan(wk, nonce, r0, nrows, row, c, piece);
+            hits.clear();
+            eng.scan(wk, nonce, r0, nrows, hits);
             tickets += (unsigned long long)nrows * (wk.n / wk.w);
-            if (hit) {
-                std::string r, acc, blk;
-                // the payee (6th parameter) identifies the miner to a pool; a node ignores it
-                const std::string params = "[\"" + to_hex(wk.digest.data(), 32) + "\"," + std::to_string(nonce) + "," +
-                                           std::to_string(row) + "," + std::to_string(c) + ",\"" + to_hex(piece.data(), piece.size()) +
-                                           "\",\"" + payee + "\",\"" + worker_name + "\"]";
-                const bool ok = rpc_call(ep, "submitwork", params, r) && json_get(r, "accepted", acc) && acc == "true";
-                // a pool answers "block": false for a share that is not a block; a node has no such field
-                const bool is_block = !(json_get(r, "block", blk) && blk == "false");
-                if (ok && is_block) {
-                    ++found_blocks;
-                    printf("[tnet] block %lld accepted (nonce %llu, row %u, piece %u)\n", wk.height, (unsigned long long)nonce, row, c);
-                    restart = true;
-                } else if (ok) {
-                    ++shares;
-                } else {
-                    ++rejected;
-                    printf("[tnet] %s rejected: %s\n", pool_mode ? "share" : "block", r.c_str());
-                    restart = true;
-                }
-            }
+            for (const RqHit& h : hits) net.submit(wk, h, payee, worker_name, tip_seen);
             const auto now = std::chrono::steady_clock::now();
-            if (std::chrono::duration<double>(now - last_poll).count() > 1.0) {
-                last_poll = now;
-                std::string tip;
-                if (get_tip(ep, tip) && tip != tip_seen) restart = true;
-            }
+            if (net.restart.exchange(false)) restart = true;
             if (std::chrono::duration<double>(now - last_work).count() > 60.0) restart = true;  // fresh time and transactions
             if (std::chrono::duration<double>(now - last_stat).count() > 10.0) {
                 const double dt = std::chrono::duration<double>(now - last_stat).count();
-                if (pool_mode) {
-                    printf("[tnet] height %lld | %.2f M tickets/s | %.1f ns/ticket | shares %lld | rejected %lld | blocks %lld\n",
-                           wk.height, (tickets - tickets_stat) / dt / 1e6, dt * 1e9 / (double)(tickets - tickets_stat), shares,
-                           rejected, found_blocks);
+                if (net.pool_mode) {
+                    printf("[tnet] height %lld | %.2f M tickets/s | %.1f ns/ticket | shares %lld | rejected %lld | stale %lld | blocks %lld\n",
+                           wk.height, (tickets - tickets_stat) / dt / 1e6, dt * 1e9 / (double)(tickets - tickets_stat),
+                           net.shares.load(), net.rejected.load(), net.stale.load(), net.blocks.load());
                 } else {
                     printf("[tnet] height %lld | %.2f M tickets/s | %.1f ns/ticket | blocks %lld\n", wk.height,
-                           (tickets - tickets_stat) / dt / 1e6, dt * 1e9 / (double)(tickets - tickets_stat), found_blocks);
+                           (tickets - tickets_stat) / dt / 1e6, dt * 1e9 / (double)(tickets - tickets_stat), net.blocks.load());
                 }
                 last_stat = now;
                 tickets_stat = tickets;
             }
-            if (cudaGetLastError() != cudaSuccess) { fprintf(stderr, "[tnet] CUDA error\n"); return 1; }
+            if (cudaGetLastError() != cudaSuccess) { fprintf(stderr, "[tnet] CUDA error\n"); net.finish(); return 1; }
+            const double elapsed = std::chrono::duration<double>(now - start).count();
+            if ((seconds > 0 && elapsed >= seconds) || (blocks > 0 && net.blocks >= blocks)) { done = true; break; }
         }
-        const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-        if ((seconds > 0 && elapsed >= seconds) || (blocks > 0 && found_blocks >= blocks)) break;
-        if (restart) {
-            if (!get_work(ep, payee, wk)) {
-                fprintf(stderr, "[tnet] getwork failed; retrying in 2 s\n");
-                std::this_thread::sleep_for(std::chrono::seconds(2));
-                continue;
-            }
-            tip_seen = to_hex(wk.header.data() + 12, 32);
-            last_work = std::chrono::steady_clock::now();
+        if (done || !restart) continue;
+        if (!get_work(ep, payee, wk)) {
+            fprintf(stderr, "[tnet] getwork failed; retrying in 2 s\n");
+            std::this_thread::sleep_for(std::chrono::seconds(2));
+            net.restart = true;
+            continue;
         }
+        tip_seen = to_hex(wk.header.data() + 12, 32);
+        net.set_tip(tip_seen);
+        last_work = std::chrono::steady_clock::now();
     }
-    printf("[tnet] done: %lld blocks, %.0f s\n", found_blocks,
+    net.finish();
+    printf("[tnet] done: %lld blocks, %.0f s\n", net.blocks.load(),
            std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
     return 0;
 }
