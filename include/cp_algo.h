@@ -9,7 +9,8 @@ extern "C" {
 
 typedef enum {
     CP_ALGO_PEARL   = 0,
-    CP_ALGO_QUANTUS = 1
+    CP_ALGO_QUANTUS = 1,
+    CP_ALGO_ABACUS  = 2
 } CpAlgoId;
 
 /* Parse "pearl" / "quantus". Returns 0 on ok, -1 on unknown. */

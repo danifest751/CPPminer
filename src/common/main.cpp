@@ -11,6 +11,7 @@
 #include "cp_platform.h"
 #include "cp_proof.h"
 #include "cp_qpow_mine.h"
+#include "cp_abacus.h"
 #include "cp_qpow_pool.h"
 #include "cp_share_queue.h"
 #include "cp_state.h"
@@ -883,6 +884,10 @@ int main(int argc, char** argv)
         }
         g_m_active = m_units * CP_MATRIX_UNIT;
         g_n_active = n_units * CP_MATRIX_UNIT;
+    }
+
+    if(algo_sel == CP_ALGO_ABACUS){
+        return cp_abacus_main(argc, argv);
     }
 
     if(algo_sel == CP_ALGO_QUANTUS){

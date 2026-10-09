@@ -88,6 +88,7 @@ set(CP_COMMON_SOURCES
     src/common/cp_mine.cpp
     src/common/cp_fee.cpp
     src/common/cp_algo.cpp
+    src/abacus/cp_abacus.cpp
     src/common/cp_qpow_pool.cpp
     src/common/cp_qpow_mine.cpp
     src/common/cp_share_queue.cpp
@@ -265,6 +266,7 @@ if(CP_ENABLE_CUDA)
         src/cuda/cp_turing_scan.cu
         src/cuda/cp_cuda_worker.cpp
         src/qpow/cuda/cp_qpow_cuda.cu
+        src/abacus/cp_abacus.cu
     )
     list(APPEND CP_INCLUDE_DIRS
         ${CMAKE_SOURCE_DIR}/src/cuda/cutlass

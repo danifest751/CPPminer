@@ -15,6 +15,10 @@ int cp_algo_parse(const char* name, CpAlgoId* out)
         *out = CP_ALGO_QUANTUS;
         return 0;
     }
+    if(!strcmp(name, "abacus")){
+        *out = CP_ALGO_ABACUS;
+        return 0;
+    }
     return -1;
 }
 
@@ -22,6 +26,7 @@ const char* cp_algo_name(CpAlgoId algo)
 {
     switch(algo){
     case CP_ALGO_QUANTUS: return "quantus";
+    case CP_ALGO_ABACUS:  return "abacus";
     case CP_ALGO_PEARL:
     default: return "pearl";
     }
@@ -33,6 +38,10 @@ int cp_algo_supports(CpAlgoId algo, CpBackendId backend)
     if(backend == CP_BACKEND_WGPU)
         return cp_worker_has_wgpu() &&
                (algo == CP_ALGO_QUANTUS || algo == CP_ALGO_PEARL);
+    if(algo == CP_ALGO_ABACUS){
+        if(backend == CP_BACKEND_CUDA) return cp_worker_has_cuda();
+        return 0;
+    }
     if(algo == CP_ALGO_QUANTUS){
         if(backend == CP_BACKEND_CPU) return cp_worker_has_cpu();
         if(backend == CP_BACKEND_OPENCL) return cp_worker_has_opencl();
