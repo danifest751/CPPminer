@@ -428,7 +428,10 @@ extern "C" int cp_tnet_cuda_solo(const char* rpc, const char* payee_hex, int dev
     const auto start = std::chrono::steady_clock::now();
     auto last_poll = start, last_stat = start, last_work = start;
     unsigned long long tickets = 0, tickets_stat = 0;
-    long long found_blocks = 0;
+    long long found_blocks = 0, shares = 0, rejected = 0;
+    std::string pool_flag;
+    const bool pool_mode = rpc_call(ep, "getwork", "[\"" + payee + "\"]", pool_flag) && pool_flag.find("\"pool\":true") != std::string::npos;
+    if (pool_mode) printf("[tnet] pool mode: shares at 2^%s tickets\n", json_get(pool_flag, "share_bits", pool_flag) ? pool_flag.c_str() : "?");
     std::string tip_seen = to_hex(wk.header.data() + 12, 32);
     for (;;) {
         eng.set_epoch(wk.seed);
@@ -441,16 +444,25 @@ extern "C" int cp_tnet_cuda_solo(const char* rpc, const char* payee_hex, int dev
             const bool hit = eng.scan(wk, nonce, r0, nrows, row, c, piece);
             tickets += (unsigned long long)nrows * (wk.n / wk.w);
             if (hit) {
-                std::string r, acc;
+                std::string r, acc, blk;
+                // the payee (6th parameter) identifies the miner to a pool; a node ignores it
                 const std::string params = "[\"" + to_hex(wk.digest.data(), 32) + "\"," + std::to_string(nonce) + "," +
-                                           std::to_string(row) + "," + std::to_string(c) + ",\"" + to_hex(piece.data(), piece.size()) + "\"]";
-                if (rpc_call(ep, "submitwork", params, r) && json_get(r, "accepted", acc) && acc == "true") {
+                                           std::to_string(row) + "," + std::to_string(c) + ",\"" + to_hex(piece.data(), piece.size()) +
+                                           "\",\"" + payee + "\"]";
+                const bool ok = rpc_call(ep, "submitwork", params, r) && json_get(r, "accepted", acc) && acc == "true";
+                // a pool answers "block": false for a share that is not a block; a node has no such field
+                const bool is_block = !(json_get(r, "block", blk) && blk == "false");
+                if (ok && is_block) {
                     ++found_blocks;
                     printf("[tnet] block %lld accepted (nonce %llu, row %u, piece %u)\n", wk.height, (unsigned long long)nonce, row, c);
+                    restart = true;
+                } else if (ok) {
+                    ++shares;
                 } else {
-                    printf("[tnet] block %lld rejected: %s\n", wk.height, r.c_str());
+                    ++rejected;
+                    printf("[tnet] %s rejected: %s\n", pool_mode ? "share" : "block", r.c_str());
+                    restart = true;
                 }
-                restart = true;
             }
             const auto now = std::chrono::steady_clock::now();
             if (std::chrono::duration<double>(now - last_poll).count() > 1.0) {
@@ -461,8 +473,14 @@ extern "C" int cp_tnet_cuda_solo(const char* rpc, const char* payee_hex, int dev
             if (std::chrono::duration<double>(now - last_work).count() > 60.0) restart = true;  // fresh time and transactions
             if (std::chrono::duration<double>(now - last_stat).count() > 10.0) {
                 const double dt = std::chrono::duration<double>(now - last_stat).count();
-                printf("[tnet] height %lld | %.2f M tickets/s | %.1f ns/ticket | blocks %lld\n", wk.height,
-                       (tickets - tickets_stat) / dt / 1e6, dt * 1e9 / (double)(tickets - tickets_stat), found_blocks);
+                if (pool_mode) {
+                    printf("[tnet] height %lld | %.2f M tickets/s | %.1f ns/ticket | shares %lld | rejected %lld | blocks %lld\n",
+                           wk.height, (tickets - tickets_stat) / dt / 1e6, dt * 1e9 / (double)(tickets - tickets_stat), shares,
+                           rejected, found_blocks);
+                } else {
+                    printf("[tnet] height %lld | %.2f M tickets/s | %.1f ns/ticket | blocks %lld\n", wk.height,
+                           (tickets - tickets_stat) / dt / 1e6, dt * 1e9 / (double)(tickets - tickets_stat), found_blocks);
+                }
                 last_stat = now;
                 tickets_stat = tickets;
             }
