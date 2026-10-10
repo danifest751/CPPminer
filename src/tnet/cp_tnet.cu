@@ -360,6 +360,7 @@ struct RqNet {
         if (lp.joinable()) lp.detach();
     }
     void long_poll() {
+        int shown = -1;  // the mode last reported in the log (-1: none yet)
         while (!stop) {
             std::string tip_now;
             { std::lock_guard<std::mutex> g(mu); tip_now = tip_seen; }
@@ -371,10 +372,14 @@ struct RqNet {
             if (!ok) {
                 // an older node or pool, or no answer: the once-a-second tip check takes over, and this tries again later
                 long_poll_ok = false;
+                if (shown != 0) printf("[tnet] no long poll here: checking the tip every second\n");
+                shown = 0;
                 for (int k = 0; k < 100 && !stop; ++k) std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 continue;
             }
             long_poll_ok = true;
+            if (shown != 1) printf("[tnet] tip watched by long poll\n");
+            shown = 1;
             if (id != tip_now) {
                 std::lock_guard<std::mutex> g(mu);
                 if (tip_seen == tip_now) restart = true;  // a new block while mining on tip_now
