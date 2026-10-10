@@ -1,4 +1,4 @@
-// TNet v1 miner for the Requant coin (github.com/danifest751/requant, SPEC.md) on CUDA tensor cores: CUTLASS int8 GEMM
+// TNet v1 miner for the Requant coin (github.com/requant-network/requant, SPEC.md) on CUDA tensor cores: CUTLASS int8 GEMM
 // compiled into the miner (cp_tnet_gemm.cu; cuBLAS only as an optional cross-check), mining against a requantd node's or
 // pool's JSON-RPC (getwork / submitwork).
 //

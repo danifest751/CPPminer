@@ -4,7 +4,7 @@
 [![Windows build](https://github.com/danifest751/CPPminer/actions/workflows/windows-cuda.yml/badge.svg?branch=release%2Ffork)](https://github.com/danifest751/CPPminer/actions/workflows/windows-cuda.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A C++ miner for **Pearl (PRL)**, with **Quantus** and **TNet ([Requant](https://github.com/danifest751/requant))** as further algorithms. It mines on NVIDIA GPUs (CUDA), on AMD, Intel and mobile GPUs (OpenCL) and on CPUs (x86 and ARM).
+A C++ miner for **Pearl (PRL)**, with **Quantus** and **TNet ([Requant](https://github.com/requant-network/requant))** as further algorithms. It mines on NVIDIA GPUs (CUDA), on AMD, Intel and mobile GPUs (OpenCL) and on CPUs (x86 and ARM).
 
 This is a fork of [1640675651/CPPminer](https://github.com/1640675651/CPPminer) by @foolzhz. It adds:
 - faster kernels for most hardware;

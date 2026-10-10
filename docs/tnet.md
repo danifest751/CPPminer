@@ -1,6 +1,6 @@
 # `--algo tnet` — TNet v1 (Requant)
 
-Mining of [Requant](https://github.com/danifest751/requant) in a Requant pool or against a `requantd` node.
+Mining of [Requant](https://github.com/requant-network/requant) in a Requant pool or against a `requantd` node.
 The work function is TNet v1 (`SPEC.md` there): a header-seeded int8 network on tensor cores; every
 256-byte piece of an output row is a lottery ticket. `requant` is accepted as an alias of `tnet`.
 
