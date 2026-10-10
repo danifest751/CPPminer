@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5-fork.10
+- TNet: the tip is watched by a long poll where the Requant node (0.13.0+) or pool (0.14.0+) offers it: a new block is noticed when it arrives instead of within the next once-a-second check, and the 3600 tip queries an hour per device stop. Older nodes and pools keep the once-a-second check; the log says which. Requests time out after 90 s.
+- Pearl and Quantus unchanged; Quantus still without a developer fee.
+- Pool agent `cppminer/0.5-fork.10`.
+- Windows and Linux packages; HiveOS stays on v0.5-fork.9 (no TNet there; Pearl and Quantus unchanged), Docker on v0.5-fork.8.
+- Detailed release notes: [v0.5-fork.10](docs/releases/v0.5-fork.10.md).
+
 ## v0.5-fork.9
 - TNet v1 for the Requant coin (`--algo tnet`, alias `requant`) on NVIDIA tensor cores, in the Windows and Linux packages: CUTLASS int8 GEMM built in (no cuBLAS), Turing and Ampere+ kernels checked against the CPU at start-up, pool mode (`--payee`, `--worker`), network on its own thread. CMP 50HX 3.61 M tickets/s. No miner fee. [docs/tnet.md](docs/tnet.md).
 - Pearl and Quantus unchanged; Quantus still without a developer fee.

@@ -27,7 +27,7 @@ matrices; if the newer one disagrees it takes the Turing kernel, which runs on e
 cppminer --algo tnet --rpc 193.187.93.29:19340 --payee <key hash> --worker rig1
 
 # solo, against your own node
-requant-wallet keygen miner.key                    # prints the address and the key hash
+requant-wallet create miner.wallet                 # a wallet; `address miner.wallet` prints the key hash
 requantd --network test                            # JSON-RPC on 127.0.0.1:19334
 cppminer --algo tnet --rpc 127.0.0.1:19334 --payee <key hash> [--device 0] [--batch 8192]
 
@@ -36,8 +36,10 @@ cppminer --algo tnet --selftest                    # SHA-256, expansion and the 
 
 - `--batch` is the number of rows per GPU pass (default 8192). Memory: 512 MiB of weights plus about
   `6 * batch * 8192` bytes; lower it on small GPUs. Rows are independent, so any batch is valid.
-- A network thread polls the tip every second and submits winning tickets (all of them, up to 16 per
-  pass), so the GPU never waits for the network. Work is refreshed on a new tip and every 60 s; a share
+- Network threads submit winning tickets (all of them, up to 16 per pass) and watch the tip, so the GPU
+  never waits for the network. The tip is watched by a long poll (`getwork payee longpollid`, answered
+  when the next block arrives; Requant node 0.13.0 and pool 0.14.0 or newer), else by asking every
+  second; the log says which (`tip watched by long poll` / `no long poll here`). Work is refreshed on a new tip and every 60 s; a share
   found on a tip the miner has left is counted as `stale` and not sent. The pool or node re-verifies
   every claim.
 - No miner fee: Requant funds development in its consensus rules (CHAIN.md §8 of the Requant repository).

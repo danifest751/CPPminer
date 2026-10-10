@@ -55,7 +55,7 @@ double g_dt_last = 0;         /* gap between the last two reports */
 unsigned long long g_accepted = 0, g_rejected = 0;
 double g_last_share = 0;
 
-/* "cppminer/0.5-fork.9" at start-up (before --agent can change it) -> "0.5-fork.9" */
+/* "cppminer/0.5-fork.10" at start-up (before --agent can change it) -> "0.5-fork.10" */
 const std::string g_version = [] {
     const char* a = agent_global;
     const char* s = strchr(a, '/');
