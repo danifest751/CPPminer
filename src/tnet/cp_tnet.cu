@@ -361,6 +361,15 @@ struct RqNet {
     }
     void long_poll() {
         int shown = -1;  // the mode last reported in the log (-1: none yet)
+        {
+            // say at once which mode applies: a plain getwork carries "longpollid" where long polls are answered
+            std::string r, id;
+            const bool ok = http_post(ep, "{\"method\":\"getwork\",\"params\":[\"" + payee + "\"]}", r) &&
+                            json_get(r, "longpollid", id);
+            printf(ok ? "[tnet] tip watched by long poll\n" : "[tnet] no long poll here: checking the tip every second\n");
+            shown = ok ? 1 : 0;
+            long_poll_ok = ok;
+        }
         while (!stop) {
             std::string tip_now;
             { std::lock_guard<std::mutex> g(mu); tip_now = tip_seen; }
