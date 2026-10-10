@@ -229,6 +229,14 @@ static bool http_post(const std::string& hostport, const std::string& body, std:
     if (s == INVALID_SOCKET) { freeaddrinfo(res); return false; }
     if (connect(s, res->ai_addr, (int)res->ai_addrlen) != 0) { CLOSESOCK(s); freeaddrinfo(res); return false; }
     freeaddrinfo(res);
+    // no answer within 90 s (a long poll waits up to 60 s): give up on this request
+#ifdef _WIN32
+    const DWORD timeout_ms = 90000;
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout_ms, sizeof timeout_ms);
+#else
+    timeval tv{90, 0};
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+#endif
     const std::string req = "POST / HTTP/1.1\r\nHost: " + host + "\r\nContent-Type: application/json\r\nContent-Length: " +
                             std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
     size_t sent = 0;
@@ -309,11 +317,15 @@ struct RqHit {
     std::vector<uint8_t> piece;
 };
 
-// Talks to the node or pool on its own thread (tip polling, submissions), so a slow link never stalls the GPU.
+// Talks to the node or pool on its own threads (submissions, and watching the tip), so a slow link never stalls
+// the GPU. The tip is watched by a long poll (`getwork payee longpollid`, answered when the next block arrives)
+// where the node or pool supports it, else by asking for the tip every second.
 struct RqNet {
     struct Item { std::string params, tip; };
-    std::string ep;
+    std::string ep, payee;
     bool pool_mode = false;
+    std::atomic<bool> long_poll_ok{false};  // the long poll works: no need to ask for the tip every second
+    std::thread lp;
     std::mutex mu;
     std::deque<Item> queue;
     std::string tip_seen;              // tip of the work being mined (set by the mining loop)
@@ -322,7 +334,10 @@ struct RqNet {
     std::atomic<long long> shares{0}, rejected{0}, blocks{0}, stale{0};
     std::thread th;
 
-    void start() { th = std::thread([this] { run(); }); }
+    void start() {
+        th = std::thread([this] { run(); });
+        lp = std::thread([this] { long_poll(); });
+    }
     void submit(const RqWork& wk, const RqHit& h, const std::string& payee, const std::string& worker, const std::string& tip) {
         // the payee (6th parameter) identifies the miner to a pool and the worker (7th) the device; a node ignores both
         Item it;
@@ -341,6 +356,32 @@ struct RqNet {
         }
         stop = true;
         if (th.joinable()) th.join();
+        // the long poll may still wait for its answer (up to a minute): let it end on its own; RqNet outlives it
+        if (lp.joinable()) lp.detach();
+    }
+    void long_poll() {
+        while (!stop) {
+            std::string tip_now;
+            { std::lock_guard<std::mutex> g(mu); tip_now = tip_seen; }
+            if (tip_now.empty()) { std::this_thread::sleep_for(std::chrono::milliseconds(100)); continue; }
+            const auto t0 = std::chrono::steady_clock::now();
+            std::string r, id;
+            const bool ok = http_post(ep, "{\"method\":\"getwork\",\"params\":[\"" + payee + "\",\"" + tip_now + "\"]}", r) &&
+                            json_get(r, "longpollid", id);
+            if (!ok) {
+                // an older node or pool, or no answer: the once-a-second tip check takes over, and this tries again later
+                long_poll_ok = false;
+                for (int k = 0; k < 100 && !stop; ++k) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                continue;
+            }
+            long_poll_ok = true;
+            if (id != tip_now) {
+                std::lock_guard<std::mutex> g(mu);
+                if (tip_seen == tip_now) restart = true;  // a new block while mining on tip_now
+            } else if (std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() < 1.0) {
+                std::this_thread::sleep_for(std::chrono::seconds(1));  // answered at once without a new block: no busy loop
+            }
+        }
     }
     void run() {
         auto last_poll = std::chrono::steady_clock::now() - std::chrono::seconds(10);
@@ -375,7 +416,7 @@ struct RqNet {
                 continue;
             }
             const auto now = std::chrono::steady_clock::now();
-            if (std::chrono::duration<double>(now - last_poll).count() >= 1.0) {
+            if (!long_poll_ok && std::chrono::duration<double>(now - last_poll).count() >= 1.0) {
                 last_poll = now;
                 std::string tip;
                 if (get_tip(ep, tip) && !tip_now.empty() && tip != tip_now) restart = true;
@@ -600,8 +641,10 @@ extern "C" int cp_tnet_cuda_solo(const char* rpc, const char* payee_hex, const c
     auto last_stat = start, last_work = start;
     unsigned long long tickets = 0, tickets_stat = 0;
     std::string pool_flag;
-    RqNet net;
+    // on the heap and never freed: the long-poll thread may still wait for an answer after mining ends
+    RqNet& net = *new RqNet;
     net.ep = ep;
+    net.payee = payee;
     net.pool_mode = rpc_call(ep, "getwork", "[\"" + payee + "\"]", pool_flag) && pool_flag.find("\"pool\":true") != std::string::npos;
     if (net.pool_mode) printf("[tnet] pool mode: shares at 2^%s tickets\n", json_get(pool_flag, "share_bits", pool_flag) ? pool_flag.c_str() : "?");
     std::string tip_seen = to_hex(wk.header.data() + 12, 32);
