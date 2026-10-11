@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5-fork.11
+- TNet: requantization in the CUTLASS GEMM epilogue (bit for bit the consensus step, checked against the CPU at start-up, with a fallback), unrolled SHA-256 kernels and tuned tiles. CMP 50HX 277 -> 239 ns/ticket (3.61 -> 4.18 M tickets/s); RTX 3090 about 5.3 M tickets/s sustained (150 ns/ticket while cool). A batch needs a third of the memory. `--algo tnet --bench` measures offline.
+- Pearl and Quantus unchanged; Quantus still without a developer fee.
+- Pool agent `cppminer/0.5-fork.11`.
+- Windows and Linux packages; HiveOS stays on v0.5-fork.9, Docker on v0.5-fork.8.
+- Detailed release notes: [v0.5-fork.11](docs/releases/v0.5-fork.11.md).
+
 ## v0.5-fork.10
 - TNet: the tip is watched by a long poll where the Requant node (0.13.0+) or pool (0.14.0+) offers it: a new block is noticed when it arrives instead of within the next once-a-second check, and the 3600 tip queries an hour per device stop. Older nodes and pools keep the once-a-second check; the log says which. Requests time out after 90 s.
 - Pearl and Quantus unchanged; Quantus still without a developer fee.
