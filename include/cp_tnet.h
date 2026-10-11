@@ -20,6 +20,14 @@ int cp_tnet_cuda_selftest(int device);
 int cp_tnet_cuda_bench(int device, int batch, double seconds);
 #endif
 
+#if defined(CP_ENABLE_OPENCL) && CP_ENABLE_OPENCL
+/* The same on OpenCL (AMD, Intel and other GPUs); device is the flat OpenCL index (--list-devices). cp_tnet_ocl.cpp. */
+int cp_tnet_ocl_solo(const char* rpc, const char* payee_hex, const char* worker, int device, int batch, double seconds,
+                     long long blocks);
+int cp_tnet_ocl_selftest(int device);
+int cp_tnet_ocl_bench(int device, int batch, double seconds);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

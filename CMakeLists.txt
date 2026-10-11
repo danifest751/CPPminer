@@ -90,6 +90,7 @@ set(CP_COMMON_SOURCES
     src/common/cp_fee.cpp
     src/common/cp_algo.cpp
     src/tnet/cp_tnet.cpp
+    src/tnet/cp_tnet_net.cpp
     src/common/cp_qpow_pool.cpp
     src/common/cp_qpow_mine.cpp
     src/common/cp_share_queue.cpp
@@ -367,6 +368,7 @@ if(CP_ENABLE_OPENCL OR CP_ENABLE_ONEDNN)
             src/opencl/case32_layout.cpp
             src/opencl/opencl_context.cpp
             src/qpow/opencl/cp_qpow_opencl_worker.cpp
+            src/tnet/cp_tnet_ocl.cpp
         )
         add_compile_definitions(CP_ENABLE_OPENCL=1)
     else()
@@ -504,6 +506,9 @@ if(CP_ENABLE_OPENCL)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_SOURCE_DIR}/src/qpow/opencl/kernels/qpow_mining.cl"
             "$<TARGET_FILE_DIR:cppminer>/kernels/qpow_mining.cl"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/src/tnet/kernels/tnet.cl"
+            "$<TARGET_FILE_DIR:cppminer>/kernels/tnet.cl"
         COMMENT "Copy OpenCL kernels next to cppminer")
     if(CP_ENABLE_ONEDNN)
         add_custom_command(TARGET cppminer POST_BUILD

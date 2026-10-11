@@ -24,6 +24,25 @@ The requantization of each layer (`clamp((y M + 2^23) >> 24, -128, 127)`) runs i
 the int32 product never goes to memory; the miner checks it against the CPU at start-up (both clamps) and
 falls back to a separate pass if it disagrees. `CP_TNET_FUSED=0` forces the separate pass.
 
+## OpenCL (AMD, Intel and other GPUs)
+
+A build with `-DCP_ENABLE_OPENCL=ON` mines TNet on any OpenCL GPU: `--backend opencl` (the default only where
+CUDA is not built), `--device N` the flat index from `cppminer --backend opencl --list-devices`. The kernels
+(`kernels/tnet.cl`) run the int8 GEMM with the requantization in its epilogue, on AMD's dot instructions
+(`v_dot4_i32_iu8` on RDNA3/4, `v_dot4_i32_i8` on GCN5/RDNA2), the KHR integer dot product, or plain
+multiply-adds: at start-up the miner builds them in turn and keeps the first that agrees with the CPU
+(`CP_TNET_OCL_DOT=0..3` forces one). The network and the mining loop are the same as on CUDA.
+
+```sh
+cppminer --algo tnet --backend opencl --selftest
+cppminer --algo tnet --backend opencl --bench --batch 1024
+cppminer --algo tnet --backend opencl --rpc 193.187.93.29:19340 --payee <key hash> --batch 1024
+```
+
+First version, correct but not tuned: Radeon 780M (RDNA3, sudot4) 7.0 us per ticket (2.4 TMAC/s), Arc A380
+16.3 us (1.0 TMAC/s), both with every share accepted in the test-network pool. The tuned Pearl OpenCL GEMM of
+this miner reaches 3.4 TMAC/s on the 780M and more with WMMA; Intel's XMX (DPAS) is not used yet.
+
 ## Run
 
 ```sh
