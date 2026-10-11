@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5-fork.12
+- TNet on AMD and Intel GPUs: `--algo tnet --backend opencl`. Intel Arc with XMX runs the GEMM in the bundled ESIMD library (`dpasw`): Arc A380 1.13 us/ticket (0.88 M tickets/s, 14.8 TMAC/s); without it OpenCL DPAS. AMD uses its dot instructions (Radeon 780M, sudot4: 7.0 us/ticket). The kernel is chosen at start-up by a check against the CPU; pool shares from both were accepted.
+- TNet's network and mining loop are shared by the CUDA and OpenCL backends; CUDA unchanged (CMP 50HX 239 ns/ticket).
+- Pearl and Quantus unchanged; Quantus still without a developer fee.
+- Pool agent `cppminer/0.5-fork.12`.
+- Windows and Linux packages; HiveOS stays on v0.5-fork.9, Docker on v0.5-fork.8.
+- Detailed release notes: [v0.5-fork.12](docs/releases/v0.5-fork.12.md).
+
 ## v0.5-fork.11
 - TNet: requantization in the CUTLASS GEMM epilogue (bit for bit the consensus step, checked against the CPU at start-up, with a fallback), unrolled SHA-256 kernels and tuned tiles. CMP 50HX 277 -> 239 ns/ticket (3.61 -> 4.18 M tickets/s); RTX 3090 about 5.3 M tickets/s sustained (150 ns/ticket while cool). A batch needs a third of the memory. `--algo tnet --bench` measures offline.
 - Pearl and Quantus unchanged; Quantus still without a developer fee.
