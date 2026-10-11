@@ -331,6 +331,9 @@ function Copy-OpenClKernels {
         )},
         @{ Src = (Join-Path $Root "src\qpow\opencl\kernels"); Names = @(
             "qpow_mining.cl"
+        )},
+        @{ Src = (Join-Path $Root "src\tnet\kernels"); Names = @(
+            "tnet.cl"
         )}
     )
     foreach ($group in $pairs) {
