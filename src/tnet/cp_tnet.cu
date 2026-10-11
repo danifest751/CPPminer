@@ -4,7 +4,8 @@
 //
 // Per nonce the input X_0 has B rows (B = 65536 on the test network); rows are independent, so they are
 // processed in batches of --batch rows: expand the batch's rows of X_0, run L layers of int8 GEMM + integer
-// requantization, hash every w-byte piece of every output row, compare with the 256-bit target. Kernels are
+// requantization (in the GEMM's epilogue, or as a separate pass with CP_TNET_FUSED=0), hash every w-byte piece of
+// every output row, compare with the 256-bit target. Kernels are
 // byte-compatible with the Rust reference (crates/tnet) and were cross-checked against it on Turing and Ampere.
 
 #include "cp_tnet.h"
@@ -18,6 +19,7 @@
 #include <cstdlib>
 #include <cctype>
 #include <cstring>
+#include <cmath>
 #include <deque>
 #include <mutex>
 #include <random>
@@ -59,13 +61,23 @@ __constant__ uint32_t rq_dK[64];
 
 __host__ __device__ __forceinline__ uint32_t rq_rotr(uint32_t x, int s) { return (x >> s) | (x << (32 - s)); }
 
+// fully unrolled on the GPU, so the message schedule stays in registers and K comes as immediates
+#ifdef __CUDA_ARCH__
+#define RQ_UNROLL _Pragma("unroll")
+#else
+#define RQ_UNROLL
+#endif
+
 __host__ __device__ __forceinline__ void rq_compress(uint32_t h[8], const uint32_t w0[16]) {
     uint32_t w[64];
+    RQ_UNROLL
     for (int i = 0; i < 16; ++i) w[i] = w0[i];
+    RQ_UNROLL
     for (int i = 16; i < 64; ++i)
         w[i] = w[i - 16] + (rq_rotr(w[i - 15], 7) ^ rq_rotr(w[i - 15], 18) ^ (w[i - 15] >> 3)) + w[i - 7] +
                (rq_rotr(w[i - 2], 17) ^ rq_rotr(w[i - 2], 19) ^ (w[i - 2] >> 10));
     uint32_t a = h[0], b = h[1], c = h[2], d = h[3], e = h[4], f = h[5], g = h[6], hh = h[7];
+    RQ_UNROLL
     for (int i = 0; i < 64; ++i) {
 #ifdef __CUDA_ARCH__
         const uint32_t k = rq_dK[i];
@@ -125,10 +137,12 @@ __global__ void rq_expand(RqPrefix px, uint32_t c0, size_t count, uint8_t* __res
     w[13] = 0; w[14] = 0; w[15] = 49 * 8;
     rq_init(h);
     rq_compress(h, w);
-    for (int i = 0; i < 8; ++i) {
-        uint8_t* o = out + 32 * k + 4 * i;
-        o[0] = h[i] >> 24; o[1] = h[i] >> 16; o[2] = h[i] >> 8; o[3] = h[i];
-    }
+    // the digest's bytes in order: two 16-byte stores (out is 32-byte aligned)
+    uint4* o = reinterpret_cast<uint4*>(out + 32 * k);
+    o[0] = make_uint4(__byte_perm(h[0], 0, 0x0123), __byte_perm(h[1], 0, 0x0123), __byte_perm(h[2], 0, 0x0123),
+                      __byte_perm(h[3], 0, 0x0123));
+    o[1] = make_uint4(__byte_perm(h[4], 0, 0x0123), __byte_perm(h[5], 0, 0x0123), __byte_perm(h[6], 0, 0x0123),
+                      __byte_perm(h[7], 0, 0x0123));
 }
 
 // WT[j n + k] = W[k n + j]
@@ -156,36 +170,54 @@ __global__ void rq_requant(const int32_t* __restrict__ Y, int8_t* __restrict__ X
 
 struct RqTarget { uint32_t t[8]; };  // big-endian words
 
+// The last block of a ticket hash, 0x54 || hd || LE64 nonce || LE32 row || LE32 c || padding || length, as big-endian
+// words; the same for every ticket of a scan but bytes 41..48 (row and c, in words 10..12), which each thread fills in.
+struct RqTail { uint32_t wd[16]; };
+static RqTail rq_tail(const uint8_t hd[32], uint64_t nonce, int w) {
+    uint8_t m[64] = {0};
+    m[0] = 0x54;
+    memcpy(m + 1, hd, 32);
+    for (int q = 0; q < 8; ++q) m[33 + q] = (uint8_t)(nonce >> (8 * q));
+    m[49] = 0x80;
+    const uint64_t len = ((uint64_t)w + 49) * 8;
+    for (int q = 0; q < 8; ++q) m[56 + q] = (uint8_t)(len >> (8 * (7 - q)));
+    RqTail t;
+    for (int q = 0; q < 16; ++q) t.wd[q] = rq_be(m + 4 * q);
+    return t;
+}
+
 // Winning tickets kept per scan (a pool's easy share target can give several in one batch).
 #define RQ_MAX_HITS 16
 
 // Ticket (r0 + i, c): SHA256(piece || 0x54 || hd || LE64 nonce || LE32 row || LE32 c) <= target; w % 64 == 0.
-__global__ void rq_tickets(const int8_t* __restrict__ X, int n, int rows, int w, uint32_t r0, uint64_t nonce,
-                           const uint8_t* __restrict__ hd, RqTarget tg, unsigned int* __restrict__ found,
-                           unsigned long long* __restrict__ hits) {
+__global__ void rq_tickets(const int8_t* __restrict__ X, int n, int rows, int w, uint32_t r0, RqTail tail, RqTarget tg,
+                           unsigned int* __restrict__ found, unsigned long long* __restrict__ hits) {
     const int per_row = n / w;
     const size_t t = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (t >= (size_t)rows * per_row) return;
     const int i = (int)(t / per_row), c = (int)(t % per_row);
     const uint32_t row = r0 + (uint32_t)i;
-    const uint32_t* piece = reinterpret_cast<const uint32_t*>(X + (size_t)i * n + (size_t)c * w);
+    const uint4* piece = reinterpret_cast<const uint4*>(X + (size_t)i * n + (size_t)c * w);
     uint32_t h[8], wd[16];
     rq_init(h);
     for (int blk = 0; blk < w / 64; ++blk) {
-        for (int q = 0; q < 16; ++q) wd[q] = __byte_perm(piece[blk * 16 + q], 0, 0x0123);
+        RQ_UNROLL
+        for (int q = 0; q < 4; ++q) {
+            const uint4 v = piece[blk * 4 + q];
+            wd[4 * q] = __byte_perm(v.x, 0, 0x0123);
+            wd[4 * q + 1] = __byte_perm(v.y, 0, 0x0123);
+            wd[4 * q + 2] = __byte_perm(v.z, 0, 0x0123);
+            wd[4 * q + 3] = __byte_perm(v.w, 0, 0x0123);
+        }
         rq_compress(h, wd);
     }
-    uint8_t m[64];
-    m[0] = 0x54;
-    for (int q = 0; q < 32; ++q) m[1 + q] = hd[q];
-    for (int q = 0; q < 8; ++q) m[33 + q] = (uint8_t)(nonce >> (8 * q));
-    for (int q = 0; q < 4; ++q) m[41 + q] = (uint8_t)(row >> (8 * q));
-    for (int q = 0; q < 4; ++q) m[45 + q] = (uint8_t)((uint32_t)c >> (8 * q));
-    m[49] = 0x80;
-    for (int q = 50; q < 56; ++q) m[q] = 0;
-    const uint64_t len = ((uint64_t)w + 49) * 8;
-    for (int q = 0; q < 8; ++q) m[56 + q] = (uint8_t)(len >> (8 * (7 - q)));
-    for (int q = 0; q < 16; ++q) wd[q] = rq_be(m + 4 * q);
+    RQ_UNROLL
+    for (int q = 0; q < 16; ++q) wd[q] = tail.wd[q];
+    // bytes 40..51: nonce byte 7 | LE32 row | LE32 c | 0x80 0 0
+    const uint32_t rb = __byte_perm(row, 0, 0x0123), cb = __byte_perm((uint32_t)c, 0, 0x0123);
+    wd[10] = (wd[10] & 0xff000000u) | (rb >> 8);
+    wd[11] = (rb << 24) | (cb >> 8);
+    wd[12] = (cb << 24) | 0x00800000u;
     rq_compress(h, wd);
     for (int q = 0; q < 8; ++q) {
         if (h[q] < tg.t[q]) break;
@@ -474,6 +506,36 @@ static bool gemm_check(int kind, int rows, int n) {
     return ok;
 }
 
+// The requantizing GEMM (requantization in the epilogue) against the CPU: product, then clamp((s M + 2^23) >> 24). Two
+// multipliers: the network's order of magnitude, and one that saturates most outputs, so both clamps are exercised.
+static bool rq_check(int kind, int rows, int n, int mult) {
+    std::mt19937 rng(54321 + mult);
+    std::vector<int8_t> x((size_t)rows * n), wt((size_t)n * n), xo((size_t)rows * n);
+    for (auto& v : x) v = (int8_t)(rng() & 0xff);
+    for (auto& v : wt) v = (int8_t)(rng() & 0xff);
+    int8_t *dx = nullptr, *dw = nullptr, *dxo = nullptr;
+    bool ok = cudaMalloc(&dx, x.size()) == cudaSuccess && cudaMalloc(&dw, wt.size()) == cudaSuccess &&
+              cudaMalloc(&dxo, xo.size()) == cudaSuccess;
+    if (ok) {
+        cudaMemcpy(dx, x.data(), x.size(), cudaMemcpyHostToDevice);
+        cudaMemcpy(dw, wt.data(), wt.size(), cudaMemcpyHostToDevice);
+        ok = cp_tnet_gemm_rq(kind, dx, dw, dxo, rows, n, mult, 0) == 0 &&
+             cudaMemcpy(xo.data(), dxo, xo.size(), cudaMemcpyDeviceToHost) == cudaSuccess;
+    }
+    cudaFree(dx);
+    cudaFree(dw);
+    cudaFree(dxo);
+    for (int r = 0; ok && r < rows; ++r)
+        for (int j = 0; ok && j < n; ++j) {
+            int32_t s = 0;
+            for (int k = 0; k < n; ++k) s += (int32_t)x[(size_t)r * n + k] * wt[(size_t)j * n + k];
+            const long long t = ((long long)s * mult + (1LL << 23)) >> 24;
+            ok = (int8_t)(t < -128 ? -128 : (t > 127 ? 127 : t)) == xo[(size_t)r * n + j];
+        }
+    cudaGetLastError();
+    return ok;
+}
+
 // The GEMM kernel for `device`: the best for its architecture (CP_TNET_GEMM=sm75|sm80 overrides), checked against
 // the CPU; if the sm80 kernel disagrees, the sm75 one (mma.m8n8k16 runs on every GPU since Turing).
 static int pick_gemm(int device) {
@@ -491,6 +553,12 @@ static int pick_gemm(int device) {
 
 struct RqEngine {
     int n = 0, L = 0, w = 0, mult = 0, batch = 0;
+    // requantization in the GEMM epilogue (CP_TNET_FUSED=0 or a failed check: a separate pass); -1 decides in init
+    int fused = -1;
+    // per-phase time in ms, accumulated while `profile` is set
+    bool profile = false;
+    double ms_expand = 0, ms_layers = 0, ms_hash = 0;
+    int scans = 0;
     std::vector<int8_t*> WT;
     int8_t *X = nullptr, *X2 = nullptr;
     int32_t* Y = nullptr;
@@ -512,15 +580,41 @@ struct RqEngine {
             fprintf(stderr, "[tnet] no working int8 GEMM: needs an NVIDIA GPU of compute 7.5 (Turing) or newer\n");
             return false;
         }
+        bool unfused = false;
 #if defined(CP_ENABLE_CUBLAS) && CP_ENABLE_CUBLAS
         const char* use_cublas = getenv("CP_TNET_CUBLAS");
         if (use_cublas && !strcmp(use_cublas, "1")) cublasCreate(&cb);
+        unfused = cb != nullptr;
 #endif
+        if (fused < 0) {
+            const char* env = getenv("CP_TNET_FUSED");
+            fused = !unfused && !(env && !strcmp(env, "0"));
+        }
+        if (fused && !(rq_check(gemm, 200, 512, 2505) && rq_check(gemm, 200, 512, 300000))) {
+            fprintf(stderr, "[tnet] the requantizing GEMM disagrees with the CPU on this GPU; requantizing in a separate pass\n");
+            fused = 0;
+        }
         WT.assign(L, nullptr);
         for (auto& p : WT) if (cudaMalloc(&p, nn) != cudaSuccess) return false;
+        // the int32 product is kept only for the separate pass
         return cudaMalloc(&tmp, (nn + 31) / 32 * 32) == cudaSuccess && cudaMalloc(&X, (bn + 31) / 32 * 32 + 32) == cudaSuccess &&
-               cudaMalloc(&X2, bn) == cudaSuccess && cudaMalloc(&Y, bn * 4) == cudaSuccess && cudaMalloc(&dhd, 32) == cudaSuccess &&
-               cudaMalloc(&dfound, 4) == cudaSuccess && cudaMalloc(&dhits, 8 * RQ_MAX_HITS) == cudaSuccess;
+               cudaMalloc(&X2, bn) == cudaSuccess && (fused || cudaMalloc(&Y, bn * 4) == cudaSuccess) &&
+               cudaMalloc(&dhd, 32) == cudaSuccess && cudaMalloc(&dfound, 4) == cudaSuccess &&
+               cudaMalloc(&dhits, 8 * RQ_MAX_HITS) == cudaSuccess;
+    }
+
+    ~RqEngine() {
+        for (auto p : WT) cudaFree(p);
+        cudaFree(X);
+        cudaFree(X2);
+        cudaFree(Y);
+        cudaFree(dhd);
+        cudaFree(tmp);
+        cudaFree(dfound);
+        cudaFree(dhits);
+#if defined(CP_ENABLE_CUBLAS) && CP_ENABLE_CUBLAS
+        if (cb) cublasDestroy(cb);
+#endif
     }
 
     // W_l = expand(SHA256("abacus/tnet-w" || seed || LE32(l)), n^2), stored transposed.
@@ -553,9 +647,20 @@ struct RqEngine {
         const uint32_t c0 = (uint32_t)((size_t)r0 * n / 32);
         cudaMemcpy(dhd, wk.digest.data(), 32, cudaMemcpyHostToDevice);
         cudaMemset(dfound, 0, 4);
+        cudaEvent_t ev[4];
+        if (profile) {
+            for (auto& e : ev) cudaEventCreate(&e);
+            cudaEventRecord(ev[0]);
+        }
         rq_expand<<<(unsigned)((hashes + 255) / 256), 256>>>(rq_prefix(xs), c0, hashes, (uint8_t*)X);
+        if (profile) cudaEventRecord(ev[1]);
         int8_t *cur = X, *nxt = X2;
         for (int l = 0; l < L; ++l) {
+            if (fused) {
+                cp_tnet_gemm_rq(gemm, cur, WT[l], nxt, rows, n, mult, 0);
+                std::swap(cur, nxt);
+                continue;
+            }
             // row-major (rows x n) = cur * W_l, with W_l given transposed (WT, row-major)
 #if defined(CP_ENABLE_CUBLAS) && CP_ENABLE_CUBLAS
             if (cb) {
@@ -571,7 +676,22 @@ struct RqEngine {
         RqTarget tg;
         for (int q = 0; q < 8; ++q) tg.t[q] = rq_be(wk.target.data() + 4 * q);
         const size_t tickets = (size_t)rows * (n / w);
-        rq_tickets<<<(unsigned)((tickets + 127) / 128), 128>>>(cur, n, rows, w, r0, nonce, dhd, tg, dfound, dhits);
+        if (profile) cudaEventRecord(ev[2]);
+        rq_tickets<<<(unsigned)((tickets + 127) / 128), 128>>>(cur, n, rows, w, r0, rq_tail(wk.digest.data(), nonce, w), tg,
+                                                              dfound, dhits);
+        if (profile) {
+            cudaEventRecord(ev[3]);
+            cudaEventSynchronize(ev[3]);
+            float a = 0, b = 0, c = 0;
+            cudaEventElapsedTime(&a, ev[0], ev[1]);
+            cudaEventElapsedTime(&b, ev[1], ev[2]);
+            cudaEventElapsedTime(&c, ev[2], ev[3]);
+            ms_expand += a;
+            ms_layers += b;
+            ms_hash += c;
+            ++scans;
+            for (auto& e : ev) cudaEventDestroy(e);
+        }
         unsigned int found = 0;
         cudaMemcpy(&found, dfound, 4, cudaMemcpyDeviceToHost);
         if (found == 0) return;
@@ -590,6 +710,60 @@ struct RqEngine {
         }
     }
 };
+
+// Offline: the attempt at the TNet v1 parameters (n = 8192, L = 8, w = 256, B = 65536) on random weights and input, with
+// a target nothing meets; first with the requantization in the GEMM, then as a separate pass.
+extern "C" int cp_tnet_cuda_bench(int device, int batch, double seconds) {
+    if (cudaSetDevice(device) != cudaSuccess) { fprintf(stderr, "[tnet] no CUDA device %d\n", device); return 1; }
+    cudaMemcpyToSymbol(rq_dK, rq_hK, sizeof(rq_hK));
+    cudaDeviceProp prop;
+    cudaGetDeviceProperties(&prop, device);
+    RqWork wk;
+    wk.n = 8192;
+    wk.L = 8;
+    wk.w = 256;
+    wk.b = 65536;
+    wk.mult = (int)std::lround(16777216.0 / (74.0 * std::sqrt(8192.0)));
+    std::mt19937_64 rng(7);
+    wk.digest.resize(32);
+    wk.seed.resize(32);
+    for (auto& v : wk.digest) v = (uint8_t)rng();
+    for (auto& v : wk.seed) v = (uint8_t)rng();
+    wk.target.assign(32, 0);
+    const int rows = batch < wk.b ? batch : wk.b;
+    const double macs_per_ticket = (double)wk.L * wk.n * wk.w;
+    printf("[tnet] bench on %s: n=%d L=%d w=%d M=%d, batch %d rows, %.0f s per mode\n", prop.name, wk.n, wk.L, wk.w, wk.mult,
+           rows, seconds);
+    for (int mode = 1; mode >= 0; --mode) {
+        RqEngine eng;
+        eng.fused = mode;
+        if (!eng.init(wk, rows, device)) { fprintf(stderr, "[tnet] GPU set-up failed (try a smaller --batch)\n"); return 1; }
+        if (mode == 1 && !eng.fused) continue;  // the check already said why
+        eng.set_epoch(wk.seed);
+        std::vector<RqHit> hits;
+        eng.scan(wk, 1, 0, rows, hits);  // warm-up
+        eng.profile = true;
+        unsigned long long tickets = 0;
+        uint64_t nonce = 2;
+        const auto t0 = std::chrono::steady_clock::now();
+        double dt = 0;
+        while (dt < seconds) {
+            for (uint32_t r0 = 0; r0 < (uint32_t)wk.b && dt < seconds; r0 += (uint32_t)rows) {
+                eng.scan(wk, nonce, r0, rows, hits);
+                tickets += (unsigned long long)rows * (wk.n / wk.w);
+                dt = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+            }
+            ++nonce;
+        }
+        if (cudaGetLastError() != cudaSuccess) { fprintf(stderr, "[tnet] CUDA error\n"); return 1; }
+        const double ns = dt * 1e9 / (double)tickets, s = eng.scans;
+        printf("[tnet] %s: %.1f ns/ticket, %.2f M tickets/s, %.1f TMAC/s; per batch: expand %.2f ms, layers %.2f ms, hash %.2f ms"
+               " (%d batches)\n",
+               mode ? "requant in the GEMM epilogue" : "requant as a separate pass", ns, tickets / dt / 1e6,
+               macs_per_ticket / ns / 1e3, eng.ms_expand / s, eng.ms_layers / s, eng.ms_hash / s, eng.scans);
+    }
+    return 0;
+}
 
 extern "C" int cp_tnet_cuda_selftest(int device) {
     int count = 0;
@@ -624,11 +798,58 @@ extern "C" int cp_tnet_cuda_selftest(int device) {
         host_sha256(m, d);
         exp = exp && memcmp(d, got + 32 * k, 32) == 0;
     }
+    // ticket hashing: SHA256(piece || 0x54 || hd || nonce || row || c) against a target equal to one ticket's hash
+    // (it must be found) and one below it (it must not)
+    bool tk = true;
+    {
+        const int tn = 512, tw = 256, trows = 4;
+        const uint32_t r0 = 70000, ti = 3, tc = 1;
+        const uint64_t tnonce = 0x0123456789abcdefULL;
+        std::vector<int8_t> x((size_t)trows * tn);
+        std::mt19937 rng(99);
+        for (auto& v : x) v = (int8_t)(rng() & 0xff);
+        uint8_t hd[32];
+        for (int q = 0; q < 32; ++q) hd[q] = (uint8_t)(q * 7 + 1);
+        std::vector<uint8_t> m(x.begin() + ti * tn + tc * tw, x.begin() + ti * tn + (tc + 1) * tw);
+        m.push_back(0x54);
+        m.insert(m.end(), hd, hd + 32);
+        for (int q = 0; q < 8; ++q) m.push_back((uint8_t)(tnonce >> (8 * q)));
+        for (int q = 0; q < 4; ++q) m.push_back((uint8_t)((r0 + ti) >> (8 * q)));
+        for (int q = 0; q < 4; ++q) m.push_back((uint8_t)(tc >> (8 * q)));
+        uint8_t want[32];
+        host_sha256(m, want);
+        int8_t* dx = nullptr;
+        unsigned int* df = nullptr;
+        unsigned long long* dh = nullptr;
+        cudaMalloc(&dx, x.size());
+        cudaMalloc(&df, 4);
+        cudaMalloc(&dh, 8 * RQ_MAX_HITS);
+        cudaMemcpy(dx, x.data(), x.size(), cudaMemcpyHostToDevice);
+        for (int below = 0; below < 2; ++below) {
+            RqTarget tg;
+            for (int q = 0; q < 8; ++q) tg.t[q] = rq_be(want + 4 * q);
+            if (below) tg.t[7] -= 1;  // so the hash must not end in 0 (checked below)
+            cudaMemset(df, 0, 4);
+            rq_tickets<<<1, 64>>>(dx, tn, trows, tw, r0, rq_tail(hd, tnonce, tw), tg, df, dh);
+            unsigned int f = 0;
+            unsigned long long got[RQ_MAX_HITS];
+            cudaMemcpy(&f, df, 4, cudaMemcpyDeviceToHost);
+            cudaMemcpy(got, dh, 8 * RQ_MAX_HITS, cudaMemcpyDeviceToHost);
+            bool seen = false;
+            for (unsigned q = 0; q < f && q < RQ_MAX_HITS; ++q) seen |= got[q] == (((unsigned long long)ti << 32) | tc);
+            tk = tk && (below ? !seen : seen) && (want[31] != 0);
+        }
+        cudaFree(dx);
+        cudaFree(df);
+        cudaFree(dh);
+    }
     const int kind = pick_gemm(device);
     const bool mm = kind != CP_TNET_GEMM_NONE;
-    printf("[tnet] selftest: sha256 %s, expansion %s, int8 GEMM %s (%s), cuda %s\n", abc ? "ok" : "FAIL", exp ? "ok" : "FAIL",
-           mm ? "ok" : "FAIL", cp_tnet_gemm_name(kind), cudaGetErrorString(cudaGetLastError()));
-    return abc && exp && mm ? 0 : 1;
+    const bool rq = mm && rq_check(kind, 200, 512, 2505) && rq_check(kind, 200, 512, 300000);
+    printf("[tnet] selftest: sha256 %s, expansion %s, tickets %s, int8 GEMM %s (%s), requantizing GEMM %s, cuda %s\n",
+           abc ? "ok" : "FAIL", exp ? "ok" : "FAIL", tk ? "ok" : "FAIL", mm ? "ok" : "FAIL", cp_tnet_gemm_name(kind),
+           rq ? "ok" : "FAIL", cudaGetErrorString(cudaGetLastError()));
+    return abc && exp && tk && mm && rq ? 0 : 1;
 }
 
 extern "C" int cp_tnet_cuda_solo(const char* rpc, const char* payee_hex, const char* worker, int device, int batch, double seconds,
@@ -649,7 +870,8 @@ extern "C" int cp_tnet_cuda_solo(const char* rpc, const char* payee_hex, const c
     printf("[tnet] %s | node %s | TNet n=%d B=%d L=%d w=%d | batch %d rows\n", prop.name, rpc, wk.n, wk.b, wk.L, wk.w, rows);
     RqEngine eng;
     if (!eng.init(wk, rows, device)) { fprintf(stderr, "[tnet] GPU set-up failed (try a smaller --batch)\n"); return 1; }
-    printf("[tnet] GEMM: %s\n", cp_tnet_gemm_name(eng.gemm));
+    printf("[tnet] GEMM: %s, requantization %s\n", cp_tnet_gemm_name(eng.gemm),
+           eng.fused ? "in the epilogue" : "as a separate pass");
     std::mt19937_64 rng(std::random_device{}() ^ ((uint64_t)device << 48) ^ (uint64_t)time(nullptr));
     const auto start = std::chrono::steady_clock::now();
     auto last_stat = start, last_work = start;

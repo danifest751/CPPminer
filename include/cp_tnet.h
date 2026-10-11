@@ -15,6 +15,9 @@ int cp_tnet_cuda_solo(const char* rpc, const char* payee_hex, const char* worker
                       long long blocks);
 /* Known-answer self-test of the device SHA-256 and expansion. */
 int cp_tnet_cuda_selftest(int device);
+/* Offline benchmark at the TNet v1 parameters: the attempt with requantization fused into the GEMM and as a separate
+ * pass, with the time of each phase. */
+int cp_tnet_cuda_bench(int device, int batch, double seconds);
 #endif
 
 #ifdef __cplusplus

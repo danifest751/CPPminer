@@ -20,6 +20,10 @@ matrices; if the newer one disagrees it takes the Turing kernel, which runs on e
 `CP_TNET_GEMM=sm75|sm80` chooses by hand. A build with `-DCP_ENABLE_CUBLAS=ON` can also run cuBLAS
 (`CP_TNET_CUBLAS=1`) for comparisons.
 
+The requantization of each layer (`clamp((y M + 2^23) >> 24, -128, 127)`) runs in the GEMM's epilogue, so
+the int32 product never goes to memory; the miner checks it against the CPU at start-up (both clamps) and
+falls back to a separate pass if it disagrees. `CP_TNET_FUSED=0` forces the separate pass.
+
 ## Run
 
 ```sh
@@ -31,11 +35,12 @@ requant-wallet create miner.wallet                 # a wallet; `address miner.wa
 requantd --network test                            # JSON-RPC on 127.0.0.1:19334
 cppminer --algo tnet --rpc 127.0.0.1:19334 --payee <key hash> [--device 0] [--batch 8192]
 
-cppminer --algo tnet --selftest                    # SHA-256, expansion and the int8 GEMM vs the CPU
+cppminer --algo tnet --selftest                    # SHA-256, expansion, ticket hash and both GEMMs vs the CPU
+cppminer --algo tnet --bench [--seconds 20]        # offline: ns per ticket and the time of each phase
 ```
 
 - `--batch` is the number of rows per GPU pass (default 8192). Memory: 512 MiB of weights plus about
-  `6 * batch * 8192` bytes; lower it on small GPUs. Rows are independent, so any batch is valid.
+  `2 * batch * 8192` bytes (`6 *` with `CP_TNET_FUSED=0`); lower it on small GPUs. Rows are independent, so any batch is valid.
 - Network threads submit winning tickets (all of them, up to 16 per pass) and watch the tip, so the GPU
   never waits for the network. The tip is watched by a long poll (`getwork payee longpollid`, answered
   when the next block arrives; Requant node 0.13.0 and pool 0.14.0 or newer), else by asking every
@@ -46,6 +51,16 @@ cppminer --algo tnet --selftest                    # SHA-256, expansion and the 
 
 ## Measured
 
-CMP 50HX (Turing, 225 W): 3.61 M tickets/s (277 ns per ticket) with the CUTLASS GEMM, 3.42 with cuBLAS,
-in the test-network pool, every share accepted. The kernels match the Rust reference byte for byte on
+CMP 50HX (Turing, 225 W): 4.18 M tickets/s (239 ns per ticket), in the test-network pool, every share
+accepted (52 shares and 4 blocks in 240 s). `--bench` on the same card, ns per ticket:
+
+| Version | ns/ticket | Batch of 8192 rows: expand / 8 layers / hash, ms |
+|---|---:|---:|
+| separate requantization pass, 128 x 256 tile, byte-wise SHA kernels (v0.5-fork.10) | 277.0 | 2.71 / 68.5 / 1.36 |
+| requantization in the epilogue | 256.0 | 2.76 / 63.0 / 1.36 |
+| + unrolled SHA-256, vector stores, precomputed ticket tail | 244.1 | 0.46 / 63.1 / 0.37 |
+| + 256 x 128 tile (128 x 128: 273.5) | 239.1 | 0.46 / 61.8 / 0.37 |
+
+The layers now run at 71 TMAC/s (the card's square int8 GEMM reaches about 78). cuBLAS gave 3.42 M
+tickets/s with the separate pass. The kernels match the Rust reference byte for byte on
 Turing and Ampere. Ampere, Ada and Blackwell use the second kernel, not yet measured against cuBLAS.

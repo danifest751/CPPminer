@@ -11,10 +11,13 @@ static void tnet_usage(void)
             "usage: cppminer --algo tnet --rpc HOST:PORT --payee KEY_HASH_HEX [--worker NAME] [--device N] [--batch ROWS]\n"
             "                [--seconds S] [--blocks K]\n"
             "       cppminer --algo tnet --selftest [--device N]\n"
+            "       cppminer --algo tnet --bench [--device N] [--batch ROWS] [--seconds S]\n"
             "  --rpc     requantd JSON-RPC or pool address (default 127.0.0.1:19445, regtest)\n"
             "  --payee   32-byte key hash to pay (requant-wallet address KEYFILE prints it)\n"
             "  --worker  name of this device in a pool's statistics (rewards still go to the payee)\n"
-            "  --batch   rows per GPU pass (default 8192; lower it on GPUs with little memory)\n");
+            "  --batch   rows per GPU pass (default 8192; lower it on GPUs with little memory)\n"
+            "  --bench   offline: ns per ticket with requantization in the GEMM and as a separate pass\n"
+            "            (default 20 s each); CP_TNET_FUSED=0 mines with the separate pass\n");
 }
 
 int cp_tnet_main(int argc, char** argv)
@@ -22,7 +25,7 @@ int cp_tnet_main(int argc, char** argv)
     const char* rpc = "127.0.0.1:19445";
     const char* payee = NULL;
     const char* worker = "default";
-    int device = 0, batch = 8192, selftest = 0;
+    int device = 0, batch = 8192, selftest = 0, bench = 0;
     double seconds = 0;
     long long blocks = 0;
     for(int i = 1; i < argc; ++i){
@@ -37,10 +40,18 @@ int cp_tnet_main(int argc, char** argv)
         else if(!strcmp(a, "--seconds") && v){ seconds = atof(v); ++i; }
         else if(!strcmp(a, "--blocks") && v){ blocks = atoll(v); ++i; }
         else if(!strcmp(a, "--selftest")){ selftest = 1; }
+        else if(!strcmp(a, "--bench")){ bench = 1; }
         else { tnet_usage(); return 2; }
     }
 #if defined(CP_ENABLE_CUDA) && CP_ENABLE_CUDA
     if(selftest) return cp_tnet_cuda_selftest(device);
+    if(bench){
+        if(batch < 4 || batch % 4){
+            fprintf(stderr, "[tnet] --batch must be a positive multiple of 4\n");
+            return 2;
+        }
+        return cp_tnet_cuda_bench(device, batch, seconds > 0 ? seconds : 20);
+    }
     if(!payee || strlen(payee) != 64){
         fprintf(stderr, "[tnet] --payee must be a 64-digit hex key hash\n");
         tnet_usage();
@@ -52,7 +63,7 @@ int cp_tnet_main(int argc, char** argv)
     }
     return cp_tnet_cuda_solo(rpc, payee, worker, device, batch, seconds, blocks);
 #else
-    (void)rpc; (void)payee; (void)device; (void)batch; (void)seconds; (void)blocks; (void)selftest;
+    (void)rpc; (void)payee; (void)device; (void)batch; (void)seconds; (void)blocks; (void)selftest; (void)bench;
     fprintf(stderr, "[tnet] this build has no CUDA backend; TNet needs an NVIDIA GPU and a build with -DCP_ENABLE_CUDA=ON\n");
     return 1;
 #endif

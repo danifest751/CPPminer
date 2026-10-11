@@ -18,6 +18,9 @@ const char* cp_tnet_gemm_name(int kind);
 /* Y (rows x n, int32, row-major) = X (rows x n, int8, row-major) * W, WT = W^T row-major (n x n).
  * Returns 0 on success. */
 int cp_tnet_gemm(int kind, const int8_t* x, const int8_t* wt, int32_t* y, int rows, int n, cudaStream_t stream);
+/* The same product requantized in the epilogue: XO (rows x n, int8, row-major) = clamp((X W M + 2^23) >> 24, -128, 127),
+ * bit for bit the separate requantization step, without writing the int32 product to memory. Returns 0 on success. */
+int cp_tnet_gemm_rq(int kind, const int8_t* x, const int8_t* wt, int8_t* xo, int rows, int n, int mult, cudaStream_t stream);
 
 #ifdef __cplusplus
 }
