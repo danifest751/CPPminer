@@ -39,9 +39,23 @@ cppminer --algo tnet --backend opencl --bench --batch 1024
 cppminer --algo tnet --backend opencl --rpc 193.187.93.29:19340 --payee <key hash> --batch 1024
 ```
 
-First version, correct but not tuned: Radeon 780M (RDNA3, sudot4) 7.0 us per ticket (2.4 TMAC/s), Arc A380
-16.3 us (1.0 TMAC/s), both with every share accepted in the test-network pool. The tuned Pearl OpenCL GEMM of
-this miner reaches 3.4 TMAC/s on the 780M and more with WMMA; Intel's XMX (DPAS) is not used yet.
+On Intel GPUs with XMX the GEMM runs on the matrix engines: through `libcp_esimd` (`kernels/libcp_esimd.so`,
+`cp_esimd.dll`; the ESIMD library of the Pearl scan, which now also has `cp_esimd_tnet_gemm`) when it loads, else
+through OpenCL DPAS (`cl_intel_subgroup_matrix_multiply_accumulate`). Both read the operands packed in DPAS blocks:
+the weights once per epoch, the activations as the expansion and every layer but the last write them. The ESIMD GEMM
+takes the batch in whole 512-row tiles (`--batch 8192` or any multiple of 512). `CP_TNET_NOESIMD=1` and
+`CP_TNET_OCL_NODPAS=1` turn either off.
+
+| GPU | GEMM | ns per ticket | TMAC/s | Pool |
+|---|---|---:|---:|---|
+| Arc A380 | ESIMD `dpasw` (`--batch 8192`) | 1131 | 14.8 | 18 shares in 300 s, none rejected |
+| Arc A380 | OpenCL DPAS, packed operands | 9890 | 1.7 | |
+| Arc A380 | OpenCL KHR dot product | 16 270 | 1.0 | 2 shares and a block in 600 s |
+| Radeon 780M | OpenCL `sudot4` | 7 000 | 2.4 | 8 shares in 600 s, none rejected |
+
+The OpenCL DPAS path is limited the same way as for Pearl (2.8-3.2 TMAC/s on the A380): Intel's OpenCL compiler
+does not schedule DPAS well; ESIMD with `dpasw` and L1 prefetch reaches the matrix engines. The 780M has no XMX; its
+next step would be WMMA (about 1.7x over sudot4 for Pearl).
 
 ## Run
 

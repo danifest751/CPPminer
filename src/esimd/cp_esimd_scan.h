@@ -39,6 +39,13 @@ typedef int (*cp_esimd_scan_panel_fn)(CpEsimdScan *s, void *a_blocked, void *bt_
                                       void *found, int m0, int n0, int m, int n,
                                       const uint32_t key[8], const uint32_t bound[8],
                                       void **done);
+/* TNet (Requant) layer, optional symbol "cp_esimd_tnet_gemm" (the Pearl scan does not need it):
+ * out = clamp((A B M + 2^23) >> 24, -128, 127) of a_blocked (rows x n int8 in 8x32 DPAS blocks, [rows/8][n/32]) and
+ * bt_vnni (the layer's weights, n x n, B^T in 32 x 8 VNNI blocks, [n/8][n/32]); out in 8x32 blocks for the next layer
+ * when out_packed, else row-major. Exec size 8 only; rows a multiple of tile_m, n of tile_n. Enqueued in order on the
+ * miner's queue. */
+typedef int (*cp_esimd_tnet_gemm_fn)(CpEsimdScan *s, void *a_blocked, void *bt_vnni, void *out, int rows, int n,
+                                     int mult, int out_packed);
 /* Waits for every panel submitted so far. */
 typedef void (*cp_esimd_wait_fn)(CpEsimdScan *s);
 typedef void (*cp_esimd_destroy_fn)(CpEsimdScan *s);

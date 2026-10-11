@@ -24,6 +24,8 @@
 #include <exception>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace esimd = sycl::ext::intel::esimd;
 namespace xmx = sycl::ext::intel::esimd::xmx;
@@ -238,10 +240,86 @@ ESIMD_INLINE void scan_thread(const AccA &a, const AccB &b, const AccF &found, c
     }
 }
 
+// TNet layer: the same GEMM over a run-time K = n, then the requantization of each 8x8 C block into int8, written in
+// 8x32 blocks (the next layer's A) or row-major (for the ticket hash).
+struct TnetArgs {
+    int n, mult, out_packed;
+};
+
+template <bool DPASW, typename AccA, typename AccB, typename AccO>
+ESIMD_INLINE void tnet_thread(const AccA &a, const AccB &b, const AccO &o, const TnetArgs &p, int ti, int tj, int a_half) {
+    constexpr int ES = 8, MB = TM / 8, NB = TN / ES;
+    constexpr int A_BLK = 8 * 32, B_BLK = 32 * ES, C_BLK = 8 * ES;
+    constexpr int A_LD = DPASW ? A_BLK / 2 : A_BLK;
+    const int kbs = p.n / 32;
+    const int m0 = ti * TM, n0 = tj * TN;
+    const uint32_t a_base = (uint32_t)(m0 / 8) * kbs * A_BLK;
+    const uint32_t b_base = (uint32_t)(n0 / ES) * kbs * B_BLK;
+    constexpr auto pf_props = esimd::properties{esimd::cache_hint_L1<esimd::cache_hint::cached>,
+                                                esimd::cache_hint_L2<esimd::cache_hint::cached>};
+    simd<int32_t, MB * NB * C_BLK> acc = 0;
+    for (int kb = 0; kb < kbs; ++kb) {
+        if (kb + PF < kbs) {
+#pragma unroll
+            for (int i = 0; i < MB; ++i)
+                prefetch_u32<A_LD / 4>(a, a_base + ((uint32_t)i * kbs + kb + PF) * A_BLK + a_half * A_LD, pf_props);
+#pragma unroll
+            for (int j = 0; j < NB; ++j) prefetch_u32<B_BLK / 4>(b, b_base + ((uint32_t)j * kbs + kb + PF) * B_BLK, pf_props);
+        }
+        simd<int8_t, MB * A_LD> av;
+        simd<int8_t, NB * B_BLK> bv;
+#pragma unroll
+        for (int i = 0; i < MB; ++i) {
+            simd<uint32_t, A_LD / 4> w = load_u32<A_LD / 4>(a, a_base + ((uint32_t)i * kbs + kb) * A_BLK + a_half * A_LD);
+            av.template select<A_LD, 1>(i * A_LD) = w.template bit_cast_view<int8_t>();
+        }
+#pragma unroll
+        for (int j = 0; j < NB; ++j) {
+            simd<uint32_t, B_BLK / 4> w = load_u32<B_BLK / 4>(b, b_base + ((uint32_t)j * kbs + kb) * B_BLK);
+            bv.template select<B_BLK, 1>(j * B_BLK) = w.template bit_cast_view<int8_t>();
+        }
+#pragma unroll
+        for (int i = 0; i < MB; ++i)
+#pragma unroll
+            for (int j = 0; j < NB; ++j) {
+                auto c = acc.template select<C_BLK, 1>((i * NB + j) * C_BLK);
+                simd<int8_t, B_BLK> bj = bv.template select<B_BLK, 1>(j * B_BLK);
+                simd<int8_t, A_LD> ai = av.template select<A_LD, 1>(i * A_LD);
+                if constexpr (DPASW)
+                    c = xmx::dpasw<8, 8, int32_t>(simd<int32_t, C_BLK>(c), bj, ai);
+                else
+                    c = xmx::dpas<8, 8, int32_t>(simd<int32_t, C_BLK>(c), bj, ai);
+            }
+    }
+    // each 8x8 block of C (row r, column c at r * 8 + c) to int8, eight bytes per row
+#pragma unroll
+    for (int i = 0; i < MB; ++i)
+#pragma unroll
+        for (int j = 0; j < NB; ++j) {
+            simd<int64_t, C_BLK> t = simd<int64_t, C_BLK>(simd<int32_t, C_BLK>(acc.template select<C_BLK, 1>((i * NB + j) * C_BLK)));
+            t = (t * (int64_t)p.mult + (int64_t)(1 << 23)) >> 24;
+            t = esimd::max<int64_t>(esimd::min<int64_t>(t, (int64_t)127), (int64_t)-128);
+            simd<int8_t, C_BLK> q = simd<int8_t, C_BLK>(t);
+            simd<uint32_t, C_BLK / 4> words = q.template bit_cast_view<uint32_t>();
+            simd<uint32_t, C_BLK / 4> off;
+            const int row0 = m0 + 8 * i, col = n0 + ES * j;
+#pragma unroll
+            for (int r = 0; r < 8; ++r) {
+                const uint32_t at = p.out_packed
+                    ? (uint32_t)(((row0 / 8) * kbs + col / 32) * 256 + r * 32 + col % 32)
+                    : (uint32_t)((row0 + r) * p.n + col);
+                off[2 * r] = at;
+                off[2 * r + 1] = at + 4;
+            }
+            esimd::scatter<uint32_t, C_BLK / 4>(o, off, words);
+        }
+}
+
 using ByteBuf = sycl::buffer<char, 1>;
 
 class ScanEs8;  // kernel names, for the prebuilt bundle
 class ScanEs16;
+class TnetEs8;
 
 } // namespace
 
@@ -256,6 +334,14 @@ struct CpEsimdScan {
     CpEsimdInfo info{};
     cl_mem a_mem = nullptr, b_mem = nullptr, f_mem = nullptr;
     std::unique_ptr<ByteBuf> a_buf, b_buf, f_buf;
+    // TNet: the miner's buffers wrapped once each (activations, weights of every layer)
+    std::vector<std::pair<cl_mem, std::unique_ptr<ByteBuf>>> tnet_bufs;
+    ByteBuf &tnet_wrap(cl_mem mem) {
+        for (auto &e : tnet_bufs)
+            if (e.first == mem) return *e.second;
+        tnet_bufs.emplace_back(mem, std::unique_ptr<ByteBuf>(new ByteBuf(sycl::make_buffer<sycl::backend::opencl, char>(mem, ctx))));
+        return *tnet_bufs.back().second;
+    }
 
     ByteBuf &wrap(cl_mem mem, cl_mem &cached, std::unique_ptr<ByteBuf> &buf) {
         if (!buf || cached != mem) {
@@ -358,6 +444,33 @@ CP_ESIMD_EXPORT int cp_esimd_scan_panel(CpEsimdScan *s, void *a_blocked,
         return 0;
     } catch (const std::exception &e) {
         std::fprintf(stderr, "[esimd] scan panel failed: %s\n", e.what());
+        return -2;
+    }
+}
+
+CP_ESIMD_EXPORT int cp_esimd_tnet_gemm(CpEsimdScan *s, void *a_blocked, void *bt_vnni, void *out, int rows, int n,
+                                       int mult, int out_packed) {
+    if (!s || s->info.exec_size != 8 || rows % s->info.tile_m || n % s->info.tile_n) return -1;
+    const TnetArgs args{n, mult, out_packed};
+    try {
+        ByteBuf &ab = s->tnet_wrap((cl_mem)a_blocked);
+        ByteBuf &bb = s->tnet_wrap((cl_mem)bt_vnni);
+        ByteBuf &ob = s->tnet_wrap((cl_mem)out);
+        const sycl::nd_range<2> r({(size_t)(rows / TM), (size_t)(n / TN)}, {WGM, WGN});
+        s->q.submit([&](sycl::handler &h) {
+            auto a = ab.get_access<sycl::access::mode::read>(h);
+            auto b = bb.get_access<sycl::access::mode::read>(h);
+            auto o = ob.get_access<sycl::access::mode::write>(h);
+            syclex::properties props{intelex::grf_size<256>};
+            h.parallel_for<TnetEs8>(r, props, [=](sycl::nd_item<2> it) SYCL_ESIMD_KERNEL {
+                const int lin = (int)it.get_local_linear_id();
+                const int tn = lin % WGN, tm = lin / WGN;
+                tnet_thread<true>(a, b, o, args, (int)it.get_group(0) * WGM + tm, (int)it.get_group(1) * WGN + tn, lin & 1);
+            });
+        });
+        return 0;
+    } catch (const std::exception &e) {
+        std::fprintf(stderr, "[esimd] tnet gemm failed: %s\n", e.what());
         return -2;
     }
 }

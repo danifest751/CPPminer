@@ -4,7 +4,8 @@
  *
  * Build option RQ_DOT, how four int8 products are summed: 1 the integer dot product of OpenCL 3.0
  * (cl_khr_integer_dot_product), 2 AMD's v_dot4_i32_iu8 (RDNA3/4, both operands signed), 3 AMD's v_dot4_i32_i8 (GCN5,
- * RDNA2), 0 written out. The host builds them in turn and keeps the first that agrees with the CPU. */
+ * RDNA2), 0 written out. The host builds them in turn and keeps the first that agrees with the CPU. -DRQ_DPAS=1 adds
+ * rq_gemm_dpas, the GEMM on Intel XMX. */
 
 typedef struct { uint pw[11]; uint b44; } RqPrefix;
 typedef struct { uint t[8]; } RqTarget;
@@ -47,7 +48,7 @@ static void rq_init(uint h[8]) {
 }
 
 /* out[32 k ..) = SHA256("abacus/expand" || seed || LE32(c0 + k)), k < count; out is 32-byte aligned */
-__kernel void rq_expand(RqPrefix px, uint c0, ulong count, __global uint* restrict out) {
+__kernel void rq_expand(RqPrefix px, uint c0, ulong count, __global uint* restrict out, int pack_n) {
     const ulong k = get_global_id(0);
     if (k >= count) return;
     const uint cc = c0 + (uint)k;
@@ -58,7 +59,13 @@ __kernel void rq_expand(RqPrefix px, uint c0, ulong count, __global uint* restri
     w[13] = 0; w[14] = 0; w[15] = 49 * 8;
     rq_init(h);
     rq_compress(h, w);
-    __global uint* o = out + 8 * k;
+    /* pack_n: the batch is A packed for the XMX GEMM (rows of pack_n bytes in 8 x 32-byte chunks), else row-major */
+    size_t at = 8 * k;
+    if (pack_n) {
+        const size_t byte = 32 * k, row = byte / (size_t)pack_n, col = byte % (size_t)pack_n;
+        at = (((row / 8) * (size_t)(pack_n / 32) + col / 32) * 256 + (row % 8) * 32) / 4;
+    }
+    __global uint* o = out + at;
     vstore4((uint4)(BSWAP(h[0]), BSWAP(h[1]), BSWAP(h[2]), BSWAP(h[3])), 0, o);
     vstore4((uint4)(BSWAP(h[4]), BSWAP(h[5]), BSWAP(h[6]), BSWAP(h[7])), 1, o);
 }
@@ -133,6 +140,79 @@ __kernel __attribute__((reqd_work_group_size(16, 16, 1))) void rq_gemm_rq(__glob
         }
     }
 }
+
+#if RQ_DPAS
+/* The same product on Intel XMX (cl_intel_subgroup_matrix_multiply_accumulate, Xe-HPG: sub-group size 8). One DPAS is
+ * M 8 x N 8 x K 32: a.s<m> = row m, k bytes 4 lane .. 4 lane + 3; b = column `lane`, b.s<i> = k bytes 4 i .. 4 i + 3;
+ * result.s<m> = C[row m][column lane] (the layout the Pearl DPAS path of this miner checked on an Arc A380).
+ *
+ * Both operands are kept packed so that each DPAS operand is one 256-byte block read (intel_sub_group_block_read8:
+ * lane l gets dwords l, l + 8, ..., l + 56):
+ *   A (activations), chunk (row block rb of 8 rows, k block kb of 32): at ((rb (n/32) + kb) 256), dword m 8 + lane =
+ *     row 8 rb + m, k bytes 32 kb + 4 lane .. + 3 (the chunk is the 8 x 32 bytes, row after row);
+ *   B (weights), chunk (column block cb of 8, k block kb): at ((cb (n/32) + kb) 256), dword i 8 + lane = column 8 cb + lane,
+ *     k bytes 32 kb + 4 i .. + 3.
+ * The expansion writes A packed, every layer but the last writes its output packed, the last row-major for the ticket
+ * hash. Rows a multiple of 8, n a multiple of 128.
+ *
+ * A sub-group owns 32 rows x 16 columns (4 x 2 DPAS blocks); a work-group of 8 sub-groups 32 rows x 128 columns;
+ * work-groups next to each other take the next rows of the same columns, so the weights they share stay in the cache. */
+#pragma OPENCL EXTENSION cl_intel_subgroups : enable
+
+/* B packed from W row-major (W[k n + j], as the expansion writes it): one dword per work-item */
+__kernel void rq_pack_w(__global const uchar* restrict W, __global uint* restrict P, int n) {
+    const size_t d = get_global_id(0);
+    if (d >= (size_t)n * n / 4) return;
+    const int kbs = n / 32;
+    const size_t chunk = d / 64;
+    const int within = (int)(d % 64), i = within / 8, lane = within % 8;
+    const int j = (int)(chunk / kbs) * 8 + lane, k = (int)(chunk % kbs) * 32 + 4 * i;
+    P[d] = (uint)W[(size_t)k * n + j] | ((uint)W[(size_t)(k + 1) * n + j] << 8) | ((uint)W[(size_t)(k + 2) * n + j] << 16) |
+           ((uint)W[(size_t)(k + 3) * n + j] << 24);
+}
+
+__kernel __attribute__((intel_reqd_sub_group_size(8))) __attribute__((reqd_work_group_size(64, 1, 1)))
+void rq_gemm_dpas(__global const uint* restrict A, __global const uint* restrict B, __global char* restrict XO, int rows,
+                  int n, int mult, int out_packed) {
+    const int lane = get_sub_group_local_id(), sg = get_sub_group_id();
+    const int r0 = get_group_id(0) * 32, c0 = get_group_id(1) * 128 + sg * 16;
+    const int kbs = n / 32;
+    int8 acc[4][2];
+    for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 2; ++j) acc[i][j] = (int8)(0);
+    __global const uint* ap[4];
+    __global const uint* bp[2];
+    for (int i = 0; i < 4; ++i) ap[i] = A + (size_t)((r0 / 8 + i) * kbs) * 64;
+    for (int j = 0; j < 2; ++j) bp[j] = B + (size_t)((c0 / 8 + j) * kbs) * 64;
+    const int blocks = min(4, (rows - r0 + 7) / 8); /* row blocks of this tile that exist */
+    for (int kb = 0; kb < kbs; ++kb) {
+        int8 a[4], b[2];
+#pragma unroll
+        for (int i = 0; i < 4; ++i) a[i] = i < blocks ? as_int8(intel_sub_group_block_read8(ap[i] + kb * 64)) : (int8)(0);
+#pragma unroll
+        for (int j = 0; j < 2; ++j) b[j] = as_int8(intel_sub_group_block_read8(bp[j] + kb * 64));
+#pragma unroll
+        for (int i = 0; i < 4; ++i)
+#pragma unroll
+            for (int j = 0; j < 2; ++j) acc[i][j] = intel_sub_group_i8_i8_matrix_mad_k32(a[i], b[j], acc[i][j]);
+    }
+    for (int i = 0; i < blocks; ++i)
+        for (int j = 0; j < 2; ++j) {
+            const int col = c0 + 8 * j + lane;
+            int v8[8];
+            vstore8(acc[i][j], 0, v8);
+            for (int m = 0; m < 8; ++m) {
+                const int row = r0 + 8 * i + m;
+                const long v = ((long)v8[m] * mult + (1L << 23)) >> 24;
+                const char q = (char)(v < -128 ? -128 : (v > 127 ? 127 : v));
+                if (out_packed)
+                    XO[((size_t)(row / 8) * kbs + col / 32) * 256 + (row % 8) * 32 + col % 32] = q;
+                else
+                    XO[(size_t)row * n + col] = q;
+            }
+        }
+}
+#endif
 
 /* Ticket (r0 + i, c): SHA256(piece || 0x54 || hd || LE64 nonce || LE32 row || LE32 c) <= target; w % 64 == 0. The fixed
  * last block comes in `tail`; each work-item fills in row and c (bytes 41..48). */
