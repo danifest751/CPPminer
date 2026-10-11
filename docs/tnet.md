@@ -62,5 +62,11 @@ accepted (52 shares and 4 blocks in 240 s). `--bench` on the same card, ns per t
 | + 256 x 128 tile (128 x 128: 273.5) | 239.1 | 0.46 / 61.8 / 0.37 |
 
 The layers now run at 71 TMAC/s (the card's square int8 GEMM reaches about 78). cuBLAS gave 3.42 M
-tickets/s with the separate pass. The kernels match the Rust reference byte for byte on
+tickets/s with the separate pass. Larger batches do not help (16384-65536 rows: 240-243 ns).
+
+RTX 3090 (Ampere, rented VM, sm80 kernel), `--bench` with the SM clock locked at 1110 MHz so that heat does
+not skew the comparison: requantization as a separate pass 208.4 ns/ticket, in the epilogue 193.1 ns/ticket
+(5.18 M tickets/s, 87 TMAC/s, about 92% of the card's tensor peak at that clock). At its stock clocks the
+card reaches 152-156 ns/ticket while cool, and settles near 180 ns once the core is at 83 C and the clock
+drops to about 1200 MHz: there the limit is cooling and power, not the kernel. The kernels match the Rust reference byte for byte on
 Turing and Ampere. Ampere, Ada and Blackwell use the second kernel, not yet measured against cuBLAS.
