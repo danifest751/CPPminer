@@ -191,9 +191,13 @@ struct RqDevice {
     // rows [r0, r0 + rows) of `nonce`; appends the winning tickets (at most RQ_MAX_HITS) to `hits`
     virtual void scan(const RqWork& wk, uint64_t nonce, uint32_t r0, int rows, std::vector<RqHit>& hits) = 0;
     virtual std::string name() const = 0;
+    virtual std::string pci_bus_id() const { return ""; }
+    virtual std::string device_uuid() const { return ""; }
     virtual std::string kernel() const = 0;
     // a device error since the last call
     virtual bool failed() = 0;
+    // Default is unsupported; only the CUDA backend opts into owned sharing.
+    virtual bool quiesce() { return false; }
 };
 
 using RqMake = std::function<std::unique_ptr<RqDevice>()>;

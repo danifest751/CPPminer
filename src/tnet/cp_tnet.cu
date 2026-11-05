@@ -267,8 +267,31 @@ struct RqEngine : RqDevice {
         cudaGetDeviceProperties(&prop, device);
         return prop.name;
     }
+    std::string device_uuid() const override {
+        cudaDeviceProp prop;
+        if (cudaGetDeviceProperties(&prop, device) != cudaSuccess) return "";
+        const unsigned char* bytes = reinterpret_cast<const unsigned char*>(prop.uuid.bytes);
+        static const char hex[] = "0123456789abcdef";
+        std::string value = "GPU-";
+        for (int i = 0; i < 16; ++i) {
+            if (i == 4 || i == 6 || i == 8 || i == 10) value += '-';
+            value += hex[bytes[i] >> 4]; value += hex[bytes[i] & 15];
+        }
+        return value;
+    }
+    std::string pci_bus_id() const override {
+        cudaDeviceProp prop;
+        if (cudaGetDeviceProperties(&prop, device) != cudaSuccess) return "";
+        char pci[32];
+        std::snprintf(pci, sizeof(pci), "%08x:%02x:%02x.0", prop.pciDomainID, prop.pciBusID, prop.pciDeviceID);
+        return pci;
+    }
     std::string kernel() const override { return cp_tnet_gemm_name(gemm); }
     bool failed() override { return cudaGetLastError() != cudaSuccess; }
+    bool quiesce() override {
+        return cudaSetDevice(device) == cudaSuccess && cudaGetLastError() == cudaSuccess &&
+               cudaDeviceSynchronize() == cudaSuccess;
+    }
 
     bool init(const RqWork& wk, int rows) override {
         n = wk.n; L = wk.L; w = wk.w; mult = wk.mult; batch = rows;
