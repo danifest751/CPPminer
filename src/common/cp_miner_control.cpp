@@ -93,7 +93,7 @@ void handle(cp_sock_t socket) {
         timeval tv{0, 100000};
         if (select((int)socket + 1, &reads, nullptr, nullptr, &tv) <= 0) continue;
         char buf[1024];
-        const int n = (int)recv(socket, buf, (int)std::min(sizeof(buf), 4096 - req.size()), 0);
+        const int n = (int)recv(socket, buf, (int)(std::min)(sizeof(buf), 4096 - req.size()), 0);
         if (n <= 0) break;
         req.append(buf, (size_t)n);
         if (req.find("\r\n\r\n") != std::string::npos) break;
