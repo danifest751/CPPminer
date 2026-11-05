@@ -311,7 +311,7 @@ int rq_solo(const RqMake& make, const char* rpc, const char* payee_hex, const ch
             }
             hits.clear();
             dev->scan(wk, nonce, r0, nrows, hits);
-            if (stats) cp_api_add_work((double)nrows);
+            if (stats) cp_api_add_work((double)nrows * (wk.n / wk.w));
             tickets += (unsigned long long)nrows * (wk.n / wk.w);
             for (const RqHit& h : hits) net.submit(wk, h, payee, worker_name, tip_seen);
             const auto now = std::chrono::steady_clock::now();
