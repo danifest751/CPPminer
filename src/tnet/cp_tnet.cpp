@@ -1,6 +1,7 @@
 // --algo tnet (alias requant): argument handling. The backends are CUDA (cp_tnet.cu, NVIDIA tensor cores) and OpenCL
 // (cp_tnet_ocl.cpp, AMD, Intel and other GPUs); the network and the mining loop are shared (cp_tnet_net.cpp).
 #include "cp_tnet.h"
+#include "cp_miner_control.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,6 +23,7 @@ static void tnet_usage(void)
     fprintf(stderr,
             "usage: cppminer --algo tnet --rpc HOST:PORT --payee KEY_HASH_HEX [--worker NAME] [--backend cuda|opencl]\n"
             "                [--device N] [--batch ROWS] [--seconds S] [--blocks K]\n"
+            "                [--control-port N --control-owner HEX64 --control-key-env ENV]\n"
             "       cppminer --algo tnet --selftest [--backend cuda|opencl] [--device N]\n"
             "       cppminer --algo tnet --bench [--backend cuda|opencl] [--device N] [--batch ROWS] [--seconds S]\n"
             "  --rpc     requantd JSON-RPC or pool address (default 127.0.0.1:19445, regtest)\n"
@@ -41,6 +43,8 @@ int cp_tnet_main(int argc, char** argv)
     const char* worker = "default";
     const char* backend = TNET_HAS_CUDA ? "cuda" : "opencl";
     int device = 0, batch = 8192, selftest = 0, bench = 0;
+    int control_port = 0;
+    const char *control_owner = NULL, *control_key_env = NULL;
     double seconds = 0;
     long long blocks = 0;
     for(int i = 1; i < argc; ++i){
@@ -55,6 +59,14 @@ int cp_tnet_main(int argc, char** argv)
         else if(!strcmp(a, "--batch") && v){ batch = atoi(v); ++i; }
         else if(!strcmp(a, "--seconds") && v){ seconds = atof(v); ++i; }
         else if(!strcmp(a, "--blocks") && v){ blocks = atoll(v); ++i; }
+        else if(!strcmp(a, "--control-port") && v){
+            char* end = NULL;
+            const long port = strtol(v, &end, 10);
+            if (!*v || *end || port < 1 || port > 65535) { tnet_usage(); return 2; }
+            control_port = (int)port; ++i;
+        }
+        else if(!strcmp(a, "--control-owner") && v){ control_owner = v; ++i; }
+        else if(!strcmp(a, "--control-key-env") && v){ control_key_env = v; ++i; }
         else if(!strcmp(a, "--selftest")){ selftest = 1; }
         else if(!strcmp(a, "--bench")){ bench = 1; }
         else { tnet_usage(); return 2; }
@@ -77,11 +89,20 @@ int cp_tnet_main(int argc, char** argv)
         tnet_usage();
         return 2;
     }
+    if ((control_port || control_owner || control_key_env) &&
+        (!control_port || !control_owner || !control_key_env || !cuda || selftest || bench)) {
+        fprintf(stderr, "[tnet] control requires all ownership options and CUDA solo/pool mode\n");
+        return 2;
+    }
     (void)rpc; (void)payee; (void)worker; (void)device; (void)seconds; (void)blocks;
 #if TNET_HAS_CUDA
     if(cuda){
         if(selftest) return cp_tnet_cuda_selftest(device);
         if(bench) return cp_tnet_cuda_bench(device, batch, seconds > 0 ? seconds : 20);
+        if (control_port && cp_miner_control_start(control_port, control_owner, control_key_env, device) != 0) {
+            fprintf(stderr, "[tnet] cannot start explicit loopback control; refusing this opted-in run\n");
+            return 1;
+        }
         return cp_tnet_cuda_solo(rpc, payee, worker, device, batch, seconds, blocks);
     }
 #endif

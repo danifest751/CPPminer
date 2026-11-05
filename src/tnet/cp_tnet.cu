@@ -269,6 +269,10 @@ struct RqEngine : RqDevice {
     }
     std::string kernel() const override { return cp_tnet_gemm_name(gemm); }
     bool failed() override { return cudaGetLastError() != cudaSuccess; }
+    bool quiesce() override {
+        return cudaSetDevice(device) == cudaSuccess && cudaGetLastError() == cudaSuccess &&
+               cudaDeviceSynchronize() == cudaSuccess;
+    }
 
     bool init(const RqWork& wk, int rows) override {
         n = wk.n; L = wk.L; w = wk.w; mult = wk.mult; batch = rows;

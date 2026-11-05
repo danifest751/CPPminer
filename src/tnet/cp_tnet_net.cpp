@@ -2,6 +2,7 @@
 // shared by the CUDA and OpenCL backends through RqDevice (cp_tnet_common.hpp).
 
 #include "cp_tnet_common.hpp"
+#include "cp_miner_control.h"
 
 #include <atomic>
 #include <cctype>
@@ -296,6 +297,13 @@ int rq_solo(const RqMake& make, const char* rpc, const char* payee_hex, const ch
         bool restart = false;
         for (uint32_t r0 = 0; r0 < (uint32_t)wk.b && !restart; r0 += (uint32_t)rows) {
             const int nrows = (int)((uint32_t)wk.b - r0 < (uint32_t)rows ? (uint32_t)wk.b - r0 : (uint32_t)rows);
+            const int control = cp_miner_control_checkpoint([&] { return dev->quiesce(); });
+            if (control < 0) { fprintf(stderr, "[tnet] control synchronization failed\n"); net.finish(); return 1; }
+            // A long pause can span a new tip; refresh before enqueuing old work.
+            if (control > 0 && (net.restart.exchange(false) ||
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - last_work).count() > 60.0)) {
+                restart = true; break;
+            }
             hits.clear();
             dev->scan(wk, nonce, r0, nrows, hits);
             tickets += (unsigned long long)nrows * (wk.n / wk.w);

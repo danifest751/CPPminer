@@ -89,6 +89,7 @@ set(CP_COMMON_SOURCES
     src/common/cp_mine.cpp
     src/common/cp_fee.cpp
     src/common/cp_algo.cpp
+    src/common/cp_miner_control.cpp
     src/tnet/cp_tnet.cpp
     src/tnet/cp_tnet_net.cpp
     src/common/cp_qpow_pool.cpp

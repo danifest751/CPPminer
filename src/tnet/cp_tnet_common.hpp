@@ -194,6 +194,8 @@ struct RqDevice {
     virtual std::string kernel() const = 0;
     // a device error since the last call
     virtual bool failed() = 0;
+    // Default is unsupported; only the CUDA backend opts into owned sharing.
+    virtual bool quiesce() { return false; }
 };
 
 using RqMake = std::function<std::unique_ptr<RqDevice>()>;
