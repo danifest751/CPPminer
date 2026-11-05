@@ -31,6 +31,7 @@ namespace {
 
 struct Device {
     std::string name;
+    std::string uuid;
     std::string pci; /* "0000:03:00.0" or empty */
     int bus = -1;    /* decimal PCI bus, -1 when unknown */
 };
@@ -45,6 +46,7 @@ bool g_enabled = false;
 const double g_t_start = cp_now_sec();
 std::string g_algo = "pearl";
 std::string g_backend;
+std::string g_worker;
 std::string g_pool;
 bool g_pool_connected = false;
 std::vector<Device> g_devices;
@@ -114,7 +116,7 @@ std::string summary_json()
     j += "\"miner\":\"cppminer\",\"version\":\"" + cp_json_escape(g_version.c_str()) + "\",";
     j += "\"algo\":\"" + cp_json_escape(g_algo.c_str()) + "\",";
     j += "\"backend\":\"" + cp_json_escape(g_backend.c_str()) + "\",";
-    j += "\"worker\":\"" + cp_json_escape(worker_global) + "\",";
+    j += "\"worker\":\"" + cp_json_escape(g_worker.empty() ? worker_global : g_worker.c_str()) + "\",";
     j += "\"pool\":\"" + cp_json_escape(g_pool.c_str()) + "\",";
     j += std::string("\"pool_connected\":") + (g_pool_connected ? "true" : "false") + ",";
     j += "\"uptime\":" + std::to_string((long long)(now - g_t_start)) + ",";
@@ -125,6 +127,7 @@ std::string summary_json()
         const Device& dev = g_devices[d];
         if(d) j += ",";
         j += "{\"id\":" + std::to_string(d) + ",\"name\":\"" + cp_json_escape(dev.name.c_str()) +
+             "\",\"uuid\":\"" + cp_json_escape(dev.uuid.c_str()) +
              "\",\"pci\":\"" + cp_json_escape(dev.pci.c_str()) + "\",\"bus\":" +
              std::to_string(dev.bus) + ",\"hashrate\":[" + fmt_num(r[0] / ndev) + "," +
              fmt_num(r[1] / ndev) + "," + fmt_num(r[2] / ndev) + "]}";
@@ -300,10 +303,17 @@ void cp_api_set_algo(const char* algo, const char* backend)
     }
 }
 
+void cp_api_set_worker(const char* worker)
+{
+    std::lock_guard<std::mutex> lk(g_mx);
+    g_worker = worker ? worker : "";
+}
+
 void cp_api_set_pool(const char* host, int port, int connected)
 {
     std::lock_guard<std::mutex> lk(g_mx);
-    g_pool = std::string(host ? host : "") + ":" + std::to_string(port);
+    g_pool = std::string(host ? host : "");
+    if (port > 0) g_pool += ":" + std::to_string(port);
     g_pool_connected = connected != 0;
 }
 
@@ -315,10 +325,16 @@ void cp_api_set_pool_connected(int connected)
 
 void cp_api_add_device(const char* name, const char* pci)
 {
+    cp_api_add_device_identity(name, pci, nullptr);
+}
+
+void cp_api_add_device_identity(const char* name, const char* pci, const char* uuid)
+{
     std::lock_guard<std::mutex> lk(g_mx);
     Device d;
     d.name = name ? name : "";
     d.pci = pci ? pci : "";
+    d.uuid = uuid ? uuid : "";
     d.bus = parse_pci_bus(pci);
     g_devices.push_back(d);
 }

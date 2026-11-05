@@ -3,6 +3,7 @@
 
 #include "cp_tnet_common.hpp"
 #include "cp_miner_control.h"
+#include "cp_api.h"
 
 #include <atomic>
 #include <cctype>
@@ -230,6 +231,7 @@ struct RqNet {
                 if (it.tip != tip_now) { ++stale; continue; }
                 std::string r, acc, blk;
                 const bool ok = rpc_call(ep, "submitwork", it.params, r) && json_get(r, "accepted", acc) && acc == "true";
+                if (cp_api_enabled()) cp_api_on_share(ok);
                 // a pool answers "block": false for a share that is not a block; a node has no such field
                 const bool is_block = !(json_get(r, "block", blk) && blk == "false");
                 if (ok && is_block) {
@@ -267,11 +269,14 @@ int rq_solo(const RqMake& make, const char* rpc, const char* payee_hex, const ch
     for (const char* q = worker ? worker : ""; *q && worker_name.size() < 32; ++q)
         if (isalnum((unsigned char)*q) || *q == '.' || *q == '_' || *q == '-') worker_name += *q;
     if (worker_name.empty()) worker_name = "default";
+    const bool stats = cp_api_enabled() != 0;
+    if (stats) { cp_api_set_worker(worker_name.c_str()); cp_api_set_pool(rpc, 0, 1); }
     RqWork wk;
     if (!get_work(ep, payee, wk)) { fprintf(stderr, "[tnet] getwork from %s failed\n", rpc); return 1; }
     const int rows = batch < wk.b ? batch : wk.b;
     std::unique_ptr<RqDevice> dev = make();
     if (!dev || !dev->init(wk, rows)) { fprintf(stderr, "[tnet] GPU set-up failed (try a smaller --batch)\n"); return 1; }
+    if (stats) cp_api_add_device_identity(dev->name().c_str(), dev->pci_bus_id().c_str(), dev->device_uuid().c_str());
     printf("[tnet] %s | node %s | TNet n=%d B=%d L=%d w=%d | batch %d rows\n", dev->name().c_str(), rpc, wk.n, wk.b, wk.L,
            wk.w, rows);
     printf("[tnet] GEMM: %s, requantization %s\n", dev->kernel().c_str(), dev->fused ? "in the epilogue" : "as a separate pass");
@@ -306,6 +311,7 @@ int rq_solo(const RqMake& make, const char* rpc, const char* payee_hex, const ch
             }
             hits.clear();
             dev->scan(wk, nonce, r0, nrows, hits);
+            if (stats) cp_api_add_work((double)nrows);
             tickets += (unsigned long long)nrows * (wk.n / wk.w);
             for (const RqHit& h : hits) net.submit(wk, h, payee, worker_name, tip_seen);
             const auto now = std::chrono::steady_clock::now();

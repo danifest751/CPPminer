@@ -44,7 +44,7 @@ try:
         if data['state'] == 'mining':
             break
         time.sleep(.01)
-    assert data['state'] == 'mining' 
+    assert data['state'] == 'mining'
     assert request('status', extra={'Authorization': 'Bearer wrong'})[0] == 401
     assert request('status', extra={'X-ReQuant-Miner-Owner': '9'*64})[0] == 409
     assert request('status', extra={'X-ReQuant-Miner-Instance': '9'*64})[0] == 409

@@ -23,11 +23,13 @@ int cp_api_start(const char* bind_addr, int port);
 int cp_api_enabled(void);
 
 void cp_api_set_algo(const char* algo, const char* backend);
+void cp_api_set_worker(const char* worker);
 void cp_api_set_pool(const char* host, int port, int connected);
 void cp_api_set_pool_connected(int connected);
 
 /* One mining device of this process. pci: "0000:03:00.0" or NULL when unknown. */
 void cp_api_add_device(const char* name, const char* pci);
+void cp_api_add_device_identity(const char* name, const char* pci, const char* uuid);
 int cp_api_device_count(void);
 
 /* Work done since the last call: hashes (Quantus) or multiply-accumulates (Pearl). */
