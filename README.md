@@ -74,7 +74,7 @@ More cards and CPUs: [Supported hardware and speed](#supported-hardware-and-spee
 | **AMD RDNA4** (RX 9000, Radeon AI PRO R9700) | WMMA on gfx12, the operand layout picked by a start-up self-test, half-wave milestone reduce-scatter, GPU-side job and nonce preparation: R9700 95–96 TMAC/s at the pool |
 | **Quantus on NVIDIA** | New CUDA backend (`--algo quantus --backend cuda`): Goldilocks arithmetic tuned for the integer pipes, lazy 96-bit sums in the linear layers, only two S-boxes in the first round. CMP 50HX 101 (OpenCL) → 288 MH/s |
 | **Quantus on OpenCL** | Rewritten kernel: variants probed per device, carry-free 22-bit limbs in the linear layers, carry chains through `__builtin_addc` on AMD, launch pipeline; on RDNA4 a reduction in inline assembly and two nonces per work-item. R9700 → 211 MH/s, A380 → 31.2 MH/s |
-| **TNet (Requant)** | `--algo tnet`: TNet v1, a header-seeded int8 network: NVIDIA tensor cores (CUTLASS GEMM built in), AMD and Intel GPUs over OpenCL (Intel Arc on XMX through ESIMD), mining into a Requant pool or node. CMP 50HX 4.2 M tickets/s, Arc A380 0.88 M. [Details](docs/tnet.md) |
+| **TNet (Requant)** | `--algo tnet`: TNet v1, a header-seeded int8 network: NVIDIA tensor cores (CUTLASS GEMM built in), AMD and Intel GPUs over OpenCL (Intel Arc on XMX through ESIMD), and phones (CPU, [Android package](docs/tnet.md#phones-android-and-other-cpus)), mining into a Requant pool or node. CMP 50HX 4.2 M tickets/s, Arc A380 0.88 M. [Details](docs/tnet.md) |
 | **HiveOS, Docker, stats API** | HiveOS custom-miner package and Docker images for NVIDIA, AMD and Intel, one process per GPU; `--api-port` serves hashrate, shares and devices as JSON |
 | **AMD Polaris and older GCN** (RX 470/480/570/580, Fiji, Tonga) | Dedicated 24-bit multiply-add kernel: RX 580 1.38 → 1.84 TMAC/s |
 | **Intel Arc** (Xe-HPG) | `--backend onednn`: an ESIMD XMX kernel does the GEMM, milestone XOR and the whole jackpot in one pass, on operands the prep writes in DPAS layout (A380 3.2 → 18.8 TMAC/s); gemmstone systolic kernels as the fallback (16.7) |
@@ -157,7 +157,7 @@ Measured by the upstream author on upstream builds; the fork's kernels for these
 | Intel Arc (Xe-HPG) | `onednn` | ESIMD XMX scan when built with `-DCP_ENABLE_ESIMD=ON`, else gemmstone systolic XMX |
 | Intel Arc, Intel iGPU | `opencl` | `cl_khr_integer_dot_product`, or scalar |
 | Qualcomm Adreno, ARM Mali | `opencl` | 4x4 tile on Adreno |
-| Any CPU | `cpu` | best of AVX-512 VNNI / AVX-VNNI / AVX-512 / AVX2 / SSSE3, or I8MM / DotProd / NEON |
+| Any CPU | `cpu` | best of AVX-512 VNNI / AVX-VNNI / AVX-512 / AVX2 / SSSE3, or I8MM / DotProd / NEON (TNet: DotProd, else plain C++) |
 
 ---
 
@@ -306,6 +306,9 @@ cppminer --algo quantus --backend cpu --threads 8 --pool stratum+tcp://HOST:PORT
 
 # TNet (Requant test network) on an NVIDIA GPU, in the pool
 cppminer --algo tnet --rpc 193.187.93.29:19340 --payee <64-hex key hash> --worker rig1
+
+# TNet on a phone: the CPU is the default on Android
+./cppminer --algo tnet --rpc pool.requant.network:19340 --payee <64-hex key hash> --worker phone
 ```
 
 OpenCL uses one device per process. For several AMD/Intel GPUs, start one miner per GPU with different `--devices` and `--worker`.
@@ -482,7 +485,7 @@ scripts/package_esimd_runtime.sh build/kernels
 
 ### Android (Termux / NDK)
 
-Cross-building with the NDK works with `-DCP_PROOF_FFI=OFF`. That build can benchmark (`--mock` without verify) but cannot build proofs, so it cannot mine on a pool. To mine on a phone, build natively in Termux, where the Rust proof crate also builds. See [`docs/termux_note.md`](docs/termux_note.md).
+Cross-building with the NDK works with `-DCP_PROOF_FFI=OFF`. `scripts/build_android.sh` makes such a package, one file with no libraries beside it. It mines TNet in a pool ([docs](docs/tnet.md#phones-android-and-other-cpus)); for Pearl it can only benchmark (`--mock` without verify), as it cannot build proofs. To mine Pearl on a phone, build natively in Termux, where the Rust proof crate also builds. See [`docs/termux_note.md`](docs/termux_note.md).
 
 ### CMake options
 

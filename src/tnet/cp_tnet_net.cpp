@@ -275,7 +275,7 @@ int rq_solo(const RqMake& make, const char* rpc, const char* payee_hex, const ch
     if (!get_work(ep, payee, wk)) { fprintf(stderr, "[tnet] getwork from %s failed\n", rpc); return 1; }
     const int rows = batch < wk.b ? batch : wk.b;
     std::unique_ptr<RqDevice> dev = make();
-    if (!dev || !dev->init(wk, rows)) { fprintf(stderr, "[tnet] GPU set-up failed (try a smaller --batch)\n"); return 1; }
+    if (!dev || !dev->init(wk, rows)) { fprintf(stderr, "[tnet] device set-up failed (try a smaller --batch)\n"); return 1; }
     if (stats) cp_api_add_device_identity(dev->name().c_str(), dev->pci_bus_id().c_str(), dev->device_uuid().c_str());
     printf("[tnet] %s | node %s | TNet n=%d B=%d L=%d w=%d | batch %d rows\n", dev->name().c_str(), rpc, wk.n, wk.b, wk.L,
            wk.w, rows);

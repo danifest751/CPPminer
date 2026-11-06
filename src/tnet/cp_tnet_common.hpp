@@ -1,6 +1,6 @@
 // TNet v1 (the Requant coin's work function): what every device backend shares. The work and its tickets, the host side
 // of SHA-256 and of the kernels' arguments, CPU references for self-tests, and the interface a backend implements
-// (CUDA in cp_tnet.cu, OpenCL in cp_tnet_ocl.cpp). The network and the mining loop are in cp_tnet_net.cpp.
+// (CUDA in cp_tnet.cu, OpenCL in cp_tnet_ocl.cpp, the CPU in cp_tnet_cpu.cpp). The network and the mining loop are in cp_tnet_net.cpp.
 #pragma once
 
 #include <cstdint>

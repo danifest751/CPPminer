@@ -1,7 +1,7 @@
 # `--algo tnet` — TNet v1 (Requant)
 
 Mining of [Requant](https://github.com/requant-network/requant) in a Requant pool or against a `requantd` node.
-The work function is TNet v1 (`SPEC.md` there): a header-seeded int8 network on tensor cores; every
+The work function is TNet v1 (`SPEC.md` there): a header-seeded int8 network, made for tensor cores; every
 256-byte piece of an output row is a lottery ticket. `requant` is accepted as an alias of `tnet`.
 
 ## Build
@@ -56,6 +56,54 @@ takes the batch in whole 512-row tiles (`--batch 8192` or any multiple of 512). 
 The OpenCL DPAS path is limited the same way as for Pearl (2.8-3.2 TMAC/s on the A380): Intel's OpenCL compiler
 does not schedule DPAS well; ESIMD with `dpasw` and L1 prefetch reaches the matrix engines. The 780M has no XMX; its
 next step would be WMMA (about 1.7x over sudot4 for Pearl).
+
+## Phones (Android) and other CPUs
+
+`--backend cpu` is the default on Android. It needs no GPU and no libraries: the package
+`cppminer-android-arm64.tar.gz` (`scripts/build_android.sh`) is one arm64 file for Android 8 or newer, run from
+[Termux](https://termux.dev) or `adb shell`.
+
+```sh
+tar xzf cppminer-android-arm64.tar.gz && cd cppminer-android-arm64
+./cppminer --algo tnet --selftest
+./cppminer --algo tnet --bench --seconds 20
+./cppminer --algo tnet --rpc pool.requant.network:19340 --payee <key hash> --worker phone
+```
+
+It takes about 700 MiB of memory: 512 MiB of weights, the rest for a batch of rows. `--threads N` uses fewer cores and
+runs cooler; `--batch` is 256 rows here, a pass of about a second. The miner runs at low priority, so the phone stays
+usable, but all its cores are busy: expect heat and a battery that drains even on a weak USB port. Keep it on a charger
+and out of a case. Android slows the cores down by itself when they get hot, so the rate falls within a minute or two.
+At 45 C at the battery the miner pauses until it is down to 42 C (`CP_TNET_MAX_TEMP` sets the limit in degrees, 0 turns it
+off); where Android hides the battery's temperature this check does nothing.
+
+The kernel is AArch64 DotProd (`sdot`; Cortex-A55, A75 and newer), chosen at start-up. Other CPUs run a plain C++ kernel
+that the compiler vectorizes: it is right, but much slower, and is not meant for mining on x86. `CP_TNET_CPU_KC` and
+`CP_TNET_CPU_NC` change the block sizes; on the phone below 512-4096 and 64-256 made no difference above the noise.
+
+Android switches cores off and on, and a thread's affinity stays narrowed to those that were on when it started, so the
+miner asks for all of them again before each pass. Without this it ended up on three slow cores and a middle one
+(233 us per ticket against 121).
+
+| Device | Backend | us per ticket | Tickets/s | GMAC/s |
+|---|---|---:|---:|---:|
+| Snapdragon 860, cool | cpu, DotProd, 8 threads | 78 | 12 800 | 214 |
+| Snapdragon 860, after minutes of mining | cpu, DotProd, 8 threads | 120-145 | 7 000-8 300 | 115-140 |
+| Adreno 640, the same phone | opencl, `rq_gemm_direct` | 972 | 1 030 | 17 |
+| Adreno 640, the kernel other GPUs use | opencl, `rq_gemm_rq` | 14 700 | 68 | 1.1 |
+
+A pool share is 2^24 tickets (`share_bits` in the log), so the hot phone finds one in about 35 minutes. The package mined block 11820 of the test network this way, from a POCO X3 Pro over `adb shell` on mobile data.
+
+### A phone's GPU
+
+`--backend opencl` needs a build that links the vendor's `libOpenCL.so`, so the package leaves it out: build in Termux
+(`./build.sh --backend cpu,opencl`, see `docs/termux_note.md`), or link the phone's library in a cross build and run with
+`LD_LIBRARY_PATH=/vendor/lib64:/system/lib64`. It is not the default, as on the phone measured the CPU is 7 to 12 times
+faster. Adreno 640 has no integer dot product (43 G multiply-adds per second, several of them per product of bytes).
+
+On Adreno and Mali the miner uses `rq_gemm_direct`, without local memory or barriers, which were 13 times slower there,
+and cuts each pass into pieces of about 40 ms (`--batch` defaults to 64 rows). This is not only speed: Android cannot
+draw the screen while the GPU holds a long pass, and one of several seconds froze the phone until it rebooted.
 
 ## Run
 
