@@ -229,7 +229,7 @@ struct RqOcl : RqDevice {
         const size_t local = 256, global = (hashes + local - 1) / local * local;
         if (phone) {
             for (size_t at = 0; at < global; at += kPieceHashes) {
-                const size_t piece = std::min(kPieceHashes, global - at);
+                const size_t piece = (std::min)(kPieceHashes, global - at);
                 check(clEnqueueNDRangeKernel(ctx.queue, k_expand, 1, &at, &piece, &local, 0, nullptr, nullptr));
                 check(clFinish(ctx.queue));
             }
@@ -262,7 +262,7 @@ struct RqOcl : RqDevice {
             const size_t tiles_c = (size_t)cols / 4, tiles_r = ((size_t)rows / 4 + 15) / 16 * 16;
             for (size_t r = 0; r < tiles_r; r += 16)
                 for (size_t c = 0; c < tiles_c;) {
-                    const size_t off[2] = {c, r}, piece[2] = {std::min(piece_tiles, tiles_c - c), 16};
+                    const size_t off[2] = {c, r}, piece[2] = {(std::min)(piece_tiles, tiles_c - c), 16};
                     const auto t0 = std::chrono::steady_clock::now();
                     check(clEnqueueNDRangeKernel(ctx.queue, k_gemm, 2, off, piece, local, 0, nullptr, nullptr));
                     check(clFinish(ctx.queue));
@@ -270,7 +270,7 @@ struct RqOcl : RqDevice {
                     c += piece[0];
                     if (piece[0] == piece_tiles) {
                         // whole work-groups only; moves by at most a factor of two so that one slow piece does not swing it
-                        const double scale = std::min(2.0, std::max(0.5, kPieceMs / std::max(ms, 0.1)));
+                        const double scale = (std::min)(2.0, (std::max)(0.5, kPieceMs / (std::max)(ms, 0.1)));
                         piece_tiles = std::max<size_t>(16, (size_t)(piece_tiles * scale) / 16 * 16);
                     }
                 }
