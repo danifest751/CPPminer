@@ -214,6 +214,9 @@ if(CP_ENABLE_CPU)
         src/cpu/gemm/case33_gemm_xor_neon.cpp
         src/cpu/gemm/case33_gemm_xor_dotprod.cpp
         src/cpu/gemm/case33_gemm_xor_i8mm.cpp
+        src/tnet/cp_tnet_cpu.cpp
+        src/tnet/cp_tnet_cpu_dotprod.cpp
+        src/tnet/cp_tnet_cpu_i8mm.cpp
     )
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86)$")
         list(APPEND CP_SOURCES
@@ -226,13 +229,13 @@ if(CP_ENABLE_CPU)
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
         add_compile_definitions(CASE33_BUILD_AARCH64=1)
         if(MSVC)
-            set_source_files_properties(src/cpu/gemm/case33_gemm_xor_dotprod.cpp
+            set_source_files_properties(src/cpu/gemm/case33_gemm_xor_dotprod.cpp src/tnet/cp_tnet_cpu_dotprod.cpp
                 PROPERTIES COMPILE_OPTIONS "/arch:armv8.2")
             # MSVC has no I8MM switch / intrinsics gate; the TU compiles to a no-op stub.
         else()
-            set_source_files_properties(src/cpu/gemm/case33_gemm_xor_dotprod.cpp
+            set_source_files_properties(src/cpu/gemm/case33_gemm_xor_dotprod.cpp src/tnet/cp_tnet_cpu_dotprod.cpp
                 PROPERTIES COMPILE_OPTIONS "-march=armv8.2-a+dotprod")
-            set_source_files_properties(src/cpu/gemm/case33_gemm_xor_i8mm.cpp
+            set_source_files_properties(src/cpu/gemm/case33_gemm_xor_i8mm.cpp src/tnet/cp_tnet_cpu_i8mm.cpp
                 PROPERTIES COMPILE_OPTIONS "-march=armv8.2-a+dotprod+i8mm")
         endif()
     endif()
@@ -961,7 +964,11 @@ else()
         unset(_cp_gomp_static)
     endif()
     find_package(OpenMP)
-    if(OpenMP_CXX_FOUND)
+    if(ANDROID)
+        # No libomp.so to ship beside the binary. Not the OpenMP target: it names that library by path.
+        target_compile_options(cppminer PRIVATE -fopenmp)
+        target_link_options(cppminer PRIVATE -fopenmp -static-openmp)
+    elseif(OpenMP_CXX_FOUND)
         target_link_libraries(cppminer PRIVATE OpenMP::OpenMP_CXX)
     elseif(NOT APPLE)
         # GNU/Clang on Linux/etc.: -fopenmp is usually enough.
@@ -1055,6 +1062,23 @@ if(CP_STATIC_LIBCXX AND NOT MSVC)
         message(STATUS "Linking libc++ via -static-libstdc++ (no libc++_static.a found)")
     endif()
     unset(_cp_libcxx_hints)
+endif()
+
+if(BUILD_TESTING AND CP_ENABLE_CPU)
+    add_executable(cp_tnet_cpu_test
+        tests/cp_tnet_cpu_test.cpp
+        src/tnet/cp_tnet_cpu.cpp
+        src/tnet/cp_tnet_cpu_dotprod.cpp
+        src/tnet/cp_tnet_cpu_i8mm.cpp
+        src/cpu/gemm/case33_cpu_features.cpp)
+    target_include_directories(cp_tnet_cpu_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    if(ANDROID)
+        target_compile_options(cp_tnet_cpu_test PRIVATE -fopenmp)
+        target_link_options(cp_tnet_cpu_test PRIVATE -fopenmp -static-openmp)
+    elseif(OpenMP_CXX_FOUND)
+        target_link_libraries(cp_tnet_cpu_test PRIVATE OpenMP::OpenMP_CXX)
+    endif()
+    add_test(NAME cp_tnet_cpu COMMAND cp_tnet_cpu_test ${CMAKE_SOURCE_DIR}/tests/data/tnet-v1-small.jsonl)
 endif()
 
 message(STATUS "CPPminer backends: CPU=${CP_ENABLE_CPU} CUDA=${CP_ENABLE_CUDA} OpenCL=${CP_ENABLE_OPENCL} OneDNN=${CP_ENABLE_ONEDNN} WGPU=${CP_ENABLE_WGPU} CUBLAS=${CP_ENABLE_CUBLAS}")

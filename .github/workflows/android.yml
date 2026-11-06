@@ -1,0 +1,30 @@
+name: android
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [release/fork]
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Build the package
+        run: bash scripts/build_android.sh
+
+      - name: TNet CPU against the vectors (portable kernel on this runner)
+        run: |
+          cmake -S . -B build/host -G Ninja -DCMAKE_BUILD_TYPE=Release -DCP_ENABLE_CPU=ON -DCP_PROOF_FFI=OFF -DBUILD_TESTING=ON
+          cmake --build build/host --target cp_tnet_cpu_test
+          ctest --test-dir build/host -R cp_tnet_cpu --output-on-failure
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cppminer-android-arm64
+          path: cppminer-android-arm64.tar.gz

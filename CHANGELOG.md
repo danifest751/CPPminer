@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.5-fork.13
+- TNet on phones: `--algo tnet --backend cpu`, the default on Android, on AArch64 DotProd (a plain C++ kernel elsewhere). Snapdragon 860: 78 us/ticket cool (12 800 tickets/s, 214 GMAC/s), 120-145 us after minutes of mining. Checked against Requant's vectors, also at the real parameters.
+- TNet on AArch64 I8MM (`smmla`) where the CPU has it, and requantization with `sqrdmulh` on every AArch64 CPU. Snapdragon 8 Elite: 25.4 -> 16.6 us/ticket (1 TMAC/s), 22 us in half an hour of mining.
+- On Android the miner pauses at 45 C at the battery and goes on at 42 C (`CP_TNET_MAX_TEMP`).
+- `cppminer-android-arm64.tar.gz`: one file with no libraries beside it (`scripts/build_android.sh`, workflow `android`). No proof library, so Pearl only benchmarks in it.
+- TNet on Adreno and Mali: `rq_gemm_direct`, and passes cut into pieces of about 40 ms. Adreno 640 1.1 -> 17 GMAC/s; a long pass used to freeze a phone until it rebooted.
+- Opt-in control API and device telemetry for TNet on CUDA (`docs/api.md`); without its flags, mining is unchanged.
+- Pearl and Quantus unchanged; Quantus still without a developer fee.
+- Pool agent `cppminer/0.5-fork.13`.
+- Android, Windows and Linux packages; HiveOS stays on v0.5-fork.9, Docker on v0.5-fork.8.
+- Detailed release notes: [v0.5-fork.13](docs/releases/v0.5-fork.13.md).
+
 ## v0.5-fork.12
 - TNet on AMD and Intel GPUs: `--algo tnet --backend opencl`. Intel Arc with XMX runs the GEMM in the bundled ESIMD library (`dpasw`): Arc A380 1.13 us/ticket (0.88 M tickets/s, 14.8 TMAC/s); without it OpenCL DPAS. AMD uses its dot instructions (Radeon 780M, sudot4: 7.0 us/ticket). The kernel is chosen at start-up by a check against the CPU; pool shares from both were accepted.
 - TNet's network and mining loop are shared by the CUDA and OpenCL backends; CUDA unchanged (CMP 50HX 239 ns/ticket).
