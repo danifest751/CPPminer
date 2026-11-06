@@ -2,6 +2,7 @@
 // GPU's integer dot product (cl_khr_integer_dot_product where the driver has it) with the requantization in its
 // epilogue; expansion and tickets are SHA-256 kernels. The network and the mining loop are cp_tnet_net.cpp.
 
+#include <algorithm>
 #include "cp_tnet.h"
 
 #if defined(CP_ENABLE_OPENCL) && CP_ENABLE_OPENCL
@@ -77,6 +78,12 @@ struct RqOcl : RqDevice {
     OpenClContext ctx;
     int dot = 0;        // RQ_DOT of the program in use (tnet.cl)
     bool dpas = false;  // the GEMM runs on Intel XMX (rq_gemm_dpas, or ESIMD when `esimd` is open)
+    // A phone's GPU (Adreno, Mali): rq_gemm_direct, in pieces short enough that the screen keeps being drawn. One pass of a
+    // few seconds froze a phone until it rebooted.
+    bool phone = false;
+    size_t piece_tiles = 16;  // columns of 4 x 4 tiles per piece, adjusted to kPieceMs
+    static constexpr double kPieceMs = 40;
+    static constexpr size_t kPieceHashes = 1 << 15;
     std::unique_ptr<EsimdLib> esimd;
     bool error = false, ready = false;
     cl_kernel k_expand = nullptr, k_transpose = nullptr, k_gemm = nullptr, k_tickets = nullptr, k_pack = nullptr;
@@ -98,6 +105,7 @@ struct RqOcl : RqDevice {
                                     "AMD sdot4 (v_dot4_i32_i8)"};
         if (dpas && esimd) return "Intel XMX (ESIMD dpasw), 32x32 per thread";
         if (dpas) return "OpenCL int8 Intel XMX (DPAS), 32x128 tiles";
+        if (phone) return std::string("OpenCL int8 ") + how[dot] + ", 4x4 tiles, short passes";
         return std::string("OpenCL int8 ") + how[dot] + ", 64x64 tiles";
     }
     bool failed() override {
@@ -119,6 +127,8 @@ struct RqOcl : RqDevice {
         if (!ctx.init(index, -1)) { fprintf(stderr, "[tnet] no OpenCL device %d (cppminer --list-devices)\n", index); return false; }
         const std::string path = tnet_kernel_path();
         const bool amd = ctx.vendor_name.find("Advanced Micro") != std::string::npos || ctx.device_name.compare(0, 3, "gfx") == 0;
+        phone = ctx.vendor_name.find("QUALCOMM") != std::string::npos || ctx.device_name.find("Adreno") != std::string::npos ||
+                ctx.device_name.find("Mali") != std::string::npos;
         char ext[8192] = {0};
         clGetDeviceInfo(ctx.device, CL_DEVICE_EXTENSIONS, sizeof ext - 1, ext, nullptr);
         const bool xmx = strstr(ext, "cl_intel_subgroup_matrix_multiply_accumulate") != nullptr && !getenv("CP_TNET_OCL_NODPAS");
@@ -135,11 +145,11 @@ struct RqOcl : RqDevice {
             const int d = t.first;
             release_program();
             // the KHR dot product is an OpenCL C 3.0 built-in
-            const std::string opts = "-DRQ_DOT=" + std::to_string(d) + (d == 1 ? " -cl-std=CL3.0" : "") + (t.second ? " -DRQ_DPAS=1" : "");
+            const std::string opts = "-DRQ_DOT=" + std::to_string(d) + (d == 1 ? " -cl-std=CL3.0" : "") + (t.second ? " -DRQ_DPAS=1" : "") + (phone ? " -DRQ_DIRECT=1" : "");
             if (!ctx.safe_build_program_from_file(path.c_str(), opts.c_str(), d != 0 || t.second)) continue;
             k_expand = ctx.create_kernel("rq_expand");
             k_transpose = ctx.create_kernel("rq_transpose");
-            k_gemm = ctx.create_kernel(t.second ? "rq_gemm_dpas" : "rq_gemm_rq");
+            k_gemm = ctx.create_kernel(t.second ? "rq_gemm_dpas" : (phone ? "rq_gemm_direct" : "rq_gemm_rq"));
             k_tickets = ctx.create_kernel("rq_tickets");
             k_pack = t.second ? ctx.create_kernel("rq_pack_w") : nullptr;
             if (!(k_expand && k_transpose && k_gemm && k_tickets && (k_pack || !t.second))) continue;
@@ -217,6 +227,14 @@ struct RqOcl : RqDevice {
         check(clSetKernelArg(k_expand, 3, sizeof out, &out));
         check(clSetKernelArg(k_expand, 4, sizeof pack_n, &pack_n));
         const size_t local = 256, global = (hashes + local - 1) / local * local;
+        if (phone) {
+            for (size_t at = 0; at < global; at += kPieceHashes) {
+                const size_t piece = std::min(kPieceHashes, global - at);
+                check(clEnqueueNDRangeKernel(ctx.queue, k_expand, 1, &at, &piece, &local, 0, nullptr, nullptr));
+                check(clFinish(ctx.queue));
+            }
+            return;
+        }
         check(clEnqueueNDRangeKernel(ctx.queue, k_expand, 1, nullptr, &global, &local, 0, nullptr, nullptr));
     }
 
@@ -240,6 +258,24 @@ struct RqOcl : RqDevice {
             return;
         }
         const size_t local[2] = {16, 16};
+        if (phone) {
+            const size_t tiles_c = (size_t)cols / 4, tiles_r = ((size_t)rows / 4 + 15) / 16 * 16;
+            for (size_t r = 0; r < tiles_r; r += 16)
+                for (size_t c = 0; c < tiles_c;) {
+                    const size_t off[2] = {c, r}, piece[2] = {std::min(piece_tiles, tiles_c - c), 16};
+                    const auto t0 = std::chrono::steady_clock::now();
+                    check(clEnqueueNDRangeKernel(ctx.queue, k_gemm, 2, off, piece, local, 0, nullptr, nullptr));
+                    check(clFinish(ctx.queue));
+                    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+                    c += piece[0];
+                    if (piece[0] == piece_tiles) {
+                        // whole work-groups only; moves by at most a factor of two so that one slow piece does not swing it
+                        const double scale = std::min(2.0, std::max(0.5, kPieceMs / std::max(ms, 0.1)));
+                        piece_tiles = std::max<size_t>(16, (size_t)(piece_tiles * scale) / 16 * 16);
+                    }
+                }
+            return;
+        }
         const size_t global[2] = {(size_t)cols / 64 * 16, (size_t)(rows + 63) / 64 * 16};
         check(clEnqueueNDRangeKernel(ctx.queue, k_gemm, 2, nullptr, global, local, 0, nullptr, nullptr));
     }
@@ -263,6 +299,7 @@ struct RqOcl : RqDevice {
         n = wk.n; L = wk.L; w = wk.w; mult = wk.mult; batch = rows;
         if (n % 64 || w % 64 || n % w) { fprintf(stderr, "[tnet] unsupported parameters n=%d w=%d\n", n, w); return false; }
         if (!open()) return false;
+        if (phone && rows % 4) { fprintf(stderr, "[tnet] this GPU needs --batch a multiple of 4\n"); return false; }
         if (dpas && (rows % 8 || n % 128)) { fprintf(stderr, "[tnet] the XMX GEMM needs --batch a multiple of 8\n"); return false; }
         if (esimd && (rows % esimd->info.tile_m || n % esimd->info.tile_n)) {
             fprintf(stderr, "[tnet] the ESIMD GEMM needs --batch a multiple of %d; using OpenCL DPAS\n", esimd->info.tile_m);

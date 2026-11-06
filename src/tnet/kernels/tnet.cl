@@ -5,7 +5,7 @@
  * Build option RQ_DOT, how four int8 products are summed: 1 the integer dot product of OpenCL 3.0
  * (cl_khr_integer_dot_product), 2 AMD's v_dot4_i32_iu8 (RDNA3/4, both operands signed), 3 AMD's v_dot4_i32_i8 (GCN5,
  * RDNA2), 0 written out. The host builds them in turn and keeps the first that agrees with the CPU. -DRQ_DPAS=1 adds
- * rq_gemm_dpas, the GEMM on Intel XMX. */
+ * rq_gemm_dpas, the GEMM on Intel XMX. -DRQ_DIRECT=1 adds rq_gemm_direct, for phone GPUs. */
 
 typedef struct { uint pw[11]; uint b44; } RqPrefix;
 typedef struct { uint t[8]; } RqTarget;
@@ -140,6 +140,38 @@ __kernel __attribute__((reqd_work_group_size(16, 16, 1))) void rq_gemm_rq(__glob
         }
     }
 }
+
+#if RQ_DIRECT
+/* The same product for phone GPUs: a work-item owns 4 x 4 outputs and reads its operands itself, with no local memory or
+ * barrier. Adreno 640, n = 1024: 14 GMAC/s against 1.1 for rq_gemm_rq. get_global_id, not get_group_id, so that the host
+ * can run a pass in short pieces with a global offset. rows is a multiple of 4; the global rows may run past it. */
+__kernel void rq_gemm_direct(__global const uint* restrict X, __global const uint* restrict WT, __global char* restrict XO,
+                             int rows, int n, int mult) {
+    const int row0 = get_global_id(1) * 4, col0 = get_global_id(0) * 4, nw = n / 4;
+    if (row0 >= rows) return;
+    __global const uint* a0 = X + (size_t)row0 * nw;
+    __global const uint* a1 = a0 + nw;
+    __global const uint* a2 = a1 + nw;
+    __global const uint* a3 = a2 + nw;
+    __global const uint* b0 = WT + (size_t)col0 * nw;
+    __global const uint* b1 = b0 + nw;
+    __global const uint* b2 = b1 + nw;
+    __global const uint* b3 = b2 + nw;
+    int c[16];
+    for (int i = 0; i < 16; ++i) c[i] = 0;
+    for (int k = 0; k < nw; ++k) {
+        const uint A0 = a0[k], A1 = a1[k], A2 = a2[k], A3 = a3[k], B0 = b0[k], B1 = b1[k], B2 = b2[k], B3 = b3[k];
+        DOT4(c[0], A0, B0); DOT4(c[1], A0, B1); DOT4(c[2], A0, B2); DOT4(c[3], A0, B3);
+        DOT4(c[4], A1, B0); DOT4(c[5], A1, B1); DOT4(c[6], A1, B2); DOT4(c[7], A1, B3);
+        DOT4(c[8], A2, B0); DOT4(c[9], A2, B1); DOT4(c[10], A2, B2); DOT4(c[11], A2, B3);
+        DOT4(c[12], A3, B0); DOT4(c[13], A3, B1); DOT4(c[14], A3, B2); DOT4(c[15], A3, B3);
+    }
+    for (int i = 0; i < 16; ++i) {
+        const long v = ((long)c[i] * mult + (1L << 23)) >> 24;
+        XO[(size_t)(row0 + i / 4) * n + col0 + i % 4] = (char)(v < -128 ? -128 : (v > 127 ? 127 : v));
+    }
+}
+#endif
 
 #if RQ_DPAS
 /* The same product on Intel XMX (cl_intel_subgroup_matrix_multiply_accumulate, Xe-HPG: sub-group size 8). One DPAS is
