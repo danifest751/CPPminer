@@ -77,9 +77,13 @@ and out of a case. Android slows the cores down by itself when they get hot, so 
 At 45 C at the battery the miner pauses until it is down to 42 C (`CP_TNET_MAX_TEMP` sets the limit in degrees, 0 turns it
 off); where Android hides the battery's temperature this check does nothing.
 
-The kernel is AArch64 DotProd (`sdot`; Cortex-A55, A75 and newer), chosen at start-up. Other CPUs run a plain C++ kernel
-that the compiler vectorizes: it is right, but much slower, and is not meant for mining on x86. `CP_TNET_CPU_KC` and
-`CP_TNET_CPU_NC` change the block sizes; on the phone below 512-4096 and 64-256 made no difference above the noise.
+The kernel is chosen at start-up: AArch64 I8MM (`smmla`, 32 products an instruction; most Armv9 phones), else DotProd
+(`sdot`, 16; Cortex-A55, A75 and newer). Other CPUs run a plain C++ kernel that the compiler vectorizes: it is right, but
+much slower, and is not meant for mining on x86. `CP_TNET_CPU_KC` and `CP_TNET_CPU_NC` change the block sizes; on both
+phones below 512-2048 and 64-256 made no difference above the noise.
+
+Heat sets the rate more than the core count. On the Snapdragon 8 Elite Xiaomi's thermal service held the cores at 1.6-2.7
+GHz of their 3.53 and 4.32 under this load, already with one thread busy, the chip being at 85-88 C with the battery at 37 C.
 
 Android switches cores off and on, and a thread's affinity stays narrowed to those that were on when it started, so the
 miner asks for all of them again before each pass. Without this it ended up on three slow cores and a middle one
@@ -87,19 +91,24 @@ miner asks for all of them again before each pass. Without this it ended up on t
 
 | Device | Backend | us per ticket | Tickets/s | GMAC/s |
 |---|---|---:|---:|---:|
+| Snapdragon 8 Elite, battery at 36 C | cpu, I8MM, 8 threads | 16.6 | 60 200 | 1 010 |
+| Snapdragon 8 Elite, half an hour in a pool (median; 17-29) | cpu, I8MM, 8 threads | 22 | 45 000 | 760 |
+| Adreno 830, the same phone | opencl, `rq_gemm_direct`, dot product | 302 | 3 300 | 56 |
 | Snapdragon 860, cool | cpu, DotProd, 8 threads | 78 | 12 800 | 214 |
 | Snapdragon 860, after minutes of mining | cpu, DotProd, 8 threads | 120-145 | 7 000-8 300 | 115-140 |
 | Adreno 640, the same phone | opencl, `rq_gemm_direct` | 972 | 1 030 | 17 |
 | Adreno 640, the kernel other GPUs use | opencl, `rq_gemm_rq` | 14 700 | 68 | 1.1 |
 
-A pool share is 2^24 tickets (`share_bits` in the log), so the hot phone finds one in about 35 minutes. The package mined block 11820 of the test network this way, from a POCO X3 Pro over `adb shell` on mobile data.
+A pool share is 2^24 tickets (`share_bits` in the log), so a hot Snapdragon 860 finds one in about 35 minutes; the 8 Elite
+sent 6 in half an hour, none rejected, and lost 13% of its battery in that time on a computer's USB port. The package mined block 11820 of the test network this way, from a POCO X3 Pro over `adb shell` on mobile data.
 
 ### A phone's GPU
 
 `--backend opencl` needs a build that links the vendor's `libOpenCL.so`, so the package leaves it out: build in Termux
 (`./build.sh --backend cpu,opencl`, see `docs/termux_note.md`), or link the phone's library in a cross build and run with
-`LD_LIBRARY_PATH=/vendor/lib64:/system/lib64`. It is not the default, as on the phone measured the CPU is 7 to 12 times
-faster. Adreno 640 has no integer dot product (43 G multiply-adds per second, several of them per product of bytes).
+`LD_LIBRARY_PATH=/vendor/lib64:/system/lib64`. It is not the default, as on both phones measured the CPU is 7 to 18 times
+faster. Adreno 640 has no integer dot product (43 G multiply-adds per second, several of them per product of bytes);
+Adreno 830 has it and the miner uses it.
 
 On Adreno and Mali the miner uses `rq_gemm_direct`, without local memory or barriers, which were 13 times slower there,
 and cuts each pass into pieces of about 40 ms (`--batch` defaults to 64 rows). This is not only speed: Android cannot

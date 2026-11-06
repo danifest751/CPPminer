@@ -216,6 +216,7 @@ if(CP_ENABLE_CPU)
         src/cpu/gemm/case33_gemm_xor_i8mm.cpp
         src/tnet/cp_tnet_cpu.cpp
         src/tnet/cp_tnet_cpu_dotprod.cpp
+        src/tnet/cp_tnet_cpu_i8mm.cpp
     )
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86)$")
         list(APPEND CP_SOURCES
@@ -234,7 +235,7 @@ if(CP_ENABLE_CPU)
         else()
             set_source_files_properties(src/cpu/gemm/case33_gemm_xor_dotprod.cpp src/tnet/cp_tnet_cpu_dotprod.cpp
                 PROPERTIES COMPILE_OPTIONS "-march=armv8.2-a+dotprod")
-            set_source_files_properties(src/cpu/gemm/case33_gemm_xor_i8mm.cpp
+            set_source_files_properties(src/cpu/gemm/case33_gemm_xor_i8mm.cpp src/tnet/cp_tnet_cpu_i8mm.cpp
                 PROPERTIES COMPILE_OPTIONS "-march=armv8.2-a+dotprod+i8mm")
         endif()
     endif()
@@ -1068,6 +1069,7 @@ if(BUILD_TESTING AND CP_ENABLE_CPU)
         tests/cp_tnet_cpu_test.cpp
         src/tnet/cp_tnet_cpu.cpp
         src/tnet/cp_tnet_cpu_dotprod.cpp
+        src/tnet/cp_tnet_cpu_i8mm.cpp
         src/cpu/gemm/case33_cpu_features.cpp)
     target_include_directories(cp_tnet_cpu_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
     if(ANDROID)

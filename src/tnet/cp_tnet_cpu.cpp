@@ -17,6 +17,9 @@
 #ifdef _OPENMP
 #include <omp.h>
 #endif
+#if defined(CASE33_BUILD_AARCH64)
+#include <arm_neon.h>
+#endif
 #if defined(__ANDROID__)
 #include <sched.h>
 #include <sys/resource.h>
@@ -56,6 +59,21 @@ void rq_reclaim_cores() {
     }
 #endif
 }
+
+#if defined(CASE33_BUILD_AARCH64)
+// One tile of accumulators to bytes. sqrdmulh by M * 128 is (s * M * 128 + 2^30) >> 31, the same as (s * M + 2^23) >> 24;
+// if it saturates, the clamp to int8 that follows gives what the wider sum would have. No 64-bit sums, four lanes at once.
+inline void rq_requant_tile(const int32_t* c, int32_t m128, int8_t* o, size_t stride, int rows) {
+    int8_t t[kNR][kMR];
+    for (int col = 0; col < kNR; ++col) {
+        const int32x4_t lo = vqrdmulhq_n_s32(vld1q_s32(c + col * kMR), m128);
+        const int32x4_t hi = vqrdmulhq_n_s32(vld1q_s32(c + col * kMR + 4), m128);
+        vst1_s8(t[col], vqmovn_s16(vcombine_s16(vqmovn_s32(lo), vqmovn_s32(hi))));
+    }
+    for (int r = 0; r < rows; ++r, o += stride)
+        for (int col = 0; col < kNR; ++col) o[col] = t[col][r];
+}
+#endif
 
 // A buffer on a cache line boundary.
 struct RqBuf {
@@ -154,7 +172,7 @@ int env_block(const char* name, int fallback) {
 }
 
 struct RqCpu final : RqDevice {
-    int threads, n = 0, L = 0, w = 0, mult = 0, kc_max, nc_tiles;
+    int threads, n = 0, L = 0, w = 0, mult = 0, kc_max, nc_tiles, unit = 4;
     RqCpuMicro micro;
     const char* micro_name;
     std::vector<RqBuf> packed;  // the weights, one per layer: per block of k, per tile of 16 columns
@@ -162,21 +180,31 @@ struct RqCpu final : RqDevice {
     std::vector<uint8_t> seed;
 
     RqCpu(int threads_, bool portable) : threads(threads_) {
-        // shortcut: blocks tuned on a Snapdragon 860 (Cortex-A76 and A55); tune again if another phone's caches disagree.
-        kc_max = env_block("CP_TNET_CPU_KC", 1024) & ~3;
+        // Sizes of 512-2048 by 64-256 made no difference above the noise on a Snapdragon 860 or an 8 Elite.
         nc_tiles = env_block("CP_TNET_CPU_NC", 128) / kNR;
-        if (kc_max < 4) kc_max = 4;
         if (nc_tiles < 1) nc_tiles = 1;
         micro = rq_cpu_micro_portable;
         micro_name = "portable";
 #if defined(CASE33_BUILD_AARCH64)
-        if (!portable && case33_detect_cpu_features().dotprod) {
-            micro = rq_cpu_micro_dotprod;
-            micro_name = "AArch64 DotProd";
+        if (!portable) {
+            const Case33CpuFeatures cpu = case33_detect_cpu_features();
+            if (cpu.dotprod) {
+                micro = rq_cpu_micro_dotprod;
+                micro_name = "AArch64 DotProd";
+            }
+#if !defined(_MSC_VER)
+            if (cpu.i8mm) {
+                micro = rq_cpu_micro_i8mm;
+                micro_name = "AArch64 I8MM";
+                unit = 8;
+            }
+#endif
         }
 #else
         (void)portable;
 #endif
+        kc_max = env_block("CP_TNET_CPU_KC", 1024) / unit * unit;
+        if (kc_max < unit) kc_max = unit;
 #ifdef _OPENMP
 #if defined(__ANDROID__)
         // Not omp_get_max_threads: it counts the cores that happen to be on right now. A thread with nothing to do sleeps
@@ -225,14 +253,14 @@ struct RqCpu final : RqDevice {
         const int blocks = (n + kc_max - 1) / kc_max;
 #pragma omp parallel for schedule(dynamic, 1)
         for (int b = 0; b < blocks; ++b) {
-            const int k0 = b * kc_max, kc = std::min(kc_max, n - k0), groups = kc / 4;
+            const int k0 = b * kc_max, kc = std::min(kc_max, n - k0), groups = kc / unit;
             int8_t* o = out + static_cast<size_t>(k0) * n;
             for (int tile = 0; tile < n / kNR; ++tile)
                 for (int jg = 0; jg < 2; ++jg)
                     for (int g = 0; g < groups; ++g)
                         for (int c = 0; c < 8; ++c)
-                            for (int t = 0; t < 4; ++t) {
-                                const size_t j = static_cast<size_t>(tile) * kNR + jg * 8 + c, k = static_cast<size_t>(k0) + g * 4 + t;
+                            for (int t = 0; t < unit; ++t) {
+                                const size_t j = static_cast<size_t>(tile) * kNR + jg * 8 + c, k = static_cast<size_t>(k0) + g * unit + t;
                                 *o++ = transposed ? src[j * n + k] : src[k * n + j];
                             }
         }
@@ -266,11 +294,13 @@ struct RqCpu final : RqDevice {
 #pragma omp for schedule(static)
             for (int t = 0; t < rt; ++t) {
                 int8_t* o = ap + static_cast<size_t>(t) * kMR * n;
-                for (int k = 0; k < n; k += 4)
-                    for (int r = 0; r < kMR; ++r, o += 4) {
+                for (int k = 0; k < n; k += unit)
+                    for (int r = 0; r < kMR; ++r, o += unit) {
                         const int row = t * kMR + r;
-                        if (row < rows) memcpy(o, in + static_cast<size_t>(row) * n + k, 4);
-                        else memset(o, 0, 4);  // a batch ends inside a tile: these rows are dropped below
+                        // A batch ends inside a tile: those rows are dropped below. The sizes are constants for the sake of memcpy.
+                        if (row >= rows) memset(o, 0, unit);
+                        else if (unit == 8) memcpy(o, in + static_cast<size_t>(row) * n + k, 8);
+                        else memcpy(o, in + static_cast<size_t>(row) * n + k, 4);
                     }
                 memset(c + static_cast<size_t>(t) * ct * tile_ints, 0, static_cast<size_t>(ct) * tile_ints * sizeof(int32_t));
             }
@@ -288,6 +318,16 @@ struct RqCpu final : RqDevice {
                                   c + (static_cast<size_t>(t) * ct + j) * tile_ints);
                     }
                 }
+#if defined(CASE33_BUILD_AARCH64)
+            if (mult > 0 && mult < (1 << 24)) {
+#pragma omp for schedule(static)
+                for (int t = 0; t < rt; ++t)
+                    for (int j = 0; j < ct; ++j)
+                        rq_requant_tile(c + (static_cast<size_t>(t) * ct + j) * tile_ints, mult * 128,
+                                        xo + static_cast<size_t>(t) * kMR * n + static_cast<size_t>(j) * kNR, n,
+                                        std::min(kMR, rows - t * kMR));
+            } else
+#endif
 #pragma omp for schedule(static)
             for (int row = 0; row < rows; ++row) {
                 const int32_t* ct_row = c + static_cast<size_t>(row / kMR) * ct * tile_ints;
@@ -437,7 +477,16 @@ int rq_cpu_selftest(int threads) {
             for (const RqHit& h : hits) seen |= h.row == static_cast<uint32_t>(1000 + row) && h.c == static_cast<uint32_t>(c);
             tk = seen;
         }
-    const bool kernel = check_device(d), portable = check_device(plain);
+    bool kernel = check_device(d);
+#if defined(CASE33_BUILD_AARCH64)
+    // A CPU with I8MM also checks the kernel older phones use.
+    if (case33_detect_cpu_features().dotprod) {
+        RqCpu dot(threads, true);
+        dot.micro = rq_cpu_micro_dotprod;
+        kernel = kernel && check_device(dot);
+    }
+#endif
+    const bool portable = check_device(plain);
     printf("[tnet] selftest: expansion %s, tickets %s, requantizing GEMM %s, portable GEMM %s\n", exp ? "ok" : "FAIL",
            tk ? "ok" : "FAIL", kernel ? "ok" : "FAIL", portable ? "ok" : "FAIL");
     return exp && tk && kernel && portable ? 0 : 1;

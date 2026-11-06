@@ -157,7 +157,7 @@ Measured by the upstream author on upstream builds; the fork's kernels for these
 | Intel Arc (Xe-HPG) | `onednn` | ESIMD XMX scan when built with `-DCP_ENABLE_ESIMD=ON`, else gemmstone systolic XMX |
 | Intel Arc, Intel iGPU | `opencl` | `cl_khr_integer_dot_product`, or scalar |
 | Qualcomm Adreno, ARM Mali | `opencl` | 4x4 tile on Adreno |
-| Any CPU | `cpu` | best of AVX-512 VNNI / AVX-VNNI / AVX-512 / AVX2 / SSSE3, or I8MM / DotProd / NEON (TNet: DotProd, else plain C++) |
+| Any CPU | `cpu` | best of AVX-512 VNNI / AVX-VNNI / AVX-512 / AVX2 / SSSE3, or I8MM / DotProd / NEON (TNet: I8MM or DotProd, else plain C++) |
 
 ---
 

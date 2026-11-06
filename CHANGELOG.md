@@ -2,6 +2,7 @@
 
 ## Unreleased
 - TNet on phones: `--algo tnet --backend cpu`, the default on Android, on AArch64 DotProd (a plain C++ kernel elsewhere). Snapdragon 860: 78 us/ticket cool (12 800 tickets/s, 214 GMAC/s), 120-145 us after minutes of mining. Checked against Requant's vectors, also at the real parameters.
+- TNet on AArch64 I8MM (`smmla`) where the CPU has it, and requantization with `sqrdmulh` on every AArch64 CPU. Snapdragon 8 Elite: 25.4 -> 16.6 us/ticket (1 TMAC/s), 22 us in half an hour of mining.
 - On Android the miner pauses at 45 C at the battery and goes on at 42 C (`CP_TNET_MAX_TEMP`).
 - `cppminer-android-arm64.tar.gz`: one file with no libraries beside it (`scripts/build_android.sh`, workflow `android`). No proof library, so Pearl only benchmarks in it.
 - TNet on Adreno and Mali: `rq_gemm_direct`, and passes cut into pieces of about 40 ms. Adreno 640 1.1 -> 17 GMAC/s; a long pass used to freeze a phone until it rebooted.
